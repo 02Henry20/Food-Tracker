@@ -217,7 +217,9 @@ const state = {
   mealsets: [],
   dailyGoals: {},
   searchResults: [],
+  searchResultsQuery: "",
   searchQuery: "",
+  searchTab: "foods",
   searchLoading: false,
   searchFeedback: "",
   recentSearches: [],
@@ -229,6 +231,8 @@ const state = {
     lowSugar: false
   },
   searchPage: 1,
+  collapsedMeals: Object.fromEntries(MEALS.map(([id]) => [id, true])),
+  recipeSectionsCollapsed: { recipes: true, mealsets: true },
   defaultLogMeal: "breakfast",
   defaultLogDate: todayISO(),
   reportEntries: [],
@@ -846,6 +850,52 @@ function nutrientSummaryHTML(n) {
   `;
 }
 
+function macroSplitSummaryHTML(n) {
+  const macro = macroCalories(n);
+  const proteinEnd = round(macro.proteinPct, 2);
+  const carbsEnd = round(macro.proteinPct + macro.carbsPct, 2);
+  return `
+    <div class="macro-split-summary">
+      <span class="macro-split-circle" style="--protein-end:${proteinEnd}%; --carbs-end:${carbsEnd}%;" aria-label="Macro split"></span>
+      <div class="macro-amounts">
+        <span class="macro-chip protein">P ${round(n.protein)}g</span>
+        <span class="macro-chip carbs">C ${round(n.carbs)}g</span>
+        <span class="macro-chip fat">F ${round(n.fat)}g</span>
+      </div>
+    </div>
+  `;
+}
+
+function itemFavoriteButton(kind, item) {
+  const active = !!item.favorite;
+  return `
+    <button class="tiny-btn star-btn ${active ? "active" : ""}" type="button" data-action="toggle-favorite-${kind}" data-id="${item.id}" aria-label="${active ? "Unstar" : "Star"} ${safeText(item.name)}" title="${active ? "Unstar" : "Star"}"></button>
+  `;
+}
+
+function sortFavoriteFirst(items) {
+  return [...items].sort((a, b) => {
+    const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
+    if (favoriteDiff) return favoriteDiff;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
+function searchLibraryItems(items, queryText) {
+  const tokens = normalizeSearchText(queryText).split(/\s+/).filter(Boolean);
+  return sortFavoriteFirst(items).filter(item => {
+    if (!tokens.length) return true;
+    const parts = [
+      item.name,
+      item.notes,
+      ...(item.ingredients || []).map(i => i.nameSnapshot),
+      ...(item.items || []).map(i => i.nameSnapshot)
+    ];
+    const haystack = normalizeSearchText(parts.join(" "));
+    return tokens.every(token => haystack.includes(token));
+  });
+}
+
 function renderToday() {
   const total = addNutrients(state.logs);
   const goals = effectiveGoalsForDate(state.currentDate);
@@ -867,7 +917,7 @@ function renderToday() {
           <button class="tiny-btn" data-action="change-date" data-days="-1" aria-label="Previous day">&lt;</button>
           <input id="currentDateInput" type="date" value="${state.currentDate}" />
           <button class="tiny-btn" data-action="change-date" data-days="1" aria-label="Next day">&gt;</button>
-          <button class="secondary-btn jump-today-btn icon-only" type="button" data-action="jump-today" aria-label="Jump to current date" title="Jump to current date">⌂</button>
+          <button class="secondary-btn jump-today-btn icon-only" type="button" data-action="jump-today" aria-label="Jump to current date" title="Jump to current date"></button>
         </div>
       </div>
 
@@ -889,19 +939,12 @@ function renderToday() {
             <span>/ ${round(goals.calorieGoal, 0)} kcal</span>
           </div>
         </div>
-        <div class="hero-macro-panel">
+        <div class="daily-macro-panel">
           <span class="pill hero-kcal-pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
-          <h3>Macro flight plan</h3>
-          <div class="macro-grid">
-            ${macroRow("Protein", total.protein, macroGoals.proteinGoal, "fill-protein")}
-            ${macroRow("Carbs", total.carbs, macroGoals.carbsGoal, "fill-carbs")}
-            ${macroRow("Fat", total.fat, macroGoals.fatGoal, "fill-fat")}
+          <div class="macro-circle-grid">
+            ${macroRings}
           </div>
         </div>
-      </div>
-
-      <div class="macro-circle-grid">
-        ${macroRings}
       </div>
 
       <div class="meals-grid">
@@ -955,18 +998,25 @@ function metricCard(label, value, caption) {
 function renderMealCard(mealId, label) {
   const entries = state.logs.filter(entry => entry.meal === mealId);
   const total = addNutrients(entries);
+  const collapsed = state.collapsedMeals[mealId] !== false;
   return `
     <article class="meal-card">
       <div class="meal-head">
-        <div>
+        <div class="meal-title">
           <h3>${safeText(label)}</h3>
-          <span>${round(total.kcal, 0)} kcal</span>
+          <div class="meal-summary">
+            <span class="meal-kcal">${round(total.kcal, 0)} kcal</span>
+            <span>P ${round(total.protein)}g</span>
+            <span>C ${round(total.carbs)}g</span>
+            <span>F ${round(total.fat)}g</span>
+          </div>
         </div>
-        <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
+        <div class="meal-actions">
+          ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
+          <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
+        </div>
       </div>
-      <div class="food-list">
-        ${entries.length ? entries.map(renderLogEntry).join("") : `<div class="empty-state">No food logged here yet.</div>`}
-      </div>
+      ${entries.length && !collapsed ? `<div class="food-list">${entries.map(renderLogEntry).join("")}</div>` : ""}
     </article>
   `;
 }
@@ -976,8 +1026,8 @@ function renderLogEntry(entry) {
   return `
     <div class="food-entry">
       <div class="food-entry-head">
-        <div>
-          <strong>${safeText(entry.nameSnapshot)}</strong><br />
+        <div class="food-entry-title">
+          <strong>${safeText(entry.nameSnapshot)}</strong>
           <small>${round(entry.amount)} ${safeText(entry.unit)}${entry.gramsEquivalent ? ` · ${round(entry.gramsEquivalent)} g` : ""}</small>
         </div>
         <strong>${round(n.kcal, 0)} kcal</strong>
@@ -1094,7 +1144,7 @@ function mergeFoodResults(localResults, apiResults) {
     const key = foodIdentity(food);
     if (!map.has(key)) map.set(key, food);
   }
-  return applySearchFilters([...map.values()]);
+  return applySearchFilters([...map.values()]).sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite));
 }
 
 function applySearchFilters(results) {
@@ -1195,13 +1245,31 @@ function renderSearch() {
 }
 
 function renderSearchV2() {
-  const combined = state.searchResults.length
+  const activeTab = ["foods", "mealsets", "recipes"].includes(state.searchTab) ? state.searchTab : "foods";
+  const combined = state.searchResultsQuery === state.searchQuery && state.searchResults.length
     ? state.searchResults
     : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []);
+  const mealsetResults = searchLibraryItems(state.mealsets, state.searchQuery);
+  const recipeResults = searchLibraryItems(state.recipes, state.searchQuery);
+  const tabCounts = {
+    foods: combined.length,
+    mealsets: mealsetResults.length,
+    recipes: recipeResults.length
+  };
   const totalPages = Math.max(1, Math.ceil(combined.length / SEARCH_PAGE_SIZE));
   state.searchPage = Math.min(Math.max(1, state.searchPage || 1), totalPages);
   const pageStart = (state.searchPage - 1) * SEARCH_PAGE_SIZE;
   const pageResults = combined.slice(pageStart, pageStart + SEARCH_PAGE_SIZE);
+  const activeMeta = {
+    foods: ["Foods", `${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
+    mealsets: ["Mealsets", `${mealsetResults.length} result${mealsetResults.length === 1 ? "" : "s"}`],
+    recipes: ["Recipes", `${recipeResults.length} result${recipeResults.length === 1 ? "" : "s"}`]
+  }[activeTab];
+  const activeCards = {
+    foods: pageResults.length ? pageResults.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or add a custom food.</div>`,
+    mealsets: mealsetResults.length ? mealsetResults.map(renderMealsetSearchCard).join("") : `<div class="empty-state">No mealsets found.</div>`,
+    recipes: recipeResults.length ? recipeResults.map(renderRecipeSearchCard).join("") : `<div class="empty-state">No recipes found.</div>`
+  }[activeTab];
 
   els.pages.search.innerHTML = `
     <div class="stack">
@@ -1229,14 +1297,21 @@ function renderSearchV2() {
       </div>
 
       <div class="card stack">
+        <div class="segmented search-tabs" aria-label="Search category">
+          ${[
+            ["foods", "Foods"],
+            ["mealsets", "Mealsets"],
+            ["recipes", "Recipes"]
+          ].map(([tab, label]) => `<button type="button" class="tiny-btn ${activeTab === tab ? "active" : ""}" data-action="set-search-tab" data-tab="${tab}">${label}<span>${tabCounts[tab]}</span></button>`).join("")}
+        </div>
         <div class="meal-head">
-          <h3>Foods</h3>
-          <span class="kicker">${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}</span>
+          <h3>${activeMeta[0]}</h3>
+          <span class="kicker">${activeMeta[1]}</span>
         </div>
         <div id="searchResults" class="result-grid">
-          ${pageResults.length ? pageResults.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or add a custom food.</div>`}
+          ${activeCards}
         </div>
-        ${combined.length > SEARCH_PAGE_SIZE ? `
+        ${activeTab === "foods" && combined.length > SEARCH_PAGE_SIZE ? `
           <div class="pagination">
             <button class="ghost-btn" data-action="search-prev-page" ${state.searchPage <= 1 ? "disabled" : ""}>Previous</button>
             <span class="kicker">${pageStart + 1}-${Math.min(pageStart + SEARCH_PAGE_SIZE, combined.length)} of ${combined.length}</span>
@@ -1250,7 +1325,7 @@ function renderSearchV2() {
   document.getElementById("foodSearchInput")?.addEventListener("keydown", event => {
     if (event.key === "Enter") {
       event.preventDefault();
-      runFoodSearch(event.currentTarget.value).catch(showError);
+      runActiveSearch(event.currentTarget.value).catch(showError);
     }
   });
 }
@@ -1356,6 +1431,42 @@ function renderMealsetQuickCard(mealset) {
   `;
 }
 
+function renderRecipeSearchCard(recipe) {
+  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  return `
+    <div class="result-card used ${recipe.favorite ? "favorite" : ""}">
+      <div>
+        <h4>${safeText(recipe.name)}</h4>
+        <p>${round(n.kcal, 0)} kcal / portion</p>
+        ${nutrientSummaryHTML(n)}
+      </div>
+      <div class="inline-actions">
+        ${itemFavoriteButton("recipe", recipe)}
+        <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
+        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Detail</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderMealsetSearchCard(mealset) {
+  const n = normalizeNutrients(mealset.totalNutrients);
+  return `
+    <div class="result-card used ${mealset.favorite ? "favorite" : ""}">
+      <div>
+        <h4>${safeText(mealset.name)}</h4>
+        <p>${round(n.kcal, 0)} kcal / mealset</p>
+        ${nutrientSummaryHTML(n)}
+      </div>
+      <div class="inline-actions">
+        ${itemFavoriteButton("mealset", mealset)}
+        <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
+        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderFoodResultCard(food, key) {
   const warnings = foodDataWarnings(food);
   return `
@@ -1396,7 +1507,7 @@ function openFoodDetailModal(food) {
           ${food.barcode ? `<span class="badge gray">Barcode ${safeText(food.barcode)}</span>` : ""}
           <span class="badge gray">${safeText(food.source || "custom")}</span>
         </div>
-        ${warnings.length ? `<div class="empty-state">${warnings.map(safeText).join("<br>")}</div>` : ""}
+        ${warnings.length ? `<div class="empty-state">${warnings.map(safeText).join(", ")}</div>` : ""}
         <div class="detail-table">
           ${NUTRIENT_KEYS.filter(key => nutrientVisible(key) || ["kcal", "protein", "carbs", "fat"].includes(key)).map(key => `
             <div class="detail-row"><span>${safeText(NUTRIENT_LABELS[key])}</span><strong>${round(food.nutrientsPer100g?.[key], key === "kcal" || key === "sodium" ? 0 : 2)} ${safeText(NUTRIENT_UNITS[key])} / 100 g</strong></div>
@@ -1472,6 +1583,14 @@ async function toggleFavoriteFood(id) {
   const food = state.customFoods.find(item => item.id === id);
   if (!food) return;
   await updateDoc(userDoc("customFoods", id), { favorite: !food.favorite, updatedAt: Date.now() });
+}
+
+async function toggleFavoriteTarget(kind, id) {
+  const isRecipe = kind === "recipe";
+  const collectionName = isRecipe ? "recipes" : "mealsets";
+  const target = (isRecipe ? state.recipes : state.mealsets).find(item => item.id === id);
+  if (!target) return;
+  await updateDoc(userDoc(collectionName, id), { favorite: !target.favorite, updatedAt: Date.now() });
 }
 
 function renderFoodResult(food, key) {
@@ -1554,6 +1673,7 @@ async function runFoodSearch(queryText, options = {}) {
   const query = String(queryText || "").trim();
   if (!query) {
     state.searchQuery = "";
+    state.searchResultsQuery = "";
     state.searchPage = 1;
     state.searchResults = mergeFoodResults(searchPersonalLibrary(""), []);
     state.searchFeedback = "Showing favorites and recent personal foods.";
@@ -1561,6 +1681,7 @@ async function runFoodSearch(queryText, options = {}) {
     return state.searchResults;
   }
   state.searchQuery = query;
+  state.searchResultsQuery = query;
   state.searchPage = 1;
   addRecentSearch(query);
   const localResults = searchPersonalLibrary(query);
@@ -1593,12 +1714,26 @@ async function runFoodSearch(queryText, options = {}) {
   }
 }
 
+async function runActiveSearch(queryText) {
+  if (state.searchTab === "foods") return runFoodSearch(queryText);
+  const query = String(queryText || "").trim();
+  state.searchQuery = query;
+  state.searchPage = 1;
+  if (query) addRecentSearch(query);
+  const label = state.searchTab === "recipes" ? "recipes" : "mealsets";
+  state.searchFeedback = query ? `Filtering ${label}.` : `Showing starred and saved ${label}.`;
+  renderSearchV2();
+  return [];
+}
+
 async function lookupBarcodeCached(barcode) {
   const cleanBarcode = String(barcode || "").replace(/\D/g, "");
   if (!cleanBarcode) throw new Error("Enter a barcode first.");
   const cached = getCachedBarcode(cleanBarcode);
   if (cached) {
+    state.searchTab = "foods";
     state.searchQuery = cleanBarcode;
+    state.searchResultsQuery = cleanBarcode;
     state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [cached]);
     state.searchFeedback = "Barcode loaded from cache.";
     renderSearchV2();
@@ -1613,7 +1748,9 @@ async function lookupBarcodeCached(barcode) {
   const food = normalizeOpenFoodFactsProduct(data.product);
   if (!food) throw new Error("Product found, but nutrition data is incomplete.");
   setCachedBarcode(cleanBarcode, food);
+  state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
+  state.searchResultsQuery = cleanBarcode;
   state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [food]);
   state.searchFeedback = `Found ${displayFoodName(food)}.`;
   renderSearchV2();
@@ -1801,24 +1938,32 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
 }
 
 function renderRecipes() {
+  const recipes = sortFavoriteFirst(state.recipes);
+  const mealsets = sortFavoriteFirst(state.mealsets);
   els.pages.recipes.innerHTML = `
     <div class="grid-2">
-      ${state.settings.modules.recipes ? `<div class="card stack">
+      ${state.settings.modules.recipes ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.recipes ? "is-collapsed" : ""}" data-section="recipes">
         <div class="meal-head">
           <h3>Recipes</h3>
-          <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
+          <div class="section-actions">
+            <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="recipes">${state.recipeSectionsCollapsed.recipes ? "Show" : "Hide"}</button>
+            <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
+          </div>
         </div>
         <p>Recipes split a batch into portions. Logging stores a nutrition snapshot so old days stay stable even if you edit later.</p>
-        <div class="result-grid">${state.recipes.length ? state.recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
+        <div class="result-grid">${recipes.length ? recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
       </div>` : `<div class="card"><div class="empty-state">Recipes are disabled in Settings.</div></div>`}
 
-      ${state.settings.modules.mealsets ? `<div class="card stack">
+      ${state.settings.modules.mealsets ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.mealsets ? "is-collapsed" : ""}" data-section="mealsets">
         <div class="meal-head">
           <h3>Mealsets</h3>
-          <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
+          <div class="section-actions">
+            <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="mealsets">${state.recipeSectionsCollapsed.mealsets ? "Show" : "Hide"}</button>
+            <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
+          </div>
         </div>
-        <p>Mealsets are reusable full meals. One mealset equals one complete meal.</p>
-        <div class="result-grid">${state.mealsets.length ? state.mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
+        <p>Mealsets are reusable saved meals.</p>
+        <div class="result-grid">${mealsets.length ? mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
       </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
     </div>
   `;
@@ -1841,21 +1986,21 @@ function itemAmountText(item) {
 
 function renderRecipeCard(recipe) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
-  const macro = macroCalories(perPortion);
   return `
-    <div class="result-card recipe-card">
+    <div class="result-card recipe-card ${recipe.favorite ? "favorite" : ""}">
       <div class="recipe-card-main">
         <div>
           <h4>${safeText(recipe.name)}</h4>
-          <p>${recipe.portions || 1} portions · ${round(perPortion.kcal, 0)} kcal / portion · Macro split ${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%</p>
+          <p>${round(perPortion.kcal, 0)} kcal / portion</p>
         </div>
-        ${nutrientSummaryHTML(perPortion)}
+        ${macroSplitSummaryHTML(perPortion)}
         <details>
           <summary class="kicker">Ingredients (${recipe.ingredients?.length || 0})</summary>
           <ul>${(recipe.ingredients || []).map(i => `<li>${safeText(i.nameSnapshot)} - ${itemAmountText(i)}, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No ingredients yet.</li>"}</ul>
         </details>
       </div>
       <div class="recipe-card-actions">
+        ${itemFavoriteButton("recipe", recipe)}
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="recipe" data-id="${recipe.id}">Ingredient</button>
         <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Detail</button>
@@ -1868,21 +2013,21 @@ function renderRecipeCard(recipe) {
 
 function renderMealsetCard(mealset) {
   const total = normalizeNutrients(mealset.totalNutrients);
-  const macro = macroCalories(total);
   return `
-    <div class="result-card recipe-card">
+    <div class="result-card recipe-card ${mealset.favorite ? "favorite" : ""}">
       <div class="recipe-card-main">
         <div>
           <h4>${safeText(mealset.name)}</h4>
-          <p>Full meal · ${round(total.kcal, 0)} kcal · Macro split ${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%</p>
+          <p>${round(total.kcal, 0)} kcal</p>
         </div>
-        ${nutrientSummaryHTML(total)}
+        ${macroSplitSummaryHTML(total)}
         <details>
           <summary class="kicker">Items (${mealset.items?.length || 0})</summary>
           <ul>${(mealset.items || []).map(i => `<li>${safeText(i.nameSnapshot)} - ${itemAmountText(i)}, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No items yet.</li>"}</ul>
         </details>
       </div>
       <div class="recipe-card-actions">
+        ${itemFavoriteButton("mealset", mealset)}
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="mealset" data-id="${mealset.id}">Item</button>
         <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
@@ -1915,6 +2060,7 @@ async function saveRecipeFromForm(form) {
     name,
     portions: Math.max(0.1, number(data.get("portions"), 1)),
     notes: String(data.get("notes") || "").trim(),
+    favorite: false,
     ingredients: [],
     totalNutrients: emptyNutrients(),
     nutrientsPerPortion: emptyNutrients(),
@@ -1954,6 +2100,7 @@ async function saveMealsetFromForm(form) {
   const mealset = {
     name,
     notes: String(data.get("notes") || "").trim(),
+    favorite: false,
     items: [],
     totalNutrients: emptyNutrients(),
     createdAt: Date.now(),
@@ -2108,7 +2255,7 @@ function openTargetDetail(kind, id) {
           ${items.length ? items.map((item, index) => `
             <div class="food-entry">
               <div class="food-entry-head">
-                <div><strong>${safeText(item.nameSnapshot)}</strong><br><small>${itemAmountText(item)}</small></div>
+                <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
                 <strong>${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong>
               </div>
               <div class="inline-actions">
@@ -2159,7 +2306,7 @@ async function duplicateTarget(kind, id) {
   const isRecipe = kind === "recipe";
   const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
   if (!target) return;
-  const copy = { ...target, name: `${target.name} copy`, createdAt: Date.now(), updatedAt: Date.now() };
+  const copy = { ...target, name: `${target.name} copy`, favorite: false, createdAt: Date.now(), updatedAt: Date.now() };
   delete copy.id;
   await addDoc(userCollection(isRecipe ? "recipes" : "mealsets"), cleanForFirestore(copy));
   showToast(`${isRecipe ? "Recipe" : "Mealset"} duplicated.`);
@@ -3356,8 +3503,13 @@ async function handleClick(event) {
       state.defaultLogDate = state.currentDate;
       subscribeLogsForCurrentDate();
     }
-    if (action === "recent-search") await runFoodSearch(btn.dataset.query || "");
-    if (action === "search-foods") await runFoodSearch(document.getElementById("foodSearchInput")?.value || "");
+    if (action === "recent-search") await runActiveSearch(btn.dataset.query || "");
+    if (action === "search-foods") await runActiveSearch(document.getElementById("foodSearchInput")?.value || "");
+    if (action === "set-search-tab") {
+      state.searchTab = btn.dataset.tab || "foods";
+      state.searchPage = 1;
+      renderSearchV2();
+    }
     if (action === "search-prev-page") {
       state.searchPage = Math.max(1, state.searchPage - 1);
       renderSearchV2();
@@ -3388,14 +3540,26 @@ async function handleClick(event) {
     if (action === "edit-entry") await editEntry(btn.dataset.id);
     if (action === "move-entry") await moveEntry(btn.dataset.id);
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
+    if (action === "toggle-meal-foods") {
+      const meal = btn.dataset.meal;
+      state.collapsedMeals[meal] = state.collapsedMeals[meal] === false;
+      renderToday();
+    }
     if (action === "create-recipe") await createRecipe();
     if (action === "create-mealset") await createMealset();
+    if (action === "toggle-target-section") {
+      const section = btn.dataset.section;
+      state.recipeSectionsCollapsed[section] = !state.recipeSectionsCollapsed[section];
+      renderRecipes();
+    }
     if (action === "detail-recipe") openTargetDetail("recipe", btn.dataset.id);
     if (action === "detail-mealset") openTargetDetail("mealset", btn.dataset.id);
     if (action === "edit-recipe") openTargetEditor("recipe", btn.dataset.id);
     if (action === "edit-mealset") openTargetEditor("mealset", btn.dataset.id);
     if (action === "duplicate-recipe") await duplicateTarget("recipe", btn.dataset.id);
     if (action === "duplicate-mealset") await duplicateTarget("mealset", btn.dataset.id);
+    if (action === "toggle-favorite-recipe") await toggleFavoriteTarget("recipe", btn.dataset.id);
+    if (action === "toggle-favorite-mealset") await toggleFavoriteTarget("mealset", btn.dataset.id);
     if (action === "delete-recipe" && confirm("Delete this recipe?")) await deleteDoc(userDoc("recipes", btn.dataset.id));
     if (action === "delete-mealset" && confirm("Delete this mealset?")) await deleteDoc(userDoc("mealsets", btn.dataset.id));
     if (action === "add-ingredient") openIngredientModal(btn.dataset.kind, btn.dataset.id);
