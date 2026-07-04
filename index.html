@@ -13,7 +13,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 </head>
-<body>
+<body class="auth-active">
   <div class="app-shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand">
@@ -30,11 +30,6 @@
         <button class="nav-btn" data-route="reports">Reports</button>
         <button class="nav-btn" data-route="settings">Settings</button>
       </nav>
-      <div class="sidebar-card">
-        <span class="mini-label">Database</span>
-        <strong>Open Food Facts</strong>
-        <p>Packaged foods, German brands and barcode lookup.</p>
-      </div>
     </aside>
 
     <main class="main">
@@ -44,9 +39,7 @@
           <h2 id="pageTitle">Today</h2>
         </div>
         <div class="top-actions">
-          <span id="syncStatus" class="status-chip" aria-live="polite">Offline cache</span>
-          <button id="installBtn" class="ghost-btn hidden" type="button">Install</button>
-          <button id="themeToggle" class="ghost-btn" type="button">Theme</button>
+          <span id="syncStatus" class="status-chip" aria-live="polite">Offline</span>
           <button id="signOutBtn" class="ghost-btn hidden" type="button">Sign out</button>
         </div>
       </header>
@@ -66,7 +59,6 @@
           </label>
           <div class="auth-buttons">
             <button id="loginBtn" class="primary-btn" type="submit">Log in</button>
-            <button id="signupBtn" class="secondary-btn" type="button">Create account</button>
           </div>
           <p id="authMessage" class="form-message"></p>
         </form>

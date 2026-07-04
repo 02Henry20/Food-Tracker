@@ -2,7 +2,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import {
   getAuth,
   onAuthStateChanged,
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -40,6 +39,7 @@ const APP_STORAGE_PREFIX = "nutripilot";
 const SEARCH_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
+const SEARCH_PAGE_SIZE = 10;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
   iron: { target: 14, mode: "min" },
@@ -74,7 +74,6 @@ const DEFAULT_SETTINGS = {
   nutrientVisibility: {
     sugar: true,
     fiber: true,
-    salt: true,
     sodium: true,
     saturatedFat: true,
     micronutrients: true
@@ -181,11 +180,13 @@ const state = {
     source: "all",
     kcalMin: "",
     kcalMax: "",
-    highProtein: false,
     lowSugar: false
   },
+  searchPage: 1,
   reportEntries: [],
   reportRange: currentWeekRange(),
+  reportMode: "week",
+  reportBaseDate: todayISO(),
   tempFoods: new Map(),
   charts: {},
   unsubs: [],
@@ -221,6 +222,33 @@ function currentWeekRange(baseISO = todayISO()) {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   return [monday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)];
+}
+
+function currentMonthRange(baseISO = todayISO()) {
+  const d = new Date(`${baseISO}T12:00:00`);
+  const start = new Date(d.getFullYear(), d.getMonth(), 1, 12);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 12);
+  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+}
+
+function currentYearRange(baseISO = todayISO()) {
+  const d = new Date(`${baseISO}T12:00:00`);
+  return [`${d.getFullYear()}-01-01`, `${d.getFullYear()}-12-31`];
+}
+
+function periodRange(mode = state.reportMode, baseISO = state.reportBaseDate || state.currentDate) {
+  if (mode === "month") return currentMonthRange(baseISO);
+  if (mode === "year") return currentYearRange(baseISO);
+  return currentWeekRange(baseISO);
+}
+
+function shiftReportPeriod(direction) {
+  const base = new Date(`${state.reportBaseDate || state.currentDate}T12:00:00`);
+  if (state.reportMode === "month") base.setMonth(base.getMonth() + direction);
+  else if (state.reportMode === "year") base.setFullYear(base.getFullYear() + direction);
+  else base.setDate(base.getDate() + direction * 7);
+  state.reportBaseDate = base.toISOString().slice(0, 10);
+  state.reportRange = periodRange();
 }
 
 function dateRange(startISO, endISO) {
@@ -314,7 +342,7 @@ function updateSyncStatus(partial = {}) {
   state.sync = { ...state.sync, ...partial, online: navigator.onLine };
   if (!state.sync.online) state.sync.status = "offline";
   else if (state.sync.pendingWrites) state.sync.status = "pending";
-  else if (state.sync.fromCache) state.sync.status = "cached";
+  else if (state.sync.fromCache) state.sync.status = "offline";
   else state.sync.status = "online";
   renderSyncStatus();
 }
@@ -333,14 +361,13 @@ function renderSyncStatus() {
   const label = {
     online: "Synced",
     pending: "Syncing",
-    cached: "Cached",
     offline: "Offline"
   }[status] || "Offline";
   els.syncStatus.className = `status-chip ${status}`;
   els.syncStatus.textContent = label;
   els.syncStatus.title = status === "online" && state.sync.lastSyncedAt
     ? `Last Firebase sync: ${new Date(state.sync.lastSyncedAt).toLocaleString()}`
-    : "Using local cache when Firebase is unavailable.";
+    : "Using local offline data when Firebase is unavailable.";
 }
 
 function markSearchStateSaved() {
@@ -465,6 +492,7 @@ function effectiveMacroGoals(settings = state.settings) {
 }
 
 function nutrientVisible(key) {
+  if (key === "salt") return false;
   if (["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].includes(key)) {
     return state.settings.modules.micronutrients && state.settings.nutrientVisibility.micronutrients !== false;
   }
@@ -520,7 +548,6 @@ function setTheme() {
   document.documentElement.dataset.theme = resolved;
   document.body.dataset.density = state.settings.dashboardDensity || "comfortable";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#07111f" : "#f5f7fb");
-  if (els.themeToggle) els.themeToggle.textContent = resolved === "dark" ? "Dark" : "Light";
 }
 
 function setRoute(route) {
@@ -536,14 +563,8 @@ function renderCurrentRoute() {
   if (!state.user) return;
   if (state.route === "today") renderToday();
   if (state.route === "search") renderSearchV2();
-  if (state.route === "recipes") {
-    if (state.settings.modules.recipes || state.settings.modules.mealsets) renderRecipes();
-    else renderModuleDisabled("Recipes and mealsets");
-  }
-  if (state.route === "reports") {
-    if (state.settings.modules.graphs) renderReportsShell();
-    else renderModuleDisabled("Reports and graphs");
-  }
+  if (state.route === "recipes") renderRecipes();
+  if (state.route === "reports") renderReportsShell();
   if (state.route === "settings") renderSettingsV2();
 }
 
@@ -637,7 +658,6 @@ function nutrientSummaryHTML(n) {
       <span class="badge">P ${round(n.protein)}g</span>
       <span class="badge">C ${round(n.carbs)}g</span>
       <span class="badge">F ${round(n.fat)}g</span>
-      ${nutrientVisible("fiber") && n.fiber ? `<span class="badge gray">Fiber ${round(n.fiber)}g</span>` : ""}
     </div>
   `;
 }
@@ -652,11 +672,10 @@ function renderToday() {
   const circumference = 2 * Math.PI * 82;
   const offset = circumference - (kcalPct / 100) * circumference;
   const metrics = [
-    metricCard("Macro calories", `${round(macros.proteinPct, 0)} / ${round(macros.carbsPct, 0)} / ${round(macros.fatPct, 0)}%`, "Protein / carbs / fat"),
     metricCard("Protein", `${round(total.protein)} g`, `${round(macroGoals.proteinGoal - total.protein)} g left`),
-    nutrientVisible("sugar") ? metricCard("Sugar", `${round(total.sugar)} g`, `Goal ${round(goals.sugarGoal)} g`) : "",
-    nutrientVisible("sodium") ? metricCard("Sodium", `${round(total.sodium, 0)} mg`, `Max ${round(goals.sodiumMax, 0)} mg`) : ""
-  ].filter(Boolean).join("");
+    metricCard("Carbs", `${round(total.carbs)} g`, `${round(macroGoals.carbsGoal - total.carbs)} g left`),
+    metricCard("Fat", `${round(total.fat)} g`, `${round(macroGoals.fatGoal - total.fat)} g left`)
+  ].join("");
 
   els.pages.today.innerHTML = `
     <div class="stack">
@@ -666,7 +685,6 @@ function renderToday() {
           <input id="currentDateInput" type="date" value="${state.currentDate}" />
           <button class="tiny-btn" data-action="change-date" data-days="1" aria-label="Next day">&gt;</button>
         </div>
-        <button class="secondary-btn" data-action="go-search">+ Add food</button>
       </div>
 
       <div class="card dashboard-hero">
@@ -694,12 +712,11 @@ function renderToday() {
             ${macroRow("Protein", total.protein, macroGoals.proteinGoal, "fill-protein")}
             ${macroRow("Carbs", total.carbs, macroGoals.carbsGoal, "fill-carbs")}
             ${macroRow("Fat", total.fat, macroGoals.fatGoal, "fill-fat")}
-            ${macroRow("Fiber", total.fiber, goals.fiberGoal, "fill-fiber")}
           </div>
         </div>
       </div>
 
-      <div class="grid-4">
+      <div class="grid-3">
         ${metrics}
       </div>
 
@@ -892,7 +909,6 @@ function applySearchFilters(results) {
     const kcal = number(food.nutrientsPer100g?.kcal);
     if (filters.kcalMin !== "" && kcal < number(filters.kcalMin)) return false;
     if (filters.kcalMax !== "" && kcal > number(filters.kcalMax)) return false;
-    if (filters.highProtein && number(food.nutrientsPer100g?.protein) < 12) return false;
     if (filters.lowSugar && number(food.nutrientsPer100g?.sugar) > 5) return false;
     return true;
   });
@@ -907,7 +923,7 @@ function foodDataWarnings(food) {
   if (n.protein > 100 || n.carbs > 100 || n.fat > 100) warnings.push("Macro value above 100 g");
   const macroKcal = n.protein * 4 + n.carbs * 4 + n.fat * 9;
   if (n.kcal && macroKcal && Math.abs(macroKcal - n.kcal) / n.kcal > .35) warnings.push("Calories and macros do not match well");
-  if (n.salt && n.sodium && Math.abs(n.salt * 400 - n.sodium) > Math.max(400, n.sodium * .4)) warnings.push("Salt and sodium look inconsistent");
+  if (n.salt && n.sodium && Math.abs(n.salt * 400 - n.sodium) > Math.max(400, n.sodium * .4)) warnings.push("Sodium data looks inconsistent");
   return warnings;
 }
 
@@ -983,18 +999,21 @@ function renderSearchV2() {
   const combined = state.searchResults.length
     ? state.searchResults
     : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []);
-  const recentFoods = state.customFoods
-    .filter(food => food.favorite || food.usedCount || food.lastUsedAt)
-    .sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || number(b.lastUsedAt) - number(a.lastUsedAt))
-    .slice(0, 6);
-  const quickRecipes = state.settings.modules.recipes ? state.recipes.slice(0, 4) : [];
-  const quickMealsets = state.settings.modules.mealsets ? state.mealsets.slice(0, 4) : [];
+  const totalPages = Math.max(1, Math.ceil(combined.length / SEARCH_PAGE_SIZE));
+  state.searchPage = Math.min(Math.max(1, state.searchPage || 1), totalPages);
+  const pageStart = (state.searchPage - 1) * SEARCH_PAGE_SIZE;
+  const pageResults = combined.slice(pageStart, pageStart + SEARCH_PAGE_SIZE);
 
   els.pages.search.innerHTML = `
     <div class="stack">
       <div class="card stack">
-        <h3>Find food</h3>
-        <p>Personal foods and recently used database foods are searched first. Cached Open Food Facts results stay available offline.</p>
+        <div class="meal-head">
+          <div>
+            <h3>Find food</h3>
+            <p>Personal foods and recently used database foods are searched first. Open Food Facts results are saved for offline use.</p>
+          </div>
+          <button class="secondary-btn" data-action="open-custom-food-modal">Add food</button>
+        </div>
         <div class="search-bar">
           <label>Food search
             <input id="foodSearchInput" type="search" value="${safeText(state.searchQuery)}" placeholder="e.g. Skyr Milbona, oats, tofu" autocomplete="off" />
@@ -1002,114 +1021,38 @@ function renderSearchV2() {
           <button class="primary-btn" data-action="search-foods" ${state.searchLoading ? "disabled" : ""}>${state.searchLoading ? "Searching..." : "Search"}</button>
           ${state.settings.modules.barcode ? `<button class="secondary-btn" data-action="open-barcode-modal">Barcode</button>` : ""}
         </div>
-        <div class="loading-line">${safeText(state.searchFeedback || (navigator.onLine ? "Ready." : "Offline: showing personal and cached foods."))}</div>
+        <div class="loading-line">${safeText(state.searchFeedback || (navigator.onLine ? "Ready." : "Offline: showing personal and saved foods."))}</div>
         ${state.recentSearches.length ? `
           <div class="pill-row" aria-label="Recent searches">
             ${state.recentSearches.map(term => `<button class="tiny-btn" data-action="recent-search" data-query="${safeText(term)}">${safeText(term)}</button>`).join("")}
           </div>
         ` : ""}
-        <details>
-          <summary class="kicker">Filters</summary>
-          <div class="filter-row" style="margin-top:12px;">
-            <label>Brand<input id="filterBrand" value="${safeText(state.searchFilters.brand)}" placeholder="Any brand" /></label>
-            <label>Source
-              <select id="filterSource">
-                ${[
-                  ["all", "All"],
-                  ["personal", "Personal"],
-                  ["used", "Used database"],
-                  ["database", "Unused database"]
-                ].map(([value, label]) => `<option value="${value}" ${state.searchFilters.source === value ? "selected" : ""}>${label}</option>`).join("")}
-              </select>
-            </label>
-            <label>Min kcal / 100 g<input id="filterKcalMin" type="number" min="0" value="${safeText(state.searchFilters.kcalMin)}" /></label>
-            <label>Max kcal / 100 g<input id="filterKcalMax" type="number" min="0" value="${safeText(state.searchFilters.kcalMax)}" /></label>
-            <label class="switch-row"><input id="filterHighProtein" type="checkbox" ${state.searchFilters.highProtein ? "checked" : ""} /> High protein</label>
-            <label class="switch-row"><input id="filterLowSugar" type="checkbox" ${state.searchFilters.lowSugar ? "checked" : ""} /> Low sugar</label>
-          </div>
-        </details>
       </div>
 
-      <div class="grid-2">
-        <div class="card stack">
-          <div class="meal-head">
-            <h3>Foods</h3>
-            <span class="kicker">${combined.length} result${combined.length === 1 ? "" : "s"}</span>
-          </div>
-          <div id="searchResults" class="result-grid">
-            ${combined.length ? combined.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or create a custom food.</div>`}
-          </div>
+      <div class="card stack">
+        <div class="meal-head">
+          <h3>Foods</h3>
+          <span class="kicker">${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}</span>
         </div>
-
-        <div class="card stack">
-          <div class="meal-head">
-            <h3>Add options</h3>
-            <div class="inline-actions">
-              ${state.settings.modules.recipes ? `<button class="tiny-btn" data-action="create-recipe">+ Recipe</button>` : ""}
-              ${state.settings.modules.mealsets ? `<button class="tiny-btn" data-action="create-mealset">+ Mealset</button>` : ""}
-            </div>
-          </div>
-          ${recentFoods.length ? `
-            <div>
-              <p class="kicker">Favorites and recent foods</p>
-              <div class="result-grid">${recentFoods.map(food => renderFoodResultCard(markResultFood(food, resultKindForFood(food)), registerTempFood(food))).join("")}</div>
-            </div>
-          ` : ""}
-          ${(quickRecipes.length || quickMealsets.length) ? `
-            <div>
-              <p class="kicker">Recipes and mealsets</p>
-              <div class="result-grid">
-                ${quickRecipes.map(renderRecipeQuickCard).join("")}
-                ${quickMealsets.map(renderMealsetQuickCard).join("")}
-              </div>
-            </div>
-          ` : ""}
-          <h3>Create custom food</h3>
-          <form id="customFoodForm" class="stack">
-            <div class="form-grid two">
-              <label>Name<input name="name" required placeholder="Greek yogurt" /></label>
-              <label>Brand<input name="brand" placeholder="Optional" /></label>
-              <label>Serving unit
-                <select name="servingUnit">
-                  ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
-                </select>
-              </label>
-              <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
-            </div>
-            <div class="form-grid">
-              ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "salt", "sodium"].map(key => `
-                <label>${NUTRIENT_LABELS[key]} / 100 g
-                  <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
-                </label>
-              `).join("")}
-            </div>
-            <details>
-              <summary class="kicker">Optional micronutrients</summary>
-              <div class="form-grid" style="margin-top:12px;">
-                ${["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].map(key => `
-                  <label>${NUTRIENT_LABELS[key]} / 100 g
-                    <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
-                  </label>
-                `).join("")}
-              </div>
-            </details>
-            <div class="form-actions"><button class="primary-btn" type="submit">Save custom food</button></div>
-          </form>
+        <div id="searchResults" class="result-grid">
+          ${pageResults.length ? pageResults.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or add a custom food.</div>`}
         </div>
+        ${combined.length > SEARCH_PAGE_SIZE ? `
+          <div class="pagination">
+            <button class="ghost-btn" data-action="search-prev-page" ${state.searchPage <= 1 ? "disabled" : ""}>Previous</button>
+            <span class="kicker">${pageStart + 1}-${Math.min(pageStart + SEARCH_PAGE_SIZE, combined.length)} of ${combined.length}</span>
+            <button class="ghost-btn" data-action="search-next-page" ${state.searchPage >= totalPages ? "disabled" : ""}>Next</button>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;
 
-  document.getElementById("customFoodForm")?.addEventListener("submit", saveCustomFood);
   document.getElementById("foodSearchInput")?.addEventListener("keydown", event => {
     if (event.key === "Enter") {
       event.preventDefault();
       runFoodSearch(event.currentTarget.value).catch(showError);
     }
-  });
-  ["filterBrand", "filterSource", "filterKcalMin", "filterKcalMax", "filterHighProtein", "filterLowSugar"].forEach(id => {
-    document.getElementById(id)?.addEventListener("change", updateSearchFiltersFromInputs);
-    document.getElementById(id)?.addEventListener("input", updateSearchFiltersFromInputs);
   });
 }
 
@@ -1124,6 +1067,45 @@ function updateSearchFiltersFromInputs() {
   };
   state.searchResults = mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || state.searchResults);
   renderSearchV2();
+}
+
+function openCustomFoodCreateModal() {
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Add food</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <form id="customFoodForm" class="modal-body">
+        <div class="form-grid two">
+          <label>Name<input name="name" required placeholder="Greek yogurt" /></label>
+          <label>Brand<input name="brand" placeholder="Optional" /></label>
+          <label>Serving unit
+            <select name="servingUnit">
+              ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
+            </select>
+          </label>
+          <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+        </div>
+        <div class="form-grid">
+          ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "sodium"].map(key => `
+            <label>${NUTRIENT_LABELS[key]} / 100 g
+              <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+            </label>
+          `).join("")}
+        </div>
+        <details>
+          <summary class="kicker">Micronutrients</summary>
+          <div class="form-grid" style="margin-top:12px;">
+            ${["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].map(key => `
+              <label>${NUTRIENT_LABELS[key]} / 100 g
+                <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+              </label>
+            `).join("")}
+          </div>
+        </details>
+        <div class="form-actions"><button class="primary-btn" type="submit">Add food</button></div>
+      </form>
+    </div>
+  `);
+  document.getElementById("customFoodForm")?.addEventListener("submit", saveCustomFood);
 }
 
 function renderRecipeQuickCard(recipe) {
@@ -1359,23 +1341,25 @@ async function runFoodSearch(queryText, options = {}) {
   const query = String(queryText || "").trim();
   if (!query) {
     state.searchQuery = "";
+    state.searchPage = 1;
     state.searchResults = mergeFoodResults(searchPersonalLibrary(""), []);
     state.searchFeedback = "Showing favorites and recent personal foods.";
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
   state.searchQuery = query;
+  state.searchPage = 1;
   addRecentSearch(query);
   const localResults = searchPersonalLibrary(query);
   const cached = getCachedSearch(query) || [];
   state.searchResults = mergeFoodResults(localResults, cached);
-  state.searchFeedback = cached.length ? `Showing ${cached.length} cached database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
+  state.searchFeedback = cached.length ? `Showing ${cached.length} offline database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
   state.searchLoading = true;
   if (options.updateState !== false) renderSearchV2();
 
   if (!navigator.onLine || state.settings.databasePreference === "offline-only") {
     state.searchLoading = false;
-    state.searchFeedback = `Offline: ${state.searchResults.length} personal/cached result${state.searchResults.length === 1 ? "" : "s"}.`;
+    state.searchFeedback = `Offline: ${state.searchResults.length} personal/offline result${state.searchResults.length === 1 ? "" : "s"}.`;
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
@@ -1387,7 +1371,7 @@ async function runFoodSearch(queryText, options = {}) {
     state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
     return state.searchResults;
   } catch (error) {
-    state.searchFeedback = cached.length ? "Network search failed, using cached results." : "Network search failed and no cache was found.";
+    state.searchFeedback = cached.length ? "Network search failed, using offline results." : "Network search failed and no offline result was found.";
     if (!cached.length && !localResults.length) throw error;
     return state.searchResults;
   } finally {
@@ -1407,7 +1391,7 @@ async function lookupBarcodeCached(barcode) {
     renderSearchV2();
     return cached;
   }
-  if (!navigator.onLine) throw new Error("No cached barcode result is available offline.");
+  if (!navigator.onLine) throw new Error("No offline barcode result is available.");
   const url = `https://${openFoodFactsHost()}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
   const res = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!res.ok) throw new Error("Barcode lookup failed.");
@@ -1491,6 +1475,7 @@ async function saveCustomFood(event) {
   if (warnings.length && !confirm(`This food has data warnings:\n\n${warnings.join("\n")}\n\nSave anyway?`)) return;
   await addDoc(userCollection("customFoods"), cleanForFirestore(food));
   form.reset();
+  if (els.modalRoot.contains(form)) closeModal();
   showToast("Custom food saved.");
 }
 
@@ -1687,7 +1672,7 @@ function renderMealsetCard(mealset) {
 async function createRecipe() {
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Create recipe</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Create recipe</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createRecipeForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Protein oats" /></label>
         <label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="1" required /></label>
@@ -1718,7 +1703,7 @@ async function createRecipe() {
 async function createMealset() {
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Create mealset</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Create mealset</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createMealsetForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Post-workout meal" /></label>
         <label>Notes<textarea name="notes" placeholder="Optional notes"></textarea></label>
@@ -1800,7 +1785,7 @@ function openIngredientAmountModal(food, kind, id) {
   const isRecipePortion = food?.source === "recipe";
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Add ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Add ${safeText(displayFoodName(food))}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="ingredientAmountForm" class="modal-body">
         <label>${isRecipePortion ? "Portions" : "Amount in grams"}<input name="amount" type="number" step="0.1" min="0" value="${isRecipePortion ? 1 : 100}" required /></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
@@ -1984,7 +1969,7 @@ function openLogRecipeModal(recipe) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion);
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Log ${safeText(recipe.name)}</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Log ${safeText(recipe.name)}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="logRecipeForm" class="modal-body">
         <div class="form-grid two">
           <label>Portions<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
@@ -2023,7 +2008,7 @@ function openLogMealsetModal(mealset) {
   const total = normalizeNutrients(mealset.totalNutrients);
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="logMealsetForm" class="modal-body">
         <div class="form-grid two">
           <label>Quantity<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
@@ -2059,22 +2044,24 @@ function openLogMealsetModal(mealset) {
 }
 
 function renderReportsShell() {
-  const [start, end] = state.reportRange || currentWeekRange(state.currentDate);
+  state.reportRange = state.reportRange || periodRange();
+  const [start, end] = state.reportRange;
+  const label = `${state.reportMode[0].toUpperCase()}${state.reportMode.slice(1)} report`;
   els.pages.reports.innerHTML = `
     <div class="stack">
       <div class="card">
-        <h3>Reports</h3>
-        <div class="form-grid two">
-          <label>Start<input id="reportStart" type="date" value="${start}" /></label>
-          <label>End<input id="reportEnd" type="date" value="${end}" /></label>
+        <div class="meal-head">
+          <div>
+            <h3>${safeText(label)}</h3>
+            <span>${safeText(start)} to ${safeText(end)}</span>
+          </div>
+          <div class="segmented" aria-label="Report period">
+            ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
+          </div>
         </div>
         <div class="form-actions" style="margin-top:12px;">
-          <button class="ghost-btn" data-action="report-prev-week">Previous week</button>
-          <button class="primary-btn" data-action="load-report">Load report</button>
-          <button class="ghost-btn" data-action="report-next-week">Next week</button>
-          <button class="secondary-btn" data-action="export-full-csv">Export full CSV</button>
-          <button class="secondary-btn" data-action="export-calories-csv">Export calories CSV</button>
-          <button class="ghost-btn" data-action="export-calories-json">Export calories JSON</button>
+          <button class="ghost-btn" data-action="report-prev-period">Previous</button>
+          <button class="ghost-btn" data-action="report-next-period">Next</button>
         </div>
         <details style="margin-top:12px;">
           <summary class="kicker">Frequency filters</summary>
@@ -2094,11 +2081,9 @@ function renderReportsShell() {
 }
 
 async function loadReport() {
-  const start = document.getElementById("reportStart")?.value;
-  const end = document.getElementById("reportEnd")?.value;
+  const [start, end] = state.reportRange || periodRange();
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
   state.reportRange = [start, end];
-  showToast("Loading report...");
   const entries = [];
   for (const dateISO of dateRange(start, end)) {
     const snap = await getDocs(entryCollection(dateISO));
@@ -2187,7 +2172,7 @@ function renderReportOutput(start, end, entries) {
       <h3>Micronutrients and limits</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Nutrient</th><th>Consumed</th><th>Weekly target / max</th><th>Difference</th></tr></thead>
+          <thead><tr><th>Nutrient</th><th>Consumed</th><th>Period guidance</th><th>Difference</th></tr></thead>
           <tbody>${renderMicroRows(total, days)}</tbody>
         </table>
       </div>
@@ -2274,7 +2259,6 @@ function renderMicroRows(total, days) {
     ["fiber", state.settings.fiberGoal * days, "min"],
     ["sugar", state.settings.sugarGoal * days, "max"],
     ["sodium", state.settings.sodiumMax * days, "max"],
-    ["salt", state.settings.saltMax * days, "max"],
     ...Object.entries(state.settings.micronutrientGoals || {})
       .filter(([key]) => !["sodium", "salt"].includes(key))
       .map(([key, value]) => [key, number(value.target) * days, value.mode || "min"])
@@ -2284,7 +2268,7 @@ function renderMicroRows(total, days) {
     const diff = consumed - target;
     const unit = NUTRIENT_UNITS[key];
     const badgeClass = mode === "max" ? (diff > 0 ? "orange" : "") : (diff >= 0 ? "" : "orange");
-    return `<tr><td>${NUTRIENT_LABELS[key]}</td><td>${round(consumed, key === "sodium" ? 0 : 1)} ${unit}</td><td>${round(target, key === "sodium" ? 0 : 1)} ${unit} ${mode === "max" ? "max" : "min"}</td><td><span class="badge ${badgeClass}">${diff >= 0 ? "+" : ""}${round(diff, key === "sodium" ? 0 : 1)} ${unit}</span></td></tr>`;
+    return `<tr><td>${NUTRIENT_LABELS[key]}</td><td>${round(consumed, key === "sodium" ? 0 : 1)} ${unit}</td><td>${round(target, key === "sodium" ? 0 : 1)} ${unit}</td><td><span class="badge ${badgeClass}">${diff >= 0 ? "+" : ""}${round(diff, key === "sodium" ? 0 : 1)} ${unit}</span></td></tr>`;
   }).join("");
 }
 
@@ -2343,8 +2327,7 @@ function renderCharts(byDate) {
 }
 
 async function exportEntries(format, caloriesOnly = false) {
-  const start = document.getElementById("reportStart")?.value;
-  const end = document.getElementById("reportEnd")?.value;
+  const [start, end] = state.reportRange || periodRange();
   if (!state.reportEntries.length) await loadReport();
   const entries = state.reportEntries;
 
@@ -2362,12 +2345,12 @@ async function exportEntries(format, caloriesOnly = false) {
     return;
   }
 
-  const header = ["date", "meal", "item_name", "brand", "amount", "unit", "grams", "kcal", "protein", "carbs", "sugar", "fat", "saturated_fat", "fiber", "salt", "sodium", "source"];
+  const header = ["date", "meal", "item_name", "brand", "amount", "unit", "grams", "kcal", "protein", "carbs", "sugar", "fat", "saturated_fat", "fiber", "sodium", "source"];
   const rows = entries.map(e => {
     const n = normalizeNutrients(e.nutrientsSnapshot);
     return [
       e.date, e.meal, e.nameSnapshot, e.brandSnapshot || "", e.amount, e.unit, e.gramsEquivalent || "",
-      n.kcal, n.protein, n.carbs, n.sugar, n.fat, n.saturatedFat, n.fiber, n.salt, n.sodium, e.source || e.itemType
+      n.kcal, n.protein, n.carbs, n.sugar, n.fat, n.saturatedFat, n.fiber, n.sodium, e.source || e.itemType
     ].map(csvCell).join(",");
   });
   downloadFile(`nutripilot_full_${start}_to_${end}.csv`, [header.join(","), ...rows].join("\n"), "text/csv");
@@ -2464,56 +2447,64 @@ async function saveSettings(event) {
   showToast("Settings saved.");
 }
 
+function infoButton(text) {
+  return `<button class="info-btn" type="button" data-action="show-info" data-info="${safeText(text)}" aria-label="More information">i</button>`;
+}
+
+function settingLabel(label, info, inputHTML) {
+  return `
+    <label>
+      <span class="label-row">${safeText(label)} ${infoButton(info)}</span>
+      ${inputHTML}
+    </label>
+  `;
+}
+
 function renderSettingsV2() {
   const s = state.settings;
-  const microKeys = Object.keys(MICRO_DEFAULTS).filter(key => !["sodium", "salt"].includes(key));
+  const macroMode = s.macroGoalMode === "percent" ? "percent" : "manual";
+  const microKeys = ["fiber", "sugar", "sodium", "calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"];
   els.pages.settings.innerHTML = `
     <form id="settingsForm" class="stack">
       <div class="card">
-        <h3>Goals</h3>
+        <div class="meal-head">
+          <h3>Macro goals</h3>
+          <div class="segmented" aria-label="Macro input mode">
+            <button type="button" class="tiny-btn ${macroMode === "manual" ? "active" : ""}" data-action="set-macro-mode" data-mode="manual">grams</button>
+            <button type="button" class="tiny-btn ${macroMode === "percent" ? "active" : ""}" data-action="set-macro-mode" data-mode="percent">percent</button>
+          </div>
+        </div>
+        <input type="hidden" name="macroGoalMode" value="${macroMode}" />
         <div class="form-grid">
-          <label>Calories / day<input name="calorieGoal" type="number" min="0" value="${s.calorieGoal}" /></label>
-          <label>Macro mode
-            <select name="macroGoalMode">
-              ${[
-                ["manual", "Manual grams"],
-                ["percent", "Percentage split"],
-                ["protein-fixed", "Protein fixed"]
-              ].map(([value, label]) => `<option value="${value}" ${s.macroGoalMode === value ? "selected" : ""}>${label}</option>`).join("")}
-            </select>
-          </label>
-          <label>Protein g / day<input name="proteinGoal" type="number" min="0" value="${s.proteinGoal}" /></label>
-          <label>Carbs g / day<input name="carbsGoal" type="number" min="0" value="${s.carbsGoal}" /></label>
-          <label>Fat g / day<input name="fatGoal" type="number" min="0" value="${s.fatGoal}" /></label>
-          <label>Protein %<input name="macroPercentProtein" type="number" min="0" max="100" value="${s.macroPercentProtein}" /></label>
-          <label>Carbs %<input name="macroPercentCarbs" type="number" min="0" max="100" value="${s.macroPercentCarbs}" /></label>
-          <label>Fat %<input name="macroPercentFat" type="number" min="0" max="100" value="${s.macroPercentFat}" /></label>
-          <label>Fiber g / day<input name="fiberGoal" type="number" min="0" value="${s.fiberGoal}" /></label>
-          <label>Sugar g / day<input name="sugarGoal" type="number" min="0" value="${s.sugarGoal}" /></label>
-          <label>Sodium max mg / day<input name="sodiumMax" type="number" min="0" value="${s.sodiumMax}" /></label>
-          <label>Salt max g / day<input name="saltMax" type="number" min="0" step="0.1" value="${s.saltMax}" /></label>
+          ${settingLabel("Calories / day", "Your daily calorie target. Macro grams and percentages use this as the base.", `<input name="calorieGoal" type="number" min="0" value="${s.calorieGoal}" />`)}
+          ${settingLabel("Protein g / day", "Protein target in grams. In percent mode this updates from protein percent.", `<input name="proteinGoal" data-macro-gram="protein" type="number" min="0" value="${s.proteinGoal}" />`)}
+          ${settingLabel("Carbs g / day", "Carbohydrate target in grams. In percent mode this updates from carb percent.", `<input name="carbsGoal" data-macro-gram="carbs" type="number" min="0" value="${s.carbsGoal}" />`)}
+          ${settingLabel("Fat g / day", "Fat target in grams. In percent mode this updates from fat percent.", `<input name="fatGoal" data-macro-gram="fat" type="number" min="0" value="${s.fatGoal}" />`)}
+          ${settingLabel("Protein %", "Protein share of calorie target. In grams mode this updates from protein grams.", `<input name="macroPercentProtein" data-macro-percent="protein" type="number" min="0" max="100" value="${s.macroPercentProtein}" />`)}
+          ${settingLabel("Carbs %", "Carbohydrate share of calorie target. In grams mode this updates from carb grams.", `<input name="macroPercentCarbs" data-macro-percent="carbs" type="number" min="0" max="100" value="${s.macroPercentCarbs}" />`)}
+          ${settingLabel("Fat %", "Fat share of calorie target. In grams mode this updates from fat grams.", `<input name="macroPercentFat" data-macro-percent="fat" type="number" min="0" max="100" value="${s.macroPercentFat}" />`)}
         </div>
       </div>
 
       <div class="card">
-        <h3>Appearance and modules</h3>
+        <h3>App preferences</h3>
         <div class="form-grid">
-          <label>Theme
+          ${settingLabel("Theme", "Choose light, dark, or follow your device setting.", `
             <select name="theme">
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${s.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
-          </label>
-          <label>Dashboard density
+          `)}
+          ${settingLabel("Dashboard density", "Compact shows more information at once; comfortable gives everything more room.", `
             <select name="dashboardDensity">
               ${["comfortable", "compact"].map(v => `<option value="${v}" ${s.dashboardDensity === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
-          </label>
-          <label>Search region
+          `)}
+          ${settingLabel("Search region", "Open Food Facts region used for database search.", `
             <select name="searchRegion">
               ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
-          </label>
-          <label>Database preference
+          `)}
+          ${settingLabel("Database preference", "Personal first is fastest because your own library is searched before the API.", `
             <select name="databasePreference">
               ${[
                 ["custom-first", "Personal first"],
@@ -2521,50 +2512,43 @@ function renderSettingsV2() {
                 ["offline-only", "Offline/cache only"]
               ].map(([value, label]) => `<option value="${value}" ${s.databasePreference === value ? "selected" : ""}>${label}</option>`).join("")}
             </select>
-          </label>
-        </div>
-        <div class="grid-3" style="margin-top:14px;">
-          ${Object.entries(DEFAULT_SETTINGS.modules).map(([key]) => `
-            <label class="switch-row"><input name="module_${key}" type="checkbox" ${s.modules[key] ? "checked" : ""} /> ${key}</label>
-          `).join("")}
+          `)}
         </div>
       </div>
 
       <div class="card">
-        <h3>Nutrients</h3>
-        <div class="grid-3">
-          ${Object.entries(DEFAULT_SETTINGS.nutrientVisibility).map(([key]) => `
-            <label class="switch-row"><input name="visible_${key}" type="checkbox" ${s.nutrientVisibility[key] ? "checked" : ""} /> ${key}</label>
-          `).join("")}
+        <h3>Micro goals</h3>
+        <div class="form-grid">
+          ${microKeys.map(key => {
+            const value = key === "fiber" ? s.fiberGoal
+              : key === "sugar" ? s.sugarGoal
+              : key === "sodium" ? s.sodiumMax
+              : s.micronutrientGoals[key]?.target ?? MICRO_DEFAULTS[key]?.target ?? 0;
+            const unit = NUTRIENT_UNITS[key];
+            const info = key === "sugar" || key === "sodium"
+              ? "This is treated as a healthy upper limit."
+              : "This is treated as a daily target.";
+            return settingLabel(`${NUTRIENT_LABELS[key]} (${unit})`, info, `<input name="micro_${key}_target" type="number" step="0.01" min="0" value="${value}" />`);
+          }).join("")}
         </div>
-        <details style="margin-top:14px;">
-          <summary class="kicker">Micronutrient targets</summary>
-          <div class="form-grid" style="margin-top:12px;">
-            ${microKeys.map(key => `
-              <label>${NUTRIENT_LABELS[key]}
-                <input name="micro_${key}_target" type="number" step="0.01" min="0" value="${s.micronutrientGoals[key]?.target ?? MICRO_DEFAULTS[key].target}" />
-              </label>
-              <label>${NUTRIENT_LABELS[key]} mode
-                <select name="micro_${key}_mode">
-                  <option value="min" ${s.micronutrientGoals[key]?.mode === "min" ? "selected" : ""}>Minimum target</option>
-                  <option value="max" ${s.micronutrientGoals[key]?.mode === "max" ? "selected" : ""}>Maximum limit</option>
-                </select>
-              </label>
-            `).join("")}
-          </div>
-        </details>
       </div>
 
-      <div class="card stack">
-        <h3>Data and sync</h3>
-        <p>Current state: <strong>${safeText(els.syncStatus?.textContent || "Offline cache")}</strong>. Firestore persistence and local browser cache are both used when available.</p>
+      <div class="card stack sync-panel">
+        <div class="meal-head">
+          <div>
+            <h3>Data and sync</h3>
+            <p>${safeText(els.syncStatus?.textContent || "Offline")} with Firebase and local offline data.</p>
+          </div>
+          <span class="status-chip ${state.sync.status}">${safeText(els.syncStatus?.textContent || "Offline")}</span>
+        </div>
         <div class="inline-actions">
           <button class="secondary-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
+          <button class="secondary-btn" type="button" data-action="export-full-csv">Export full CSV</button>
+          <button class="secondary-btn" type="button" data-action="export-calories-csv">Export calories CSV</button>
+          <button class="ghost-btn" type="button" data-action="export-calories-json">Export calories JSON</button>
           <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
           <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
-          <button class="ghost-btn" type="button" data-action="go-reports">Open reports and exports</button>
-          <button class="danger-btn" type="button" data-action="clear-current-logs">Clear current day logs</button>
-          <button class="danger-btn" type="button" data-action="clear-custom-foods">Clear custom foods</button>
+          <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>
         </div>
         <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
         <p class="form-message" id="settingsSaveMessage"></p>
@@ -2572,9 +2556,41 @@ function renderSettingsV2() {
     </form>
   `;
   const form = document.getElementById("settingsForm");
+  syncMacroGoalInputs(form);
+  form?.addEventListener("input", event => {
+    if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
+  });
   form?.addEventListener("input", queueSettingsAutosave);
   form?.addEventListener("change", queueSettingsAutosave);
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
+}
+
+function syncMacroGoalInputs(form, changed = null) {
+  if (!form) return;
+  const mode = form.elements.macroGoalMode?.value || "manual";
+  const calories = Math.max(1, number(form.elements.calorieGoal?.value, state.settings.calorieGoal));
+  const grams = {
+    protein: form.elements.proteinGoal,
+    carbs: form.elements.carbsGoal,
+    fat: form.elements.fatGoal
+  };
+  const percents = {
+    protein: form.elements.macroPercentProtein,
+    carbs: form.elements.macroPercentCarbs,
+    fat: form.elements.macroPercentFat
+  };
+  const kcalPerGram = { protein: 4, carbs: 4, fat: 9 };
+  if (mode === "percent") {
+    for (const key of Object.keys(grams)) {
+      const pct = number(percents[key]?.value);
+      if (grams[key]) grams[key].value = round(calories * pct / 100 / kcalPerGram[key], 1);
+    }
+    return;
+  }
+  for (const key of Object.keys(percents)) {
+    const gram = number(grams[key]?.value);
+    if (percents[key]) percents[key].value = round(gram * kcalPerGram[key] / calories * 100, 1);
+  }
 }
 
 function collectSettingsFromForm(form) {
@@ -2585,10 +2601,10 @@ function collectSettingsFromForm(form) {
     proteinGoal: number(data.get("proteinGoal"), state.settings.proteinGoal),
     carbsGoal: number(data.get("carbsGoal"), state.settings.carbsGoal),
     fatGoal: number(data.get("fatGoal"), state.settings.fatGoal),
-    fiberGoal: number(data.get("fiberGoal"), state.settings.fiberGoal),
-    sugarGoal: number(data.get("sugarGoal"), state.settings.sugarGoal),
-    sodiumMax: number(data.get("sodiumMax"), state.settings.sodiumMax),
-    saltMax: number(data.get("saltMax"), state.settings.saltMax),
+    fiberGoal: number(data.get("micro_fiber_target"), state.settings.fiberGoal),
+    sugarGoal: number(data.get("micro_sugar_target"), state.settings.sugarGoal),
+    sodiumMax: number(data.get("micro_sodium_target"), state.settings.sodiumMax),
+    saltMax: round(number(data.get("micro_sodium_target"), state.settings.sodiumMax) / 400, 2),
     theme: String(data.get("theme") || "system"),
     searchRegion: String(data.get("searchRegion") || "world"),
     databasePreference: String(data.get("databasePreference") || "custom-first"),
@@ -2597,18 +2613,19 @@ function collectSettingsFromForm(form) {
     macroPercentProtein: number(data.get("macroPercentProtein"), 25),
     macroPercentCarbs: number(data.get("macroPercentCarbs"), 45),
     macroPercentFat: number(data.get("macroPercentFat"), 30),
-    modules: { ...state.settings.modules },
-    nutrientVisibility: { ...state.settings.nutrientVisibility },
+    modules: { barcode: true, recipes: true, mealsets: true, micronutrients: true, graphs: true },
+    nutrientVisibility: { sugar: true, fiber: true, sodium: true, saturatedFat: true, micronutrients: true },
     micronutrientGoals: structuredClone(state.settings.micronutrientGoals)
   };
-  Object.keys(next.modules).forEach(key => next.modules[key] = data.get(`module_${key}`) === "on");
-  Object.keys(next.nutrientVisibility).forEach(key => next.nutrientVisibility[key] = data.get(`visible_${key}`) === "on");
   Object.keys(MICRO_DEFAULTS).forEach(key => {
+    if (["fiber", "sugar", "sodium", "salt"].includes(key)) return;
     next.micronutrientGoals[key] = {
       target: number(data.get(`micro_${key}_target`), MICRO_DEFAULTS[key].target),
-      mode: String(data.get(`micro_${key}_mode`) || MICRO_DEFAULTS[key].mode)
+      mode: MICRO_DEFAULTS[key].mode
     };
   });
+  next.micronutrientGoals.sodium = { target: next.sodiumMax, mode: "max" };
+  next.micronutrientGoals.salt = { target: next.saltMax, mode: "max" };
   return mergeSettings(next);
 }
 
@@ -2687,6 +2704,71 @@ async function clearCustomFoods() {
   showToast("Custom foods cleared.");
 }
 
+function openDeleteAllDataModal() {
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Delete all data</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <form id="deleteAllDataForm" class="modal-body">
+        <p>This deletes settings, custom foods, recipes, mealsets, local offline data, and known logged days. Type <strong>DELETE</strong> to confirm.</p>
+        <label>Confirmation<input name="confirmation" autocomplete="off" placeholder="DELETE" /></label>
+        <div class="form-actions"><button class="danger-btn" type="submit">Delete all data</button></div>
+      </form>
+    </div>
+  `);
+  document.getElementById("deleteAllDataForm")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const confirmation = new FormData(event.currentTarget).get("confirmation");
+    if (confirmation !== "DELETE") {
+      showToast("Type DELETE to confirm.");
+      return;
+    }
+    await deleteAllAccountData();
+    closeModal();
+  });
+}
+
+async function deleteAllAccountData() {
+  const collectionNames = ["customFoods", "recipes", "mealsets"];
+  for (const collectionName of collectionNames) {
+    const snap = await getDocs(userCollection(collectionName));
+    for (const docSnap of snap.docs) await deleteDoc(userDoc(collectionName, docSnap.id));
+    writeLocal(collectionName, []);
+  }
+  const knownDates = new Set([state.currentDate, ...state.logs.map(entry => entry.date).filter(Boolean), ...state.reportEntries.map(entry => entry.date).filter(Boolean)]);
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(storageKey("logs:").replace("guest", state.user?.uid || "guest"))) {
+      knownDates.add(key.split("logs:")[1]);
+    }
+  }
+  for (const dateISO of knownDates) {
+    if (!dateISO) continue;
+    const snap = await getDocs(entryCollection(dateISO));
+    for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, dateISO));
+    writeLocal(`logs:${dateISO}`, []);
+    await updateDailyCalorieSummary(dateISO, []).catch(console.warn);
+  }
+  await setDoc(userDoc("private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: false });
+  writeLocal("settings", DEFAULT_SETTINGS);
+  state.logs = [];
+  state.customFoods = [];
+  state.recipes = [];
+  state.mealsets = [];
+  state.searchResults = [];
+  state.reportEntries = [];
+  showToast("All known account data was deleted.");
+}
+
+function showInfoPopover(button) {
+  document.querySelectorAll(".info-popover").forEach(node => node.remove());
+  const popover = document.createElement("div");
+  popover.className = "info-popover";
+  popover.textContent = button.dataset.info || "";
+  document.body.appendChild(popover);
+  const rect = button.getBoundingClientRect();
+  popover.style.left = `${Math.min(window.innerWidth - popover.offsetWidth - 12, rect.left)}px`;
+  popover.style.top = `${rect.bottom + 8}px`;
+}
+
 function openSyncConflictResolver() {
   const local = {
     settings: readLocal("settings", null),
@@ -2709,9 +2791,9 @@ function openSyncConflictResolver() {
     <div class="modal">
       <div class="modal-head"><h3>Sync check</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
-        <p>${differs ? "Local cache and Firebase data differ." : "Local cache and Firebase currently match for cached collections."}</p>
+        <p>${differs ? "Local offline data and Firebase differ." : "Local offline data and Firebase currently match."}</p>
         <div class="grid-2">
-          ${metricCard("Local cache", localFreshness ? new Date(localFreshness).toLocaleString() : "No timestamp", `${local.logs.length} logs cached`)}
+          ${metricCard("Local offline data", localFreshness ? new Date(localFreshness).toLocaleString() : "No timestamp", `${local.logs.length} logs offline`)}
           ${metricCard("Firebase view", remoteFreshness ? new Date(remoteFreshness).toLocaleString() : "No timestamp", `${remote.logs.length} logs loaded`)}
         </div>
         <div class="form-actions">
@@ -2741,7 +2823,7 @@ async function useLocalCacheForFirebase() {
     await setDoc(entryDoc(id, state.currentDate), cleanForFirestore(copy), { merge: true });
   }
   closeModal();
-  showToast("Local cache copied to Firebase.");
+  showToast("Local offline data copied to Firebase.");
 }
 
 function useFirebaseForLocalCache() {
@@ -2751,7 +2833,7 @@ function useFirebaseForLocalCache() {
   writeLocal("mealsets", state.mealsets);
   writeLocal(`logs:${state.currentDate}`, state.logs);
   closeModal();
-  showToast("Firebase copy saved to local cache.");
+  showToast("Firebase copy saved offline.");
 }
 
 function openBarcodeModal() {
@@ -2837,7 +2919,7 @@ async function editEntry(id) {
   if (!entry) return;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Edit entry</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Edit entry</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="editEntryForm" class="modal-body">
         <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
         <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
@@ -2903,6 +2985,10 @@ async function handleClick(event) {
 
   try {
     if (action === "close-modal") closeModal();
+    if (action === "show-info") {
+      showInfoPopover(btn);
+      return;
+    }
     if (action === "go-search") setRoute("search");
     if (action === "go-reports") setRoute("reports");
     if (action === "go-settings") setRoute("settings");
@@ -2912,6 +2998,15 @@ async function handleClick(event) {
     }
     if (action === "recent-search") await runFoodSearch(btn.dataset.query || "");
     if (action === "search-foods") await runFoodSearch(document.getElementById("foodSearchInput")?.value || "");
+    if (action === "search-prev-page") {
+      state.searchPage = Math.max(1, state.searchPage - 1);
+      renderSearchV2();
+    }
+    if (action === "search-next-page") {
+      state.searchPage += 1;
+      renderSearchV2();
+    }
+    if (action === "open-custom-food-modal") openCustomFoodCreateModal();
     if (action === "open-barcode-modal") openBarcodeModal();
     if (action === "lookup-barcode") {
       await lookupBarcodeCached(document.getElementById("barcodeInput")?.value || "");
@@ -2962,19 +3057,32 @@ async function handleClick(event) {
     if (action === "remove-target-item") await removeTargetItem(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
     if (action === "log-recipe") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id));
     if (action === "log-mealset") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id));
-    if (action === "report-prev-week" || action === "report-next-week") {
-      const days = action === "report-prev-week" ? -7 : 7;
-      state.reportRange = [addDaysISO(document.getElementById("reportStart")?.value || state.reportRange[0], days), addDaysISO(document.getElementById("reportEnd")?.value || state.reportRange[1], days)];
+    if (action === "set-report-mode") {
+      state.reportMode = btn.dataset.mode || "week";
+      state.reportRange = periodRange();
+      renderReportsShell();
+    }
+    if (action === "report-prev-period" || action === "report-next-period") {
+      shiftReportPeriod(action === "report-prev-period" ? -1 : 1);
       renderReportsShell();
     }
     if (action === "load-report") await loadReport();
     if (action === "export-full-csv") await exportEntries("csv", false);
     if (action === "export-calories-csv") await exportEntries("csv", true);
     if (action === "export-calories-json") await exportEntries("json", true);
+    if (action === "set-macro-mode") {
+      const form = document.getElementById("settingsForm");
+      if (form?.elements.macroGoalMode) form.elements.macroGoalMode.value = btn.dataset.mode || "manual";
+      syncMacroGoalInputs(form);
+      queueSettingsAutosave({ currentTarget: form });
+      state.settings.macroGoalMode = btn.dataset.mode || "manual";
+      renderSettingsV2();
+    }
     if (action === "export-backup-json") exportBackupJson();
     if (action === "trigger-import") document.getElementById("backupImportInput")?.click();
     if (action === "clear-current-logs") await clearCurrentLogs();
     if (action === "clear-custom-foods") await clearCustomFoods();
+    if (action === "open-delete-all-data") openDeleteAllDataModal();
     if (action === "resolve-sync-conflict") openSyncConflictResolver();
     if (action === "use-local-cache") await useLocalCacheForFirebase();
     if (action === "use-firebase-cache") useFirebaseForLocalCache();
@@ -2984,6 +3092,11 @@ async function handleClick(event) {
 }
 
 document.addEventListener("click", handleClick);
+document.addEventListener("click", event => {
+  if (!event.target.closest(".info-btn") && !event.target.closest(".info-popover")) {
+    document.querySelectorAll(".info-popover").forEach(node => node.remove());
+  }
+});
 
 els.authForm.addEventListener("submit", async event => {
   event.preventDefault();
@@ -2995,36 +3108,11 @@ els.authForm.addEventListener("submit", async event => {
   }
 });
 
-els.signupBtn.addEventListener("click", async () => {
-  try {
-    els.authMessage.textContent = "";
-    const credential = await createUserWithEmailAndPassword(auth, els.emailInput.value, els.passwordInput.value);
-    await setDoc(doc(db, "users", credential.user.uid, "private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: true });
-  } catch (error) {
-    els.authMessage.textContent = error.message;
-  }
-});
-
 els.signOutBtn.addEventListener("click", () => signOut(auth));
-els.themeToggle.addEventListener("click", async () => {
-  if (!state.user) return;
-  const current = state.settings.theme || "system";
-  const next = current === "dark" ? "light" : current === "light" ? "system" : "dark";
-  await setDoc(userDoc("private", "settings"), { theme: next }, { merge: true });
-});
-
-els.installBtn?.addEventListener("click", async () => {
-  if (!state.installPrompt) return;
-  state.installPrompt.prompt();
-  await state.installPrompt.userChoice.catch(() => null);
-  state.installPrompt = null;
-  els.installBtn.classList.add("hidden");
-});
 
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   state.installPrompt = event;
-  els.installBtn?.classList.remove("hidden");
 });
 
 window.addEventListener("online", () => {
@@ -3034,11 +3122,12 @@ window.addEventListener("online", () => {
 
 window.addEventListener("offline", () => {
   updateSyncStatus({ online: false });
-  showToast("Offline mode active. Cached data remains available.");
+  showToast("Offline mode active. Saved data remains available.");
 });
 
 onAuthStateChanged(auth, user => {
   state.user = user;
+  document.body.classList.toggle("auth-active", !user);
   els.authView.classList.toggle("hidden", !!user);
   els.appView.classList.toggle("hidden", !user);
   els.signOutBtn.classList.toggle("hidden", !user);
