@@ -187,7 +187,6 @@ body.auth-active .mobile-nav {
 .status-chip.online::before { background: var(--success); }
 .status-chip.pending::before { background: var(--warning); }
 .status-chip.offline::before { background: var(--danger); }
-.status-chip.cached::before { background: var(--info); }
 
 .auth-card, .card, .metric-card, .meal-card, .report-card {
   border: 1px solid var(--border);

@@ -183,6 +183,8 @@ const state = {
     lowSugar: false
   },
   searchPage: 1,
+  defaultLogMeal: "breakfast",
+  defaultLogDate: todayISO(),
   reportEntries: [],
   reportRange: currentWeekRange(),
   reportMode: "week",
@@ -346,7 +348,6 @@ function updateSyncStatus(partial = {}) {
   state.sync = { ...state.sync, ...partial, online: navigator.onLine };
   if (!state.sync.online) state.sync.status = "offline";
   else if (state.sync.pendingWrites) state.sync.status = "pending";
-  else if (state.sync.fromCache) state.sync.status = "cached";
   else state.sync.status = "online";
   renderSyncStatus();
 }
@@ -365,15 +366,14 @@ function renderSyncStatus() {
   const label = {
     online: "Synced",
     pending: "Syncing",
-    cached: "Cached",
     offline: "Offline"
   }[status] || "Offline";
   els.syncStatus.className = `status-chip ${status}`;
   els.syncStatus.textContent = label;
   els.syncStatus.title = status === "online" && state.sync.lastSyncedAt
     ? `Last Firebase sync: ${new Date(state.sync.lastSyncedAt).toLocaleString()}`
-    : status === "cached"
-      ? "Online, but the visible snapshot is currently coming from the local Firestore cache."
+    : status === "pending"
+      ? "Firebase has local changes waiting to upload."
       : "Offline mode is only shown when the browser itself is offline.";
 }
 
@@ -520,6 +520,49 @@ function caloriesText(food) {
   const kcal100 = round(food.nutrientsPer100g?.kcal || 0, 0);
   const serving = food.defaultServing?.grams ? ` · ${round(kcal100 * food.defaultServing.grams / 100, 0)} kcal / ${food.defaultServing.label}` : "";
   return `${kcal100} kcal / 100 g${serving}`;
+}
+
+function servingUnits() {
+  return ["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"];
+}
+
+function servingUnitSelectHTML(selected = "g") {
+  return `
+    <label>Serving unit
+      <select name="servingUnit">
+        ${servingUnits().map(unit => `<option value="${unit}" ${normalizeSearchText(selected) === unit ? "selected" : ""}>${unit}</option>`).join("")}
+      </select>
+    </label>
+    <label class="custom-serving-field hidden">Custom serving unit
+      <input name="customServingUnit" placeholder="Name of the serving unit" />
+    </label>
+  `;
+}
+
+function selectedServingUnit(data) {
+  const chosen = String(data.get("servingUnit") || "g").trim();
+  if (chosen === "custom") {
+    return String(data.get("customServingUnit") || "custom serving").trim() || "custom serving";
+  }
+  return chosen;
+}
+
+function servingLabelFor(unit, grams) {
+  return unit === "g" || unit === "ml" ? `${round(grams, 2)} ${unit}` : `1 ${unit}`;
+}
+
+function bindCustomServingUnit(form) {
+  if (!form) return;
+  const select = form.elements.servingUnit;
+  const customField = form.querySelector(".custom-serving-field");
+  const customInput = form.elements.customServingUnit;
+  const update = () => {
+    const isCustom = select?.value === "custom";
+    customField?.classList.toggle("hidden", !isCustom);
+    if (customInput) customInput.required = !!isCustom;
+  };
+  select?.addEventListener("change", update);
+  update();
 }
 
 function registerTempFood(food) {
@@ -734,6 +777,7 @@ function renderToday() {
 
   document.getElementById("currentDateInput")?.addEventListener("change", e => {
     state.currentDate = e.target.value || todayISO();
+    state.defaultLogDate = state.currentDate;
     subscribeLogsForCurrentDate();
   });
 }
@@ -992,7 +1036,7 @@ function renderSearch() {
             <div class="form-grid">
               ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "salt", "sodium"].map(key => `
                 <label>${NUTRIENT_LABELS[key]} / 100 g
-                  <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+                  <input name="${key}" type="number" step="0.01" min="0" />
                 </label>
               `).join("")}
             </div>
@@ -1001,7 +1045,7 @@ function renderSearch() {
               <div class="form-grid" style="margin-top:12px;">
                 ${["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].map(key => `
                   <label>${NUTRIENT_LABELS[key]} / 100 g
-                    <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+                    <input name="${key}" type="number" step="0.01" min="0" />
                   </label>
                 `).join("")}
               </div>
@@ -1018,7 +1062,9 @@ function renderSearch() {
     </div>
   `;
 
-  document.getElementById("customFoodForm")?.addEventListener("submit", saveCustomFood);
+  const form = document.getElementById("customFoodForm");
+  bindCustomServingUnit(form);
+  form?.addEventListener("submit", saveCustomFood);
 }
 
 function renderSearchV2() {
@@ -1097,10 +1143,11 @@ function updateSearchFiltersFromInputs() {
 
 function nutrientInputHTML(key, nutrients = {}) {
   const rawValue = nutrients?.[key];
-  const valueAttr = rawValue !== undefined && rawValue !== null ? ` value="${round(rawValue, 3)}"` : "";
+  const hasValue = rawValue !== undefined && rawValue !== null && rawValue !== "" && number(rawValue) !== 0;
+  const valueAttr = hasValue ? ` value="${round(rawValue, 3)}"` : "";
   return `
     <label>${safeText(NUTRIENT_LABELS[key])} / 100 g
-      <input name="${key}" type="number" step="0.01" min="0" placeholder="0"${valueAttr} />
+      <input name="${key}" type="number" step="0.01" min="0"${valueAttr} />
     </label>
   `;
 }
@@ -1121,10 +1168,11 @@ function nutrientSectionHTML(title, caption, keys, nutrients = {}) {
 
 function customFoodNutrientFieldsHTML(nutrients = {}) {
   return [
-    nutrientSectionHTML("Energy and core macros", "Calories plus the three main macronutrients.", ["kcal", "protein", "carbs", "fat"], nutrients),
-    nutrientSectionHTML("Carbohydrate details", "Fiber and sugar are tracked as carbohydrate sub-values.", ["fiber", "sugar"], nutrients),
-    nutrientSectionHTML("Fat details", "Saturated fat is tracked separately from total fat.", ["saturatedFat"], nutrients),
-    nutrientSectionHTML("Salt and sodium", "Sodium is stored in mg. Salt can be left empty if unknown.", ["sodium", "salt"], nutrients),
+    nutrientSectionHTML("Energy", "Calories per 100 g.", ["kcal"], nutrients),
+    nutrientSectionHTML("Protein", "Protein is tracked as its own macro.", ["protein"], nutrients),
+    nutrientSectionHTML("Carbohydrates", "Total carbs with sugar and fiber as carb sub-values.", ["carbs", "sugar", "fiber"], nutrients),
+    nutrientSectionHTML("Fats", "Total fat with saturated fat as a fat sub-value.", ["fat", "saturatedFat"], nutrients),
+    nutrientSectionHTML("Salt and sodium", "Sodium is stored in mg. Salt can stay empty if unknown.", ["sodium", "salt"], nutrients),
     nutrientSectionHTML("Micronutrients", "Optional vitamins and minerals.", ["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"], nutrients)
   ].join("");
 }
@@ -1142,12 +1190,8 @@ function openCustomFoodCreateModal() {
           <div class="form-grid two">
             <label>Name<input name="name" required placeholder="Name of the food" /></label>
             <label>Brand<input name="brand" placeholder="Brand name" /></label>
-            <label>Serving unit
-              <select name="servingUnit">
-                ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
-              </select>
-            </label>
-            <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+            ${servingUnitSelectHTML("g")}
+            <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
           </div>
         </section>
         ${customFoodNutrientFieldsHTML()}
@@ -1233,7 +1277,7 @@ function openFoodDetailModal(food) {
         <div>
           <p class="kicker">Servings</p>
           <div class="badges">
-            ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g/ml</span>`).join("")}
+            ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
       </div>
@@ -1252,24 +1296,25 @@ function openCustomFoodEditor(food, duplicate = false) {
         <div class="form-grid two">
           <label>Name<input name="name" required value="${safeText(duplicate ? `${food.name} copy` : food.name)}" /></label>
           <label>Brand<input name="brand" value="${safeText(food.brand || "")}" /></label>
-          <label>Serving unit
-            <select name="servingUnit">
-              ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(v => `<option value="${v}" ${normalizeSearchText(unit) === v ? "selected" : ""}>${v}</option>`).join("")}
-            </select>
-          </label>
-          <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
+          ${servingUnitSelectHTML(servingUnits().includes(normalizeSearchText(unit)) ? normalizeSearchText(unit) : "custom")}
+          <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
         </div>
         ${customFoodNutrientFieldsHTML(food.nutrientsPer100g)}
         <div class="form-actions"><button class="primary-btn" type="submit">${duplicate ? "Create copy" : "Save changes"}</button></div>
       </form>
     </div>
   `);
-  document.getElementById("customFoodEditForm").addEventListener("submit", async event => {
+  const editForm = document.getElementById("customFoodEditForm");
+  if (editForm?.elements.customServingUnit && !servingUnits().includes(normalizeSearchText(unit))) {
+    editForm.elements.customServingUnit.value = unit;
+  }
+  bindCustomServingUnit(editForm);
+  editForm.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const servingGrams = number(data.get("servingGrams"), 100) || 100;
-    const servingUnit = String(data.get("servingUnit") || "g");
-    const servingLabel = servingUnit === "g" || servingUnit === "ml" ? `${servingGrams} ${servingUnit}` : `1 ${servingUnit}`;
+    const servingUnit = selectedServingUnit(data);
+    const servingLabel = servingLabelFor(servingUnit, servingGrams);
     const next = {
       ...food,
       source: "custom",
@@ -1487,8 +1532,8 @@ async function saveCustomFood(event) {
   const name = String(data.get("name") || "").trim();
   if (!name) return;
   const servingGrams = number(data.get("servingGrams"), 100) || 100;
-  const servingUnit = String(data.get("servingUnit") || data.get("servingLabel") || "g").trim();
-  const servingLabel = servingUnit === "g" || servingUnit === "ml" ? `${servingGrams} ${servingUnit}` : `1 ${servingUnit}`;
+  const servingUnit = selectedServingUnit(data);
+  const servingLabel = servingLabelFor(servingUnit, servingGrams);
   const nutrientsPer100g = normalizeNutrients(Object.fromEntries(NUTRIENT_KEYS.map(k => [k, data.get(k)])));
   const food = {
     source: "custom",
@@ -1570,21 +1615,23 @@ function buildServingOptions(food) {
 function openLogFoodModal(food) {
   if (!food) return;
   const servingOptions = buildServingOptions(food);
+  const defaultMeal = state.defaultLogMeal || "breakfast";
+  const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${food.defaultServing?.grams ? 1 : 100}" required /></label>
+          <label>Amount<input name="amount" type="number" step="0.01" min="0" value="100" required /></label>
           <label>Unit
             <select name="unitIndex">
               ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(s.mode === "grams" ? "grams" : s.label)}</option>`).join("")}
             </select>
           </label>
           <label>Meal
-            <select name="meal">${MEALS.map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select>
+            <select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === defaultMeal ? "selected" : ""}>${label}</option>`).join("")}</select>
           </label>
-          <label>Date<input name="date" type="date" value="${state.currentDate}" /></label>
+          <label>Date<input name="date" type="date" value="${defaultDate}" /></label>
         </div>
         <p class="kicker">${safeText(caloriesText(food))}</p>
         <div class="form-actions"><button class="primary-btn" type="submit">Add to day</button></div>
@@ -1647,6 +1694,17 @@ function renderRecipes() {
       </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
     </div>
   `;
+
+  els.pages.recipes.querySelector('[data-action="create-recipe"]')?.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    createRecipe().catch(showError);
+  });
+  els.pages.recipes.querySelector('[data-action="create-mealset"]')?.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    createMealset().catch(showError);
+  });
 }
 
 function itemAmountText(item) {
@@ -1712,28 +1770,31 @@ async function createRecipe() {
       <form id="createRecipeForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Name of the recipe" /></label>
         <label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="1" required /></label>
-        <label>Notes<textarea name="notes" placeholder="Recipe notes"></textarea></label>
+        <label>Notes<textarea name="notes" placeholder="Notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
   `);
-  document.getElementById("createRecipeForm").addEventListener("submit", async event => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const recipe = {
-      name: String(data.get("name") || "").trim(),
-      portions: number(data.get("portions"), 1),
-      notes: String(data.get("notes") || "").trim(),
-      ingredients: [],
-      totalNutrients: emptyNutrients(),
-      nutrientsPerPortion: emptyNutrients(),
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    await addDoc(userCollection("recipes"), cleanForFirestore(recipe));
-    closeModal();
-    showToast("Recipe created. Add ingredients next.");
-  });
+}
+
+async function saveRecipeFromForm(form) {
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  if (!name) return;
+  const recipe = {
+    name,
+    portions: Math.max(0.1, number(data.get("portions"), 1)),
+    notes: String(data.get("notes") || "").trim(),
+    ingredients: [],
+    totalNutrients: emptyNutrients(),
+    nutrientsPerPortion: emptyNutrients(),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  await addDoc(userCollection("recipes"), cleanForFirestore(recipe));
+  closeModal();
+  setRoute("recipes");
+  showToast("Recipe created. Add ingredients next.");
 }
 
 async function createMealset() {
@@ -1742,26 +1803,29 @@ async function createMealset() {
       <div class="modal-head"><h3>Create mealset</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createMealsetForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Name of the mealset" /></label>
-        <label>Notes<textarea name="notes" placeholder="Mealset notes"></textarea></label>
+        <label>Notes<textarea name="notes" placeholder="Notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
   `);
-  document.getElementById("createMealsetForm").addEventListener("submit", async event => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const mealset = {
-      name: String(data.get("name") || "").trim(),
-      notes: String(data.get("notes") || "").trim(),
-      items: [],
-      totalNutrients: emptyNutrients(),
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    await addDoc(userCollection("mealsets"), cleanForFirestore(mealset));
-    closeModal();
-    showToast("Mealset created. Add items next.");
-  });
+}
+
+async function saveMealsetFromForm(form) {
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  if (!name) return;
+  const mealset = {
+    name,
+    notes: String(data.get("notes") || "").trim(),
+    items: [],
+    totalNutrients: emptyNutrients(),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  await addDoc(userCollection("mealsets"), cleanForFirestore(mealset));
+  closeModal();
+  setRoute("recipes");
+  showToast("Mealset created. Add items next.");
 }
 
 function recipePortionAsFood(recipe) {
@@ -2009,8 +2073,8 @@ function openLogRecipeModal(recipe) {
       <form id="logRecipeForm" class="modal-body">
         <div class="form-grid two">
           <label>Portions<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
-          <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select></label>
-          <label>Date<input name="date" type="date" value="${state.currentDate}" /></label>
+          <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
         ${nutrientSummaryHTML(perPortion)}
         <div class="form-actions"><button class="primary-btn" type="submit">Log recipe</button></div>
@@ -2048,8 +2112,8 @@ function openLogMealsetModal(mealset) {
       <form id="logMealsetForm" class="modal-body">
         <div class="form-grid two">
           <label>Quantity<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
-          <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select></label>
-          <label>Date<input name="date" type="date" value="${state.currentDate}" /></label>
+          <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
         ${nutrientSummaryHTML(total)}
         <div class="form-actions"><button class="primary-btn" type="submit">Log mealset</button></div>
@@ -3089,12 +3153,17 @@ async function handleClick(event) {
       showInfoPopover(btn);
       return;
     }
-    if (action === "go-search") setRoute("search");
+    if (action === "go-search") {
+      state.defaultLogMeal = btn.dataset.meal || state.defaultLogMeal || "breakfast";
+      state.defaultLogDate = state.currentDate;
+      setRoute("search");
+    }
     if (action === "go-reports") setRoute("reports");
     if (action === "go-settings") setRoute("settings");
     if (action === "settings-sign-out") await signOut(auth);
     if (action === "change-date") {
       state.currentDate = addDaysISO(state.currentDate, number(btn.dataset.days));
+      state.defaultLogDate = state.currentDate;
       subscribeLogsForCurrentDate();
     }
     if (action === "recent-search") await runFoodSearch(btn.dataset.query || "");
@@ -3193,6 +3262,24 @@ async function handleClick(event) {
     showError(error);
   }
 }
+
+
+document.addEventListener("submit", async event => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement)) return;
+  try {
+    if (form.id === "createRecipeForm") {
+      event.preventDefault();
+      await saveRecipeFromForm(form);
+    }
+    if (form.id === "createMealsetForm") {
+      event.preventDefault();
+      await saveMealsetFromForm(form);
+    }
+  } catch (error) {
+    showError(error);
+  }
+});
 
 document.addEventListener("click", handleClick);
 document.addEventListener("click", event => {
