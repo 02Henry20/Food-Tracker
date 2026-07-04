@@ -604,7 +604,7 @@ function setRoute(route) {
   state.route = route;
   Object.entries(els.pages).forEach(([key, page]) => page.classList.toggle("active", key === route));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.route === route));
-  const title = { today: "Today", search: "Search", recipes: "Recipes & Mealsets", reports: "Reports", settings: "Settings" }[route] || "NutriPilot";
+  const title = { today: "Diary", search: "Search", recipes: "Recipes & Mealsets", reports: "Reports", settings: "Settings" }[route] || "NutriPilot";
   els.pageTitle.textContent = title;
   renderCurrentRoute();
 }
@@ -733,6 +733,7 @@ function renderToday() {
           <button class="tiny-btn" data-action="change-date" data-days="-1" aria-label="Previous day">&lt;</button>
           <input id="currentDateInput" type="date" value="${state.currentDate}" />
           <button class="tiny-btn" data-action="change-date" data-days="1" aria-label="Next day">&gt;</button>
+          <button class="secondary-btn jump-today-btn" type="button" data-action="jump-today">Jump to today</button>
         </div>
       </div>
 
@@ -754,8 +755,8 @@ function renderToday() {
             <span>/ ${round(goals.calorieGoal, 0)} kcal</span>
           </div>
         </div>
-        <div>
-          <span class="pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
+        <div class="hero-macro-panel">
+          <span class="pill hero-kcal-pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
           <h3>Macro flight plan</h3>
           <div class="macro-grid">
             ${macroRow("Protein", total.protein, macroGoals.proteinGoal, "fill-protein")}
@@ -1791,7 +1792,14 @@ async function saveRecipeFromForm(form) {
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
-  await addDoc(userCollection("recipes"), cleanForFirestore(recipe));
+  try {
+    await addDoc(userCollection("recipes"), cleanForFirestore(recipe));
+  } catch (error) {
+    if (error?.code === "permission-denied") {
+      throw new Error("Recipe creation is blocked by Firestore rules. Deploy the included firestore.rules file or allow apps/food-tracker/users/{userId}/recipes.");
+    }
+    throw error;
+  }
   closeModal();
   setRoute("recipes");
   showToast("Recipe created. Add ingredients next.");
@@ -1822,7 +1830,14 @@ async function saveMealsetFromForm(form) {
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
-  await addDoc(userCollection("mealsets"), cleanForFirestore(mealset));
+  try {
+    await addDoc(userCollection("mealsets"), cleanForFirestore(mealset));
+  } catch (error) {
+    if (error?.code === "permission-denied") {
+      throw new Error("Mealset creation is blocked by Firestore rules. Deploy the included firestore.rules file or allow apps/food-tracker/users/{userId}/mealsets.");
+    }
+    throw error;
+  }
   closeModal();
   setRoute("recipes");
   showToast("Mealset created. Add items next.");
@@ -3163,6 +3178,11 @@ async function handleClick(event) {
     if (action === "settings-sign-out") await signOut(auth);
     if (action === "change-date") {
       state.currentDate = addDaysISO(state.currentDate, number(btn.dataset.days));
+      state.defaultLogDate = state.currentDate;
+      subscribeLogsForCurrentDate();
+    }
+    if (action === "jump-today") {
+      state.currentDate = todayISO();
       state.defaultLogDate = state.currentDate;
       subscribeLogsForCurrentDate();
     }

@@ -24,7 +24,7 @@
         </div>
       </div>
       <nav class="side-nav">
-        <button class="nav-btn active" data-route="today">Today</button>
+        <button class="nav-btn active" data-route="today">Diary</button>
         <button class="nav-btn" data-route="search">Search</button>
         <button class="nav-btn" data-route="recipes">Recipes</button>
         <button class="nav-btn" data-route="reports">Reports</button>
@@ -36,7 +36,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Nutrition dashboard</p>
-          <h2 id="pageTitle">Today</h2>
+          <h2 id="pageTitle">Diary</h2>
         </div>
         <div class="top-actions">
           <span id="syncStatus" class="status-chip" aria-live="polite">Offline</span>
@@ -44,11 +44,13 @@
         </div>
       </header>
 
-      <section id="authView" class="auth-card">
-        <div class="auth-copy">
-          <span class="pill">NutriPilot</span>
-          <h2>Track calories, macros, recipes and weekly patterns.</h2>
-          <p>Use your Firebase email/password login. All personal food logs are stored under your own user account in Firestore.</p>
+      <section id="authView" class="auth-card auth-card-compact">
+        <div class="auth-login-brand">
+          <div class="brand-mark">NP</div>
+          <div>
+            <h1>NutriPilot</h1>
+            <p>Fuel with direction</p>
+          </div>
         </div>
         <form id="authForm" class="auth-form">
           <label>Email
@@ -75,7 +77,7 @@
   </div>
 
   <nav class="mobile-nav" aria-label="Mobile navigation">
-    <button class="nav-btn active" data-route="today">Today</button>
+    <button class="nav-btn active" data-route="today">Diary</button>
     <button class="nav-btn" data-route="search">Search</button>
     <button class="nav-btn" data-route="recipes">Recipes</button>
     <button class="nav-btn" data-route="reports">Reports</button>
