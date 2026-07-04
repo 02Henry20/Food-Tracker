@@ -1522,3 +1522,87 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* NutriPilot change pass v8: mobile diary/search/recipe cleanup */
+.modal {
+  max-width: min(680px, calc(100vw - 28px));
+  overflow-x: hidden;
+}
+.modal-body,
+.modal-body label,
+.modal-body input,
+.modal-body select,
+.modal-body textarea {
+  min-width: 0;
+}
+.modal .kicker {
+  white-space: normal;
+}
+
+.date-control input[type="date"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-align-last: center;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.date-control input[type="date"]::-webkit-datetime-edit,
+.date-control input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.date-control input[type="date"]::-webkit-date-and-time-value {
+  width: 100%;
+  text-align: center;
+  justify-content: center;
+}
+.date-control input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 8px;
+  opacity: .75;
+}
+
+.meal-card .meal-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.meal-card .meal-actions {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+}
+.meal-card .meal-summary {
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 560px) {
+  .date-control {
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+  .date-control input[type="date"] {
+    position: relative;
+    min-width: 0;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+  .meal-card .meal-head {
+    grid-template-columns: 1fr;
+  }
+  .meal-card .meal-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .meal-card .meal-summary {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 5px;
+  }
+  .meal-card .meal-summary span {
+    max-width: 100%;
+  }
+  .meal-card .fold-btn {
+    position: static;
+  }
+}

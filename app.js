@@ -1076,7 +1076,7 @@ function searchPersonalLibrary(queryText) {
   const query = normalizeSearchText(queryText);
   const tokens = query.split(/\s+/).filter(Boolean);
   const foods = [...state.customFoods].sort(foodSearchSort);
-  if (!tokens.length) return foods.slice(0, 30).map(food => markResultFood(food, resultKindForFood(food)));
+  if (!tokens.length) return [];
   return foods
     .filter(food => {
       const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
@@ -1272,18 +1272,15 @@ function renderSearch() {
 function renderSearchV2() {
   const validTabs = ["foods", "eaten", "mealsets", "recipes"];
   const activeTab = validTabs.includes(state.searchTab) ? state.searchTab : "foods";
-  const combined = state.searchResultsQuery === state.searchQuery && state.searchResults.length
-    ? state.searchResults
-    : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []);
+  const hasFoodQuery = !!normalizeSearchText(state.searchQuery);
+  const combined = hasFoodQuery
+    ? (state.searchResultsQuery === state.searchQuery && state.searchResults.length
+      ? state.searchResults
+      : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []))
+    : [];
   const eatenResults = eatenFoodResults(state.searchQuery);
   const mealsetResults = searchLibraryItems(state.mealsets, state.searchQuery);
   const recipeResults = searchLibraryItems(state.recipes, state.searchQuery);
-  const tabCounts = {
-    foods: combined.length,
-    eaten: eatenResults.length,
-    mealsets: mealsetResults.length,
-    recipes: recipeResults.length
-  };
   const pagedTabs = { foods: combined, eaten: eatenResults };
   const activePagedResults = pagedTabs[activeTab] || [];
   const needsPagination = !!pagedTabs[activeTab];
@@ -1293,7 +1290,7 @@ function renderSearchV2() {
   const pageResults = needsPagination ? activePagedResults.slice(pageStart, pageStart + SEARCH_PAGE_SIZE) : [];
   const activeMeta = {
     foods: ["Foods", `${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
-    eaten: ["Eaten foods", `${eatenResults.length} food${eatenResults.length === 1 ? "" : "s"}${eatenResults.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}, ordered by eaten count`],
+    eaten: ["Eaten foods", `${eatenResults.length} food${eatenResults.length === 1 ? "" : "s"}${eatenResults.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
     mealsets: ["Mealsets", `${mealsetResults.length} result${mealsetResults.length === 1 ? "" : "s"}`],
     recipes: ["Recipes", `${recipeResults.length} result${recipeResults.length === 1 ? "" : "s"}`]
   }[activeTab];
@@ -1310,7 +1307,6 @@ function renderSearchV2() {
         <div class="meal-head">
           <div>
             <h3>Find food</h3>
-            <p>Search results are ranked by your all-time eaten count. Same-day diary entries are no longer pinned to the top.</p>
           </div>
           <button class="secondary-btn" data-action="open-custom-food-modal">Add food</button>
         </div>
@@ -1331,7 +1327,7 @@ function renderSearchV2() {
             ["eaten", "Eaten"],
             ["mealsets", "Mealsets"],
             ["recipes", "Recipes"]
-          ].map(([tab, label]) => `<button type="button" class="tiny-btn ${activeTab === tab ? "active" : ""}" data-action="set-search-tab" data-tab="${tab}">${label}<span>${tabCounts[tab]}</span></button>`).join("")}
+          ].map(([tab, label]) => `<button type="button" class="tiny-btn ${activeTab === tab ? "active" : ""}" data-action="set-search-tab" data-tab="${tab}">${label}</button>`).join("")}
         </div>
         <div class="meal-head">
           <h3>${activeMeta[0]}</h3>
@@ -1473,7 +1469,6 @@ function renderRecipeSearchCard(recipe) {
       <div class="inline-actions">
         ${itemFavoriteButton("recipe", recipe)}
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
-        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Detail</button>
       </div>
     </div>
   `;
@@ -1724,8 +1719,8 @@ async function runFoodSearch(queryText, options = {}) {
     state.searchQuery = "";
     state.searchResultsQuery = "";
     state.searchPage = 1;
-    state.searchResults = mergeFoodResults(searchPersonalLibrary(""), []);
-    state.searchFeedback = "Showing personal foods ordered by eaten count.";
+    state.searchResults = [];
+    state.searchFeedback = "Enter a food name to search.";
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
@@ -1768,7 +1763,7 @@ async function runActiveSearch(queryText) {
   state.searchQuery = query;
   state.searchPage = 1;
   const label = state.searchTab === "recipes" ? "recipes" : state.searchTab === "eaten" ? "eaten foods" : "mealsets";
-  state.searchFeedback = query ? `Filtering ${label}.` : state.searchTab === "eaten" ? "Showing eaten foods ordered by eaten count." : `Showing starred and saved ${label}.`;
+  state.searchFeedback = query ? `Filtering ${label}.` : state.searchTab === "eaten" ? "Showing eaten foods." : `Showing starred and saved ${label}.`;
   renderSearchV2();
   return [];
 }
@@ -2054,7 +2049,6 @@ function renderRecipes() {
             <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
           </div>
         </div>
-        <p>Recipes split a batch into portions. Logging stores a nutrition snapshot so old days stay stable even if you edit later.</p>
         <div class="result-grid">${recipes.length ? recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
       </div>` : `<div class="card"><div class="empty-state">Recipes are disabled in Settings.</div></div>`}
 
@@ -2066,7 +2060,6 @@ function renderRecipes() {
             <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
           </div>
         </div>
-        <p>Mealsets are reusable saved meals.</p>
         <div class="result-grid">${mealsets.length ? mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
       </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
     </div>
@@ -2107,7 +2100,6 @@ function renderRecipeCard(recipe) {
         ${itemFavoriteButton("recipe", recipe)}
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="recipe" data-id="${recipe.id}">Ingredient</button>
-        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Detail</button>
         <button class="tiny-btn" data-action="edit-recipe" data-id="${recipe.id}">Edit</button>
         <button class="tiny-btn" data-action="delete-recipe" data-id="${recipe.id}">Delete</button>
       </div>
@@ -2237,12 +2229,47 @@ function recipePortionAsFood(recipe) {
   };
 }
 
+function recipeReferenceItem(recipe, amount = 1, existing = {}) {
+  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, number(recipe.portions, 1))));
+  return {
+    ...existing,
+    itemType: "recipe",
+    source: "recipe",
+    itemId: recipe.id || existing.itemId || null,
+    nameSnapshot: recipe.name || existing.nameSnapshot || "Recipe",
+    brandSnapshot: "Recipe",
+    grams: null,
+    amount,
+    unit: "portion",
+    nutrientsSnapshot: scaleNutrients(perPortion, amount),
+    sourceUpdatedAt: recipe.updatedAt || null,
+    updatedAt: Date.now()
+  };
+}
+
+async function syncRecipeReferencesInMealsets(recipeId, recipeOverride = null) {
+  const recipe = recipeOverride || state.recipes.find(item => item.id === recipeId);
+  if (!recipe) return;
+  const now = Date.now();
+  for (const mealset of state.mealsets || []) {
+    let changed = false;
+    const items = (mealset.items || []).map(item => {
+      if (item.itemType !== "recipe" || item.itemId !== recipeId) return item;
+      changed = true;
+      return recipeReferenceItem(recipe, number(item.amount, 1), item);
+    });
+    if (!changed) continue;
+    await updateDoc(userDoc("mealsets", mealset.id), cleanForFirestore({
+      items,
+      totalNutrients: addNutrients(items),
+      updatedAt: now
+    })).catch(console.warn);
+  }
+}
+
 function openIngredientModal(kind, id) {
   const target = kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
   if (!target) return;
-  const recipePortions = state.settings.modules.recipes
-    ? state.recipes.filter(recipe => !(kind === "recipe" && recipe.id === id)).map(recipePortionAsFood)
-    : [];
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>Add ${kind === "recipe" ? "ingredient" : "item"} to ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
@@ -2250,11 +2277,10 @@ function openIngredientModal(kind, id) {
         <div class="search-bar">
           <label>Search<input id="ingredientSearchInput" type="search" placeholder="Name of the food" /></label>
           <button class="primary-btn" data-action="ingredient-search" data-kind="${kind}" data-id="${id}">Search</button>
-          <button class="secondary-btn" data-action="show-custom-ingredients" data-kind="${kind}" data-id="${id}">Your foods</button>
+          ${kind === "mealset" ? `<button class="secondary-btn" data-action="show-recipe-ingredients" data-kind="${kind}" data-id="${id}">Recipes</button>` : ""}
         </div>
         <div id="ingredientResults" class="result-grid">
-          ${recipePortions.map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("")}
-          ${state.customFoods.slice(0, 12).map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || (recipePortions.length ? "" : `<div class="empty-state">Create a custom food first or search Open Food Facts.</div>`)}
+          <div class="empty-state">Search for a food${kind === "mealset" ? " or add a saved recipe." : "."}</div>
         </div>
       </div>
     </div>
@@ -2302,25 +2328,29 @@ async function addIngredientToTarget(food, amount, kind, id) {
   const nutrientsSnapshot = isRecipePortion
     ? scaleNutrients(food.nutrientsPerPortion, amount)
     : scaleNutrients(food.nutrientsPer100g, amount / 100);
-  const ingredient = {
-    itemType: isRecipePortion ? "recipe" : "food",
-    source: food.source,
-    itemId: libraryId || food.id || food.sourceId || null,
-    nameSnapshot: displayFoodName(food),
-    brandSnapshot: food.brand || null,
-    grams,
-    amount,
-    unit: isRecipePortion ? "portion" : "g",
-    nutrientsSnapshot,
-    createdAt: Date.now()
-  };
+  const ingredient = isRecipePortion
+    ? recipeReferenceItem(state.recipes.find(recipe => recipe.id === food.id) || food, amount, { createdAt: Date.now() })
+    : {
+      itemType: "food",
+      source: food.source,
+      itemId: libraryId || food.id || food.sourceId || null,
+      nameSnapshot: displayFoodName(food),
+      brandSnapshot: food.brand || null,
+      grams,
+      amount,
+      unit: "g",
+      nutrientsSnapshot,
+      createdAt: Date.now()
+    };
 
   if (kind === "recipe") {
     const recipe = state.recipes.find(r => r.id === id);
     const ingredients = [...(recipe.ingredients || []), ingredient];
     const totalNutrients = addNutrients(ingredients);
     const nutrientsPerPortion = scaleNutrients(totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)));
-    await updateDoc(userDoc("recipes", id), cleanForFirestore({ ingredients, totalNutrients, nutrientsPerPortion, updatedAt: Date.now() }));
+    const updatedRecipe = { ...recipe, ingredients, totalNutrients, nutrientsPerPortion, updatedAt: Date.now() };
+    await updateDoc(userDoc("recipes", id), cleanForFirestore({ ingredients, totalNutrients, nutrientsPerPortion, updatedAt: updatedRecipe.updatedAt }));
+    await syncRecipeReferencesInMealsets(id, updatedRecipe);
   } else {
     const mealset = state.mealsets.find(m => m.id === id);
     const items = [...(mealset.items || []), ingredient];
@@ -2402,6 +2432,7 @@ function openTargetEditor(kind, id) {
       patch.nutrientsPerPortion = scaleNutrients(target.totalNutrients, 1 / Math.max(1, patch.portions));
     }
     await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
+    if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
     closeModal();
   });
 }
@@ -2443,7 +2474,9 @@ function openTargetItemAmountEditor(kind, id, index) {
       nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
       updatedAt: Date.now()
     };
-    await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(recalculateTarget(kind, target, items)));
+    const patch = recalculateTarget(kind, target, items);
+    await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
+    if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
     closeModal();
     showToast("Amount updated.");
   });
@@ -2455,7 +2488,9 @@ async function removeTargetItem(kind, id, index) {
   if (!target) return;
   const items = [...(isRecipe ? target.ingredients || [] : target.items || [])];
   items.splice(number(index), 1);
-  await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(recalculateTarget(kind, target, items)));
+  const patch = recalculateTarget(kind, target, items);
+  await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
+  if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
   closeModal();
   showToast("Item removed.");
 }
@@ -3543,7 +3578,6 @@ async function editEntry(id) {
       <form id="editEntryForm" class="modal-body">
         <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
         <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-        <p class="kicker">For precise nutrition recalculation, delete and log again. This edit scales the existing snapshot proportionally.</p>
         <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
       </form>
     </div>
@@ -3730,16 +3764,18 @@ async function handleClick(event) {
     if (action === "add-ingredient") openIngredientModal(btn.dataset.kind, btn.dataset.id);
     if (action === "ingredient-search") {
       const query = document.getElementById("ingredientSearchInput")?.value || "";
-      const results = await runFoodSearch(query, { updateState: false });
       const root = document.getElementById("ingredientResults");
-      root.innerHTML = results.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No results.</div>`;
+      if (!normalizeSearchText(query)) {
+        root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
+      } else {
+        const results = await runFoodSearch(query, { updateState: false });
+        root.innerHTML = results.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No results.</div>`;
+      }
     }
-    if (action === "show-custom-ingredients") {
-      const recipePortions = state.recipes.filter(recipe => !(btn.dataset.kind === "recipe" && recipe.id === btn.dataset.id)).map(recipePortionAsFood);
-      document.getElementById("ingredientResults").innerHTML = [
-        ...recipePortions,
-        ...state.customFoods
-      ].map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No custom foods yet.</div>`;
+    if (action === "show-recipe-ingredients") {
+      const recipePortions = state.recipes.filter(recipe => recipe.id !== btn.dataset.id).map(recipePortionAsFood);
+      document.getElementById("ingredientResults").innerHTML = recipePortions
+        .map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No recipes yet.</div>`;
     }
     if (action === "select-ingredient") openIngredientAmountModal(getFoodByKey(btn.dataset.key), btn.dataset.kind, btn.dataset.id);
     if (action === "edit-target-item") openTargetItemAmountEditor(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
