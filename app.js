@@ -262,24 +262,28 @@ function dateRange(startISO, endISO) {
   return dates;
 }
 
+function userBasePath() {
+  return ["apps", "food-tracker", "users", state.user.uid];
+}
+
 function userDoc(...segments) {
-  return doc(db, "users", state.user.uid, ...segments);
+  return doc(db, ...userBasePath(), ...segments);
 }
 
 function userCollection(...segments) {
-  return collection(db, "users", state.user.uid, ...segments);
+  return collection(db, ...userBasePath(), ...segments);
 }
 
 function entryCollection(dateISO = state.currentDate) {
-  return collection(db, "users", state.user.uid, "dailyLogs", dateISO, "entries");
+  return collection(db, ...userBasePath(), "dailyLogs", dateISO, "entries");
 }
 
 function entryDoc(entryId, dateISO = state.currentDate) {
-  return doc(db, "users", state.user.uid, "dailyLogs", dateISO, "entries", entryId);
+  return doc(db, ...userBasePath(), "dailyLogs", dateISO, "entries", entryId);
 }
 
 function dailyCaloriesDoc(dateISO = state.currentDate) {
-  return doc(db, "apps", "food-tracker", "users", state.user.uid, "dailyCalories", dateISO);
+  return doc(db, ...userBasePath(), "dailyCalories", dateISO);
 }
 
 function storageKey(name, uid = state.user?.uid || "guest") {
@@ -342,7 +346,7 @@ function updateSyncStatus(partial = {}) {
   state.sync = { ...state.sync, ...partial, online: navigator.onLine };
   if (!state.sync.online) state.sync.status = "offline";
   else if (state.sync.pendingWrites) state.sync.status = "pending";
-  else if (state.sync.fromCache) state.sync.status = "offline";
+  else if (state.sync.fromCache) state.sync.status = "cached";
   else state.sync.status = "online";
   renderSyncStatus();
 }
@@ -351,7 +355,7 @@ function noteSnapshotMetadata(metadata) {
   updateSyncStatus({
     fromCache: !!metadata?.fromCache,
     pendingWrites: !!metadata?.hasPendingWrites,
-    lastSyncedAt: !metadata?.fromCache && !metadata?.hasPendingWrites ? Date.now() : state.sync.lastSyncedAt
+    lastSyncedAt: navigator.onLine && !metadata?.hasPendingWrites ? Date.now() : state.sync.lastSyncedAt
   });
 }
 
@@ -361,13 +365,16 @@ function renderSyncStatus() {
   const label = {
     online: "Synced",
     pending: "Syncing",
+    cached: "Cached",
     offline: "Offline"
   }[status] || "Offline";
   els.syncStatus.className = `status-chip ${status}`;
   els.syncStatus.textContent = label;
   els.syncStatus.title = status === "online" && state.sync.lastSyncedAt
     ? `Last Firebase sync: ${new Date(state.sync.lastSyncedAt).toLocaleString()}`
-    : "Using local offline data when Firebase is unavailable.";
+    : status === "cached"
+      ? "Online, but the visible snapshot is currently coming from the local Firestore cache."
+      : "Offline mode is only shown when the browser itself is offline.";
 }
 
 function markSearchStateSaved() {
@@ -668,13 +675,12 @@ function renderToday() {
   const macroGoals = effectiveMacroGoals(goals);
   const kcalPct = Math.min(100, goals.calorieGoal ? total.kcal / goals.calorieGoal * 100 : 0);
   const remaining = goals.calorieGoal - total.kcal;
-  const macros = macroCalories(total);
   const circumference = 2 * Math.PI * 82;
   const offset = circumference - (kcalPct / 100) * circumference;
-  const metrics = [
-    metricCard("Protein", `${round(total.protein)} g`, `${round(macroGoals.proteinGoal - total.protein)} g left`),
-    metricCard("Carbs", `${round(total.carbs)} g`, `${round(macroGoals.carbsGoal - total.carbs)} g left`),
-    metricCard("Fat", `${round(total.fat)} g`, `${round(macroGoals.fatGoal - total.fat)} g left`)
+  const macroRings = [
+    macroCircleCard("Protein", total.protein, macroGoals.proteinGoal, "var(--protein)"),
+    macroCircleCard("Carbs", total.carbs, macroGoals.carbsGoal, "var(--carbs)"),
+    macroCircleCard("Fat", total.fat, macroGoals.fatGoal, "var(--fat)")
   ].join("");
 
   els.pages.today.innerHTML = `
@@ -716,8 +722,8 @@ function renderToday() {
         </div>
       </div>
 
-      <div class="grid-3">
-        ${metrics}
+      <div class="macro-circle-grid">
+        ${macroRings}
       </div>
 
       <div class="meals-grid">
@@ -730,6 +736,26 @@ function renderToday() {
     state.currentDate = e.target.value || todayISO();
     subscribeLogsForCurrentDate();
   });
+}
+
+function macroCircleCard(label, value, goal, color) {
+  const pct = Math.max(0, Math.min(100, goal ? value / goal * 100 : 0));
+  const remaining = goal - value;
+  return `
+    <article class="macro-circle-card" style="--pct:${pct}%; --ring-color:${color};">
+      <div class="macro-circle">
+        <div>
+          <strong>${round(value)}</strong>
+          <span>g</span>
+        </div>
+      </div>
+      <div>
+        <h3>${safeText(label)}</h3>
+        <p>${round(value)} / ${round(goal)} g</p>
+        <small>${remaining >= 0 ? `${round(remaining)} g left` : `${round(Math.abs(remaining))} g over`}</small>
+      </div>
+    </article>
+  `;
 }
 
 function macroRow(label, value, goal, fillClass) {
@@ -755,7 +781,7 @@ function renderMealCard(mealId, label) {
       <div class="meal-head">
         <div>
           <h3>${safeText(label)}</h3>
-          <span>${round(total.kcal, 0)} kcal · ${entries.length} item${entries.length === 1 ? "" : "s"}</span>
+          <span>${round(total.kcal, 0)} kcal</span>
         </div>
         <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
       </div>
@@ -936,7 +962,7 @@ function renderSearch() {
         <p>Search Open Food Facts for packaged/branded foods. Direct API use is free, but the results are crowd-sourced, so nutrition labels are still worth checking.</p>
         <div class="search-bar">
           <label>Food search
-            <input id="foodSearchInput" type="search" placeholder="e.g. Skyr Milbona, oats, tofu" />
+            <input id="foodSearchInput" type="search" placeholder="Name of the food" />
           </label>
           <button class="primary-btn" data-action="search-foods">Search</button>
           <button class="secondary-btn" data-action="open-barcode-modal">Barcode</button>
@@ -958,8 +984,8 @@ function renderSearch() {
           <h3>Create custom food</h3>
           <form id="customFoodForm" class="stack">
             <div class="form-grid two">
-              <label>Name<input name="name" required placeholder="Greek yogurt" /></label>
-              <label>Brand<input name="brand" placeholder="Optional" /></label>
+              <label>Name<input name="name" required placeholder="Name of the food" /></label>
+              <label>Brand<input name="brand" placeholder="Brand name" /></label>
               <label>Serving label<input name="servingLabel" value="100 g" /></label>
               <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
             </div>
@@ -1016,7 +1042,7 @@ function renderSearchV2() {
         </div>
         <div class="search-bar">
           <label>Food search
-            <input id="foodSearchInput" type="search" value="${safeText(state.searchQuery)}" placeholder="e.g. Skyr Milbona, oats, tofu" autocomplete="off" />
+            <input id="foodSearchInput" type="search" value="${safeText(state.searchQuery)}" placeholder="Name of the food" autocomplete="off" />
           </label>
           <button class="primary-btn" data-action="search-foods" ${state.searchLoading ? "disabled" : ""}>${state.searchLoading ? "Searching..." : "Search"}</button>
           ${state.settings.modules.barcode ? `<button class="secondary-btn" data-action="open-barcode-modal">Barcode</button>` : ""}
@@ -1069,38 +1095,62 @@ function updateSearchFiltersFromInputs() {
   renderSearchV2();
 }
 
+function nutrientInputHTML(key, nutrients = {}) {
+  const rawValue = nutrients?.[key];
+  const valueAttr = rawValue !== undefined && rawValue !== null ? ` value="${round(rawValue, 3)}"` : "";
+  return `
+    <label>${safeText(NUTRIENT_LABELS[key])} / 100 g
+      <input name="${key}" type="number" step="0.01" min="0" placeholder="0"${valueAttr} />
+    </label>
+  `;
+}
+
+function nutrientSectionHTML(title, caption, keys, nutrients = {}) {
+  return `
+    <section class="nutrient-section">
+      <div>
+        <h4>${safeText(title)}</h4>
+        <p>${safeText(caption)}</p>
+      </div>
+      <div class="form-grid">
+        ${keys.map(key => nutrientInputHTML(key, nutrients)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function customFoodNutrientFieldsHTML(nutrients = {}) {
+  return [
+    nutrientSectionHTML("Energy and core macros", "Calories plus the three main macronutrients.", ["kcal", "protein", "carbs", "fat"], nutrients),
+    nutrientSectionHTML("Carbohydrate details", "Fiber and sugar are tracked as carbohydrate sub-values.", ["fiber", "sugar"], nutrients),
+    nutrientSectionHTML("Fat details", "Saturated fat is tracked separately from total fat.", ["saturatedFat"], nutrients),
+    nutrientSectionHTML("Salt and sodium", "Sodium is stored in mg. Salt can be left empty if unknown.", ["sodium", "salt"], nutrients),
+    nutrientSectionHTML("Micronutrients", "Optional vitamins and minerals.", ["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"], nutrients)
+  ].join("");
+}
+
 function openCustomFoodCreateModal() {
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Add food</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Add food</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="customFoodForm" class="modal-body">
-        <div class="form-grid two">
-          <label>Name<input name="name" required placeholder="Greek yogurt" /></label>
-          <label>Brand<input name="brand" placeholder="Optional" /></label>
-          <label>Serving unit
-            <select name="servingUnit">
-              ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
-            </select>
-          </label>
-          <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
-        </div>
-        <div class="form-grid">
-          ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "sodium"].map(key => `
-            <label>${NUTRIENT_LABELS[key]} / 100 g
-              <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
-            </label>
-          `).join("")}
-        </div>
-        <details>
-          <summary class="kicker">Micronutrients</summary>
-          <div class="form-grid" style="margin-top:12px;">
-            ${["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].map(key => `
-              <label>${NUTRIENT_LABELS[key]} / 100 g
-                <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
-              </label>
-            `).join("")}
+        <section class="nutrient-section featured-section">
+          <div>
+            <h4>Food identity</h4>
+            <p>Name, brand, and default serving.</p>
           </div>
-        </details>
+          <div class="form-grid two">
+            <label>Name<input name="name" required placeholder="Name of the food" /></label>
+            <label>Brand<input name="brand" placeholder="Brand name" /></label>
+            <label>Serving unit
+              <select name="servingUnit">
+                ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
+              </select>
+            </label>
+            <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+          </div>
+        </section>
+        ${customFoodNutrientFieldsHTML()}
         <div class="form-actions"><button class="primary-btn" type="submit">Add food</button></div>
       </form>
     </div>
@@ -1135,9 +1185,6 @@ function renderMealsetQuickCard(mealset) {
 }
 
 function renderFoodResultCard(food, key) {
-  const sourceLabel = food.resultKind === "personal" ? "Personal food"
-    : food.resultKind === "used" ? "Used before"
-    : food.source === "openfoodfacts" ? "Open Food Facts" : food.source;
   const warnings = foodDataWarnings(food);
   return `
     <div class="result-card ${safeText(food.resultKind || resultKindForFood(food))} ${warnings.length ? "warning" : ""}">
@@ -1146,9 +1193,7 @@ function renderFoodResultCard(food, key) {
         <p>${safeText(caloriesText(food))}</p>
         ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
         <div class="badges">
-          <span class="badge ${food.resultKind === "database" ? "blue" : food.resultKind === "personal" ? "green" : "orange"}">${safeText(sourceLabel)}</span>
           ${food.favorite ? `<span class="badge green">Favorite</span>` : ""}
-          ${food.barcode ? `<span class="badge gray">${safeText(food.barcode)}</span>` : ""}
           ${warnings.length ? `<span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
         </div>
       </div>
@@ -1214,13 +1259,7 @@ function openCustomFoodEditor(food, duplicate = false) {
           </label>
           <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
         </div>
-        <div class="form-grid">
-          ${NUTRIENT_KEYS.map(key => `
-            <label>${NUTRIENT_LABELS[key]} / 100 g
-              <input name="${key}" type="number" step="0.01" min="0" value="${round(food.nutrientsPer100g?.[key], 3)}" />
-            </label>
-          `).join("")}
-        </div>
+        ${customFoodNutrientFieldsHTML(food.nutrientsPer100g)}
         <div class="form-actions"><button class="primary-btn" type="submit">${duplicate ? "Create copy" : "Save changes"}</button></div>
       </form>
     </div>
@@ -1266,10 +1305,7 @@ function renderFoodResult(food, key) {
         <h4>${safeText(displayFoodName(food))}</h4>
         <p>${safeText(caloriesText(food))}</p>
         ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
-        <div class="badges">
-          <span class="badge gray">${safeText(sourceLabel)}</span>
-          ${food.barcode ? `<span class="badge gray">${safeText(food.barcode)}</span>` : ""}
-        </div>
+        <div class="badges"></div>
       </div>
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
@@ -1595,7 +1631,7 @@ function renderRecipes() {
       ${state.settings.modules.recipes ? `<div class="card stack">
         <div class="meal-head">
           <h3>Recipes</h3>
-          <button class="primary-btn" data-action="create-recipe">+ Recipe</button>
+          <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
         </div>
         <p>Recipes split a batch into portions. Logging stores a nutrition snapshot so old days stay stable even if you edit later.</p>
         <div class="result-grid">${state.recipes.length ? state.recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
@@ -1604,7 +1640,7 @@ function renderRecipes() {
       ${state.settings.modules.mealsets ? `<div class="card stack">
         <div class="meal-head">
           <h3>Mealsets</h3>
-          <button class="primary-btn" data-action="create-mealset">+ Mealset</button>
+          <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
         </div>
         <p>Mealsets are reusable full meals. One mealset equals one complete meal.</p>
         <div class="result-grid">${state.mealsets.length ? state.mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
@@ -1674,9 +1710,9 @@ async function createRecipe() {
     <div class="modal">
       <div class="modal-head"><h3>Create recipe</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createRecipeForm" class="modal-body">
-        <label>Name<input name="name" required placeholder="Protein oats" /></label>
+        <label>Name<input name="name" required placeholder="Name of the recipe" /></label>
         <label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="1" required /></label>
-        <label>Notes<textarea name="notes" placeholder="Optional prep notes"></textarea></label>
+        <label>Notes<textarea name="notes" placeholder="Recipe notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
@@ -1705,8 +1741,8 @@ async function createMealset() {
     <div class="modal">
       <div class="modal-head"><h3>Create mealset</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createMealsetForm" class="modal-body">
-        <label>Name<input name="name" required placeholder="Post-workout meal" /></label>
-        <label>Notes<textarea name="notes" placeholder="Optional notes"></textarea></label>
+        <label>Name<input name="name" required placeholder="Name of the mealset" /></label>
+        <label>Notes<textarea name="notes" placeholder="Mealset notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
@@ -1753,7 +1789,7 @@ function openIngredientModal(kind, id) {
       <div class="modal-head"><h3>Add ${kind === "recipe" ? "ingredient" : "item"} to ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
         <div class="search-bar">
-          <label>Search<input id="ingredientSearchInput" type="search" placeholder="Search API or your custom foods" /></label>
+          <label>Search<input id="ingredientSearchInput" type="search" placeholder="Name of the food" /></label>
           <button class="primary-btn" data-action="ingredient-search" data-kind="${kind}" data-id="${id}">Search</button>
           <button class="secondary-btn" data-action="show-custom-ingredients" data-kind="${kind}" data-id="${id}">Your foods</button>
         </div>
@@ -2063,14 +2099,6 @@ function renderReportsShell() {
           <button class="ghost-btn" data-action="report-prev-period">Previous</button>
           <button class="ghost-btn" data-action="report-next-period">Next</button>
         </div>
-        <details style="margin-top:12px;">
-          <summary class="kicker">Frequency filters</summary>
-          <div class="form-grid" style="margin-top:12px;">
-            <label>Meal<select id="reportMealFilter"><option value="all">All meals</option>${MEALS.map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select></label>
-            <label>Brand<input id="reportBrandFilter" placeholder="Any brand" /></label>
-            <label>Source<input id="reportSourceFilter" placeholder="Any source" /></label>
-          </div>
-        </details>
       </div>
       <div id="reportOutput" class="stack">
         <div class="empty-state">Loading current week...</div>
@@ -2464,47 +2492,77 @@ function renderSettingsV2() {
   const s = state.settings;
   const macroMode = s.macroGoalMode === "percent" ? "percent" : "manual";
   const microKeys = ["fiber", "sugar", "sodium", "calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"];
+  const macroGoals = effectiveMacroGoals(s);
+  const macroPercents = {
+    protein: number(s.macroPercentProtein, round(macroGoals.proteinGoal * 4 / Math.max(1, s.calorieGoal) * 100, 1)),
+    carbs: number(s.macroPercentCarbs, round(macroGoals.carbsGoal * 4 / Math.max(1, s.calorieGoal) * 100, 1)),
+    fat: number(s.macroPercentFat, round(macroGoals.fatGoal * 9 / Math.max(1, s.calorieGoal) * 100, 1))
+  };
+
+  const macroGoalCard = (key, label, gramsValue, percentValue, colorClass) => `
+    <article class="macro-goal-card ${colorClass}">
+      <div class="macro-goal-head">
+        <span>${safeText(label)}</span>
+        <small data-macro-preview="${key}"></small>
+      </div>
+      ${macroMode === "percent"
+        ? `<label>Percent<input name="macroPercent${label}" data-macro-percent="${key}" type="number" step="0.1" min="0" max="100" value="${round(percentValue, 1)}" /></label>
+           <input name="${key}Goal" data-macro-gram="${key}" type="hidden" value="${round(gramsValue, 1)}" />`
+        : `<label>Grams<input name="${key}Goal" data-macro-gram="${key}" type="number" step="1" min="0" value="${round(gramsValue, 1)}" /></label>
+           <input name="macroPercent${label}" data-macro-percent="${key}" type="hidden" value="${round(percentValue, 1)}" />`}
+    </article>
+  `;
+
+  const preferenceControl = (label, inputHTML) => `
+    <label>
+      <span class="label-row">${safeText(label)}</span>
+      ${inputHTML}
+    </label>
+  `;
+
   els.pages.settings.innerHTML = `
     <form id="settingsForm" class="stack">
-      <div class="card">
+      <div class="card macro-settings-card">
         <div class="meal-head">
-          <h3>Macro goals</h3>
+          <div>
+            <h3>Macro goals</h3>
+            <p>Choose whether you want to edit macro targets in grams or percentage.</p>
+          </div>
           <div class="segmented" aria-label="Macro input mode">
             <button type="button" class="tiny-btn ${macroMode === "manual" ? "active" : ""}" data-action="set-macro-mode" data-mode="manual">grams</button>
             <button type="button" class="tiny-btn ${macroMode === "percent" ? "active" : ""}" data-action="set-macro-mode" data-mode="percent">percent</button>
           </div>
         </div>
         <input type="hidden" name="macroGoalMode" value="${macroMode}" />
-        <div class="form-grid">
-          ${settingLabel("Calories / day", "Your daily calorie target. Macro grams and percentages use this as the base.", `<input name="calorieGoal" type="number" min="0" value="${s.calorieGoal}" />`)}
-          ${settingLabel("Protein g / day", "Protein target in grams. In percent mode this updates from protein percent.", `<input name="proteinGoal" data-macro-gram="protein" type="number" min="0" value="${s.proteinGoal}" />`)}
-          ${settingLabel("Carbs g / day", "Carbohydrate target in grams. In percent mode this updates from carb percent.", `<input name="carbsGoal" data-macro-gram="carbs" type="number" min="0" value="${s.carbsGoal}" />`)}
-          ${settingLabel("Fat g / day", "Fat target in grams. In percent mode this updates from fat percent.", `<input name="fatGoal" data-macro-gram="fat" type="number" min="0" value="${s.fatGoal}" />`)}
-          ${settingLabel("Protein %", "Protein share of calorie target. In grams mode this updates from protein grams.", `<input name="macroPercentProtein" data-macro-percent="protein" type="number" min="0" max="100" value="${s.macroPercentProtein}" />`)}
-          ${settingLabel("Carbs %", "Carbohydrate share of calorie target. In grams mode this updates from carb grams.", `<input name="macroPercentCarbs" data-macro-percent="carbs" type="number" min="0" max="100" value="${s.macroPercentCarbs}" />`)}
-          ${settingLabel("Fat %", "Fat share of calorie target. In grams mode this updates from fat grams.", `<input name="macroPercentFat" data-macro-percent="fat" type="number" min="0" max="100" value="${s.macroPercentFat}" />`)}
+        <div class="calorie-goal-row">
+          <label>Calories / day<input name="calorieGoal" type="number" min="0" value="${s.calorieGoal}" /></label>
+        </div>
+        <div class="macro-goal-grid">
+          ${macroGoalCard("protein", "Protein", macroGoals.proteinGoal, macroPercents.protein, "protein") }
+          ${macroGoalCard("carbs", "Carbs", macroGoals.carbsGoal, macroPercents.carbs, "carbs") }
+          ${macroGoalCard("fat", "Fat", macroGoals.fatGoal, macroPercents.fat, "fat") }
         </div>
       </div>
 
       <div class="card">
         <h3>App preferences</h3>
         <div class="form-grid">
-          ${settingLabel("Theme", "Choose light, dark, or follow your device setting.", `
+          ${preferenceControl("Theme", `
             <select name="theme">
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${s.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${settingLabel("Dashboard density", "Compact shows more information at once; comfortable gives everything more room.", `
+          ${preferenceControl("Dashboard density", `
             <select name="dashboardDensity">
               ${["comfortable", "compact"].map(v => `<option value="${v}" ${s.dashboardDensity === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${settingLabel("Search region", "Open Food Facts region used for database search.", `
+          ${preferenceControl("Search region", `
             <select name="searchRegion">
               ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${settingLabel("Database preference", "Personal first is fastest because your own library is searched before the API.", `
+          ${preferenceControl("Database preference", `
             <select name="databasePreference">
               ${[
                 ["custom-first", "Personal first"],
@@ -2525,10 +2583,11 @@ function renderSettingsV2() {
               : key === "sodium" ? s.sodiumMax
               : s.micronutrientGoals[key]?.target ?? MICRO_DEFAULTS[key]?.target ?? 0;
             const unit = NUTRIENT_UNITS[key];
-            const info = key === "sugar" || key === "sodium"
-              ? "This is treated as a healthy upper limit."
-              : "This is treated as a daily target.";
-            return settingLabel(`${NUTRIENT_LABELS[key]} (${unit})`, info, `<input name="micro_${key}_target" type="number" step="0.01" min="0" value="${value}" />`);
+            return `
+              <label>${safeText(NUTRIENT_LABELS[key])} (${safeText(unit)})
+                <input name="micro_${key}_target" type="number" step="0.01" min="0" value="${value}" />
+              </label>
+            `;
           }).join("")}
         </div>
       </div>
@@ -2543,15 +2602,25 @@ function renderSettingsV2() {
         </div>
         <div class="inline-actions">
           <button class="secondary-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
-          <button class="secondary-btn" type="button" data-action="export-full-csv">Export full CSV</button>
-          <button class="secondary-btn" type="button" data-action="export-calories-csv">Export calories CSV</button>
-          <button class="ghost-btn" type="button" data-action="export-calories-json">Export calories JSON</button>
           <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
           <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
+          <button class="ghost-btn" type="button" data-action="settings-sign-out">Sign out</button>
           <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>
         </div>
         <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
         <p class="form-message" id="settingsSaveMessage"></p>
+      </div>
+
+      <div class="card stack export-panel">
+        <div>
+          <h3>Exports</h3>
+          <p>Regular exports are separated from backup import/export.</p>
+        </div>
+        <div class="export-grid">
+          <div class="export-action"><button class="secondary-btn" type="button" data-action="export-full-csv">Full CSV</button>${infoButton("Exports every logged item in the selected report period with meal, amount, macros, sodium, and source.")}</div>
+          <div class="export-action"><button class="secondary-btn" type="button" data-action="export-calories-csv">Calories CSV</button>${infoButton("Exports one row per day with total calories only. Useful for other apps that only need kcal totals.")}</div>
+          <div class="export-action"><button class="ghost-btn" type="button" data-action="export-calories-json">Calories JSON</button>${infoButton("Exports the same daily calorie totals as JSON for app-to-app integrations.")}</div>
+        </div>
       </div>
     </form>
   `;
@@ -2580,20 +2649,29 @@ function syncMacroGoalInputs(form, changed = null) {
     fat: form.elements.macroPercentFat
   };
   const kcalPerGram = { protein: 4, carbs: 4, fat: 9 };
+
   if (mode === "percent") {
     for (const key of Object.keys(grams)) {
       const pct = number(percents[key]?.value);
-      if (grams[key]) grams[key].value = round(calories * pct / 100 / kcalPerGram[key], 1);
+      const gramValue = round(calories * pct / 100 / kcalPerGram[key], 1);
+      if (grams[key]) grams[key].value = gramValue;
+      const preview = form.querySelector(`[data-macro-preview="${key}"]`);
+      if (preview) preview.textContent = `${gramValue} g`;
     }
     return;
   }
+
   for (const key of Object.keys(percents)) {
     const gram = number(grams[key]?.value);
-    if (percents[key]) percents[key].value = round(gram * kcalPerGram[key] / calories * 100, 1);
+    const pctValue = round(gram * kcalPerGram[key] / calories * 100, 1);
+    if (percents[key]) percents[key].value = pctValue;
+    const preview = form.querySelector(`[data-macro-preview="${key}"]`);
+    if (preview) preview.textContent = `${pctValue}%`;
   }
 }
 
 function collectSettingsFromForm(form) {
+  syncMacroGoalInputs(form);
   const data = new FormData(form);
   const next = {
     ...state.settings,
@@ -2664,27 +2742,49 @@ function exportBackupJson() {
 async function importBackupFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  const text = await file.text();
-  const payload = JSON.parse(text);
-  if (!payload || typeof payload !== "object") throw new Error("Invalid backup file.");
-  if (!confirm("Import this backup into Firebase? Existing ids in the backup will be overwritten.")) return;
-  if (payload.settings) await setDoc(userDoc("private", "settings"), cleanForFirestore(mergeSettings(payload.settings)), { merge: true });
-  for (const [collectionName, items] of [["customFoods", payload.customFoods], ["recipes", payload.recipes], ["mealsets", payload.mealsets]]) {
-    for (const item of items || []) {
-      const id = item.id || crypto.randomUUID();
-      const copy = { ...item, updatedAt: Date.now() };
-      delete copy.id;
-      await setDoc(userDoc(collectionName, id), cleanForFirestore(copy), { merge: true });
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    if (!payload || typeof payload !== "object") throw new Error("Invalid backup file.");
+    if (!confirm("Import this backup into Firebase? Existing ids in the backup will be overwritten.")) return;
+
+    if (payload.settings) await setDoc(userDoc("private", "settings"), cleanForFirestore(mergeSettings(payload.settings)), { merge: true });
+
+    for (const [collectionName, items] of [["customFoods", payload.customFoods], ["recipes", payload.recipes], ["mealsets", payload.mealsets]]) {
+      for (const item of items || []) {
+        const id = item.id || crypto.randomUUID();
+        const copy = { ...item, updatedAt: Date.now() };
+        delete copy.id;
+        await setDoc(userDoc(collectionName, id), cleanForFirestore(copy), { merge: true });
+      }
     }
+
+    const entriesByKey = new Map();
+    for (const entry of [...(payload.currentLogs || []), ...(payload.reportEntries || [])]) {
+      const dateISO = entry.date || payload.currentDate || state.currentDate;
+      const id = entry.id || crypto.randomUUID();
+      entriesByKey.set(`${dateISO}:${id}`, { ...entry, id, date: dateISO });
+    }
+
+    const importedDates = new Set();
+    for (const entry of entriesByKey.values()) {
+      const id = entry.id;
+      const copy = { ...entry, updatedAt: Date.now() };
+      delete copy.id;
+      await setDoc(entryDoc(id, entry.date), cleanForFirestore(copy), { merge: true });
+      importedDates.add(entry.date);
+    }
+
+    for (const dateISO of importedDates) {
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+    }
+
+    showToast(`Backup imported. ${entriesByKey.size} log entries written.`);
+  } catch (error) {
+    showError(error, "Backup import failed.");
+  } finally {
+    event.target.value = "";
   }
-  for (const entry of payload.currentLogs || []) {
-    const id = entry.id || crypto.randomUUID();
-    const copy = { ...entry, updatedAt: Date.now() };
-    delete copy.id;
-    await setDoc(entryDoc(id, entry.date || payload.currentDate || state.currentDate), cleanForFirestore(copy), { merge: true });
-  }
-  showToast("Backup imported.");
-  event.target.value = "";
 }
 
 async function clearCurrentLogs() {
@@ -2847,7 +2947,7 @@ function openBarcodeModal() {
       <div class="modal-head"><h3>Barcode lookup</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
         <div class="form-grid two">
-          <label>Barcode<input id="barcodeInput" inputmode="numeric" placeholder="e.g. 4008400401621" /></label>
+          <label>Barcode<input id="barcodeInput" inputmode="numeric" placeholder="Barcode number" /></label>
           <label>&nbsp;<button class="primary-btn" data-action="lookup-barcode">Lookup barcode</button></label>
         </div>
         ${canScan ? `
@@ -2992,6 +3092,7 @@ async function handleClick(event) {
     if (action === "go-search") setRoute("search");
     if (action === "go-reports") setRoute("reports");
     if (action === "go-settings") setRoute("settings");
+    if (action === "settings-sign-out") await signOut(auth);
     if (action === "change-date") {
       state.currentDate = addDaysISO(state.currentDate, number(btn.dataset.days));
       subscribeLogsForCurrentDate();
@@ -3074,8 +3175,10 @@ async function handleClick(event) {
       const form = document.getElementById("settingsForm");
       if (form?.elements.macroGoalMode) form.elements.macroGoalMode.value = btn.dataset.mode || "manual";
       syncMacroGoalInputs(form);
-      queueSettingsAutosave({ currentTarget: form });
+      if (form) state.settings = collectSettingsFromForm(form);
       state.settings.macroGoalMode = btn.dataset.mode || "manual";
+      writeLocal("settings", state.settings);
+      setDoc(userDoc("private", "settings"), cleanForFirestore(state.settings), { merge: true }).catch(console.warn);
       renderSettingsV2();
     }
     if (action === "export-backup-json") exportBackupJson();
@@ -3130,7 +3233,7 @@ onAuthStateChanged(auth, user => {
   document.body.classList.toggle("auth-active", !user);
   els.authView.classList.toggle("hidden", !!user);
   els.appView.classList.toggle("hidden", !user);
-  els.signOutBtn.classList.toggle("hidden", !user);
+  els.signOutBtn.classList.add("hidden");
   if (user) {
     hydrateUserCache(user.uid);
     setTheme();
