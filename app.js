@@ -450,7 +450,7 @@ function hydrateUserCache(uid) {
   state.recipes = readLocal("recipes", [], uid);
   state.mealsets = readLocal("mealsets", [], uid);
   state.logs = readLocal(`logs:${state.currentDate}`, [], uid);
-  state.recentSearches = readLocal("recentSearches", [], uid);
+  state.recentSearches = [];
   state.dailyGoals[state.currentDate] = readLocal(`dailyGoal:${state.currentDate}`, null, uid) || state.dailyGoals[state.currentDate] || null;
   renderSyncStatus();
 }
@@ -501,7 +501,8 @@ function renderSyncStatus() {
 }
 
 function markSearchStateSaved() {
-  writeLocal("recentSearches", state.recentSearches);
+  state.recentSearches = [];
+  removeLocal("recentSearches");
 }
 
 function safeText(value) {
@@ -841,11 +842,11 @@ function subscribeLogsForCurrentDate() {
 
 function nutrientSummaryHTML(n) {
   return `
-    <div class="badges">
-      <span class="badge orange">${round(n.kcal, 0)} kcal</span>
-      <span class="badge">P ${round(n.protein)}g</span>
-      <span class="badge">C ${round(n.carbs)}g</span>
-      <span class="badge">F ${round(n.fat)}g</span>
+    <div class="badges macro-badges">
+      <span class="badge kcal">${round(n.kcal, 0)} kcal</span>
+      <span class="badge protein">P ${round(n.protein)}g</span>
+      <span class="badge carbs">C ${round(n.carbs)}g</span>
+      <span class="badge fat">F ${round(n.fat)}g</span>
     </div>
   `;
 }
@@ -922,25 +923,27 @@ function renderToday() {
       </div>
 
       <div class="card dashboard-hero">
-        <div class="ring-wrap" aria-label="Daily calories progress">
-          <svg viewBox="0 0 200 200">
-            <defs>
-              <linearGradient id="ringGradient" x1="0" x2="1" y1="0" y2="1">
-                <stop offset="0%" stop-color="#14b8a6" />
-                <stop offset="55%" stop-color="#3b82f6" />
-                <stop offset="100%" stop-color="#f97316" />
-              </linearGradient>
-            </defs>
-            <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
-            <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
-          </svg>
-          <div class="ring-center">
-            <strong>${round(total.kcal, 0)}</strong>
-            <span>/ ${round(goals.calorieGoal, 0)} kcal</span>
+        <div class="daily-kcal-stack">
+          <div class="ring-wrap" aria-label="Daily calories progress">
+            <svg viewBox="0 0 200 200">
+              <defs>
+                <linearGradient id="ringGradient" x1="0" x2="1" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#14b8a6" />
+                  <stop offset="55%" stop-color="#3b82f6" />
+                  <stop offset="100%" stop-color="#f97316" />
+                </linearGradient>
+              </defs>
+              <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
+              <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
+            </svg>
+            <div class="ring-center">
+              <strong>${round(total.kcal, 0)}</strong>
+              <span>/ ${round(goals.calorieGoal, 0)} kcal</span>
+            </div>
           </div>
+          <span class="pill hero-kcal-pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
         </div>
         <div class="daily-macro-panel">
-          <span class="pill hero-kcal-pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
           <div class="macro-circle-grid">
             ${macroRings}
           </div>
@@ -1006,9 +1009,9 @@ function renderMealCard(mealId, label) {
           <h3>${safeText(label)}</h3>
           <div class="meal-summary">
             <span class="meal-kcal">${round(total.kcal, 0)} kcal</span>
-            <span>P ${round(total.protein)}g</span>
-            <span>C ${round(total.carbs)}g</span>
-            <span>F ${round(total.fat)}g</span>
+            <span class="meal-protein">P ${round(total.protein)}g</span>
+            <span class="meal-carbs">C ${round(total.carbs)}g</span>
+            <span class="meal-fat">F ${round(total.fat)}g</span>
           </div>
         </div>
         <div class="meal-actions">
@@ -1034,6 +1037,7 @@ function renderLogEntry(entry) {
       </div>
       ${nutrientSummaryHTML(n)}
       <div class="entry-actions">
+        ${entry.itemSnapshot && entry.itemType !== "food" ? `<button class="tiny-btn" data-action="entry-snapshot" data-id="${entry.id}">Snapshot</button>` : ""}
         <button class="tiny-btn" data-action="edit-entry" data-id="${entry.id}">Edit</button>
         <button class="tiny-btn" data-action="delete-entry" data-id="${entry.id}">Delete</button>
       </div>
@@ -1056,22 +1060,43 @@ function findPersonalFoodMatch(food) {
       && normalizeSearchText(candidate.brand) === normalizeSearchText(food.brand));
 }
 
+function searchRankForFood(food) {
+  return number(food.usedCount) || number(food.eatenCount) || 0;
+}
+
+function foodSearchSort(a, b) {
+  const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
+  if (favoriteDiff) return favoriteDiff;
+  const eatenDiff = searchRankForFood(b) - searchRankForFood(a);
+  if (eatenDiff) return eatenDiff;
+  return displayFoodName(a).localeCompare(displayFoodName(b));
+}
+
 function searchPersonalLibrary(queryText) {
   const query = normalizeSearchText(queryText);
   const tokens = query.split(/\s+/).filter(Boolean);
-  const foods = [...state.customFoods].sort((a, b) => {
-    const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
-    if (favoriteDiff) return favoriteDiff;
-    return number(b.lastUsedAt) - number(a.lastUsedAt) || number(b.usedCount) - number(a.usedCount);
-  });
-  if (!tokens.length) return foods.slice(0, 20).map(food => markResultFood(food, resultKindForFood(food)));
+  const foods = [...state.customFoods].sort(foodSearchSort);
+  if (!tokens.length) return foods.slice(0, 30).map(food => markResultFood(food, resultKindForFood(food)));
   return foods
     .filter(food => {
       const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
       return tokens.every(token => haystack.includes(token));
     })
-    .slice(0, 30)
+    .slice(0, 40)
     .map(food => markResultFood(food, resultKindForFood(food)));
+}
+
+function eatenFoodResults(queryText) {
+  const tokens = normalizeSearchText(queryText).split(/\s+/).filter(Boolean);
+  return state.customFoods
+    .filter(food => searchRankForFood(food) > 0)
+    .filter(food => {
+      if (!tokens.length) return true;
+      const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
+      return tokens.every(token => haystack.includes(token));
+    })
+    .sort((a, b) => searchRankForFood(b) - searchRankForFood(a) || displayFoodName(a).localeCompare(displayFoodName(b)))
+    .map(food => markResultFood(food, "eaten"));
 }
 
 function resultKindForFood(food) {
@@ -1121,9 +1146,9 @@ function setCachedBarcode(barcode, food) {
 }
 
 function addRecentSearch(queryText) {
-  const query = String(queryText || "").trim();
-  if (!query) return;
-  state.recentSearches = [query, ...state.recentSearches.filter(item => normalizeSearchText(item) !== normalizeSearchText(query))].slice(0, MAX_RECENT_SEARCHES);
+  // Search history chips were intentionally removed. Keep this as a no-op so
+  // existing search flows do not persist or render last searched terms.
+  state.recentSearches = [];
   markSearchStateSaved();
 }
 
@@ -1144,7 +1169,7 @@ function mergeFoodResults(localResults, apiResults) {
     const key = foodIdentity(food);
     if (!map.has(key)) map.set(key, food);
   }
-  return applySearchFilters([...map.values()]).sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite));
+  return applySearchFilters([...map.values()]).sort(foodSearchSort);
 }
 
 function applySearchFilters(results) {
@@ -1245,28 +1270,36 @@ function renderSearch() {
 }
 
 function renderSearchV2() {
-  const activeTab = ["foods", "mealsets", "recipes"].includes(state.searchTab) ? state.searchTab : "foods";
+  const validTabs = ["foods", "eaten", "mealsets", "recipes"];
+  const activeTab = validTabs.includes(state.searchTab) ? state.searchTab : "foods";
   const combined = state.searchResultsQuery === state.searchQuery && state.searchResults.length
     ? state.searchResults
     : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []);
+  const eatenResults = eatenFoodResults(state.searchQuery);
   const mealsetResults = searchLibraryItems(state.mealsets, state.searchQuery);
   const recipeResults = searchLibraryItems(state.recipes, state.searchQuery);
   const tabCounts = {
     foods: combined.length,
+    eaten: eatenResults.length,
     mealsets: mealsetResults.length,
     recipes: recipeResults.length
   };
-  const totalPages = Math.max(1, Math.ceil(combined.length / SEARCH_PAGE_SIZE));
-  state.searchPage = Math.min(Math.max(1, state.searchPage || 1), totalPages);
+  const pagedTabs = { foods: combined, eaten: eatenResults };
+  const activePagedResults = pagedTabs[activeTab] || [];
+  const needsPagination = !!pagedTabs[activeTab];
+  const totalPages = needsPagination ? Math.max(1, Math.ceil(activePagedResults.length / SEARCH_PAGE_SIZE)) : 1;
+  state.searchPage = needsPagination ? Math.min(Math.max(1, state.searchPage || 1), totalPages) : 1;
   const pageStart = (state.searchPage - 1) * SEARCH_PAGE_SIZE;
-  const pageResults = combined.slice(pageStart, pageStart + SEARCH_PAGE_SIZE);
+  const pageResults = needsPagination ? activePagedResults.slice(pageStart, pageStart + SEARCH_PAGE_SIZE) : [];
   const activeMeta = {
     foods: ["Foods", `${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
+    eaten: ["Eaten foods", `${eatenResults.length} food${eatenResults.length === 1 ? "" : "s"}${eatenResults.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}, ordered by eaten count`],
     mealsets: ["Mealsets", `${mealsetResults.length} result${mealsetResults.length === 1 ? "" : "s"}`],
     recipes: ["Recipes", `${recipeResults.length} result${recipeResults.length === 1 ? "" : "s"}`]
   }[activeTab];
   const activeCards = {
     foods: pageResults.length ? pageResults.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or add a custom food.</div>`,
+    eaten: pageResults.length ? pageResults.map(food => renderEatenFoodCard(food, registerTempFood(food))).join("") : `<div class="empty-state">No eaten foods yet. Log foods to build this list.</div>`,
     mealsets: mealsetResults.length ? mealsetResults.map(renderMealsetSearchCard).join("") : `<div class="empty-state">No mealsets found.</div>`,
     recipes: recipeResults.length ? recipeResults.map(renderRecipeSearchCard).join("") : `<div class="empty-state">No recipes found.</div>`
   }[activeTab];
@@ -1277,7 +1310,7 @@ function renderSearchV2() {
         <div class="meal-head">
           <div>
             <h3>Find food</h3>
-            <p>Personal foods and recently used database foods are searched first. Open Food Facts results are saved for offline use.</p>
+            <p>Search results are ranked by your all-time eaten count. Same-day diary entries are no longer pinned to the top.</p>
           </div>
           <button class="secondary-btn" data-action="open-custom-food-modal">Add food</button>
         </div>
@@ -1289,17 +1322,13 @@ function renderSearchV2() {
           ${state.settings.modules.barcode ? `<button class="secondary-btn" data-action="open-barcode-modal">Barcode</button>` : ""}
         </div>
         <div class="loading-line">${safeText(state.searchFeedback || (navigator.onLine ? "Ready." : "Offline: showing personal and saved foods."))}</div>
-        ${state.recentSearches.length ? `
-          <div class="pill-row" aria-label="Recent searches">
-            ${state.recentSearches.map(term => `<button class="tiny-btn" data-action="recent-search" data-query="${safeText(term)}">${safeText(term)}</button>`).join("")}
-          </div>
-        ` : ""}
       </div>
 
       <div class="card stack">
         <div class="segmented search-tabs" aria-label="Search category">
           ${[
             ["foods", "Foods"],
+            ["eaten", "Eaten"],
             ["mealsets", "Mealsets"],
             ["recipes", "Recipes"]
           ].map(([tab, label]) => `<button type="button" class="tiny-btn ${activeTab === tab ? "active" : ""}" data-action="set-search-tab" data-tab="${tab}">${label}<span>${tabCounts[tab]}</span></button>`).join("")}
@@ -1311,10 +1340,10 @@ function renderSearchV2() {
         <div id="searchResults" class="result-grid">
           ${activeCards}
         </div>
-        ${activeTab === "foods" && combined.length > SEARCH_PAGE_SIZE ? `
+        ${needsPagination && activePagedResults.length > SEARCH_PAGE_SIZE ? `
           <div class="pagination">
             <button class="ghost-btn" data-action="search-prev-page" ${state.searchPage <= 1 ? "disabled" : ""}>Previous</button>
-            <span class="kicker">${pageStart + 1}-${Math.min(pageStart + SEARCH_PAGE_SIZE, combined.length)} of ${combined.length}</span>
+            <span class="kicker">${pageStart + 1}-${Math.min(pageStart + SEARCH_PAGE_SIZE, activePagedResults.length)} of ${activePagedResults.length}</span>
             <button class="ghost-btn" data-action="search-next-page" ${state.searchPage >= totalPages ? "disabled" : ""}>Next</button>
           </div>
         ` : ""}
@@ -1329,6 +1358,7 @@ function renderSearchV2() {
     }
   });
 }
+
 
 function updateSearchFiltersFromInputs() {
   state.searchFilters = {
@@ -1462,6 +1492,25 @@ function renderMealsetSearchCard(mealset) {
         ${itemFavoriteButton("mealset", mealset)}
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
         <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderEatenFoodCard(food, key) {
+  const n = normalizeNutrients(food.nutrientsPer100g);
+  const count = searchRankForFood(food);
+  return `
+    <div class="result-card eaten ${food.favorite ? "favorite" : ""}">
+      <div>
+        <h4>${safeText(displayFoodName(food))}</h4>
+        <p>${count}x eaten${food.lastUsedAt ? ` · last ${new Date(number(food.lastUsedAt)).toLocaleDateString()}` : ""}</p>
+        ${nutrientSummaryHTML(n)}
+      </div>
+      <div class="inline-actions">
+        <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
+        <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? `<button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1676,14 +1725,13 @@ async function runFoodSearch(queryText, options = {}) {
     state.searchResultsQuery = "";
     state.searchPage = 1;
     state.searchResults = mergeFoodResults(searchPersonalLibrary(""), []);
-    state.searchFeedback = "Showing favorites and recent personal foods.";
+    state.searchFeedback = "Showing personal foods ordered by eaten count.";
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
   state.searchQuery = query;
   state.searchResultsQuery = query;
   state.searchPage = 1;
-  addRecentSearch(query);
   const localResults = searchPersonalLibrary(query);
   const cached = getCachedSearch(query) || [];
   state.searchResults = mergeFoodResults(localResults, cached);
@@ -1719,9 +1767,8 @@ async function runActiveSearch(queryText) {
   const query = String(queryText || "").trim();
   state.searchQuery = query;
   state.searchPage = 1;
-  if (query) addRecentSearch(query);
-  const label = state.searchTab === "recipes" ? "recipes" : "mealsets";
-  state.searchFeedback = query ? `Filtering ${label}.` : `Showing starred and saved ${label}.`;
+  const label = state.searchTab === "recipes" ? "recipes" : state.searchTab === "eaten" ? "eaten foods" : "mealsets";
+  state.searchFeedback = query ? `Filtering ${label}.` : state.searchTab === "eaten" ? "Showing eaten foods ordered by eaten count." : `Showing starred and saved ${label}.`;
   renderSearchV2();
   return [];
 }
@@ -1913,7 +1960,63 @@ function openLogFoodModal(food) {
   `);
 }
 
+function cloneSnapshot(value) {
+  return cleanForFirestore(structuredClone(value || null));
+}
+
+function loggedFoodSnapshot(food, grams, amount, unit, nutrientsSnapshot, createdAt) {
+  return cloneSnapshot({
+    itemType: "food",
+    itemId: food.id || food.sourceId || null,
+    source: food.source || null,
+    originalSource: food.originalSource || null,
+    sourceId: food.sourceId || null,
+    barcode: food.barcode || null,
+    name: food.name || "Unnamed food",
+    displayName: displayFoodName(food),
+    brand: food.brand || null,
+    amount,
+    unit,
+    gramsEquivalent: grams,
+    defaultServing: food.defaultServing || null,
+    servingOptions: food.servingOptions || [],
+    nutrientsPer100g: normalizeNutrients(food.nutrientsPer100g),
+    nutrientsSnapshot,
+    sourceCreatedAt: food.createdAt || null,
+    sourceUpdatedAt: food.updatedAt || null,
+    loggedAt: createdAt
+  });
+}
+
+function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt) {
+  const isRecipe = kind === "recipe";
+  const items = cloneSnapshot(isRecipe ? target.ingredients || [] : target.items || []);
+  const totalNutrients = normalizeNutrients(target.totalNutrients);
+  const perPortion = isRecipe
+    ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(totalNutrients, 1 / Math.max(1, number(target.portions, 1))))
+    : totalNutrients;
+  return cloneSnapshot({
+    itemType: kind,
+    itemId: target.id || null,
+    name: target.name || (isRecipe ? "Unnamed recipe" : "Unnamed mealset"),
+    notes: target.notes || "",
+    amount,
+    unit: isRecipe ? "portion" : "mealset",
+    portions: isRecipe ? number(target.portions, 1) : null,
+    ingredients: isRecipe ? items : [],
+    items: isRecipe ? [] : items,
+    totalNutrients,
+    nutrientsPerPortion: isRecipe ? perPortion : null,
+    nutrientsPerUnit: isRecipe ? perPortion : totalNutrients,
+    nutrientsSnapshot,
+    sourceCreatedAt: target.createdAt || null,
+    sourceUpdatedAt: target.updatedAt || null,
+    loggedAt: createdAt
+  });
+}
+
 async function logFood(food, amount, unit, grams, meal, dateISO) {
+  const createdAt = Date.now();
   const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
   const libraryId = await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
   const entry = {
@@ -1928,8 +2031,9 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     meal,
     date: dateISO,
     nutrientsSnapshot,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    itemSnapshot: loggedFoodSnapshot(food, grams, amount, unit, nutrientsSnapshot, createdAt),
+    createdAt,
+    updatedAt: createdAt
   };
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
   await updateDailyCalorieSummary(dateISO).catch(console.warn);
@@ -2193,7 +2297,7 @@ function openIngredientAmountModal(food, kind, id) {
 
 async function addIngredientToTarget(food, amount, kind, id) {
   const isRecipePortion = food?.source === "recipe";
-  if (!isRecipePortion) await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
+  const libraryId = isRecipePortion ? null : await ensureFoodInPersonalLibrary(food, { incrementUsage: false });
   const grams = isRecipePortion ? null : amount;
   const nutrientsSnapshot = isRecipePortion
     ? scaleNutrients(food.nutrientsPerPortion, amount)
@@ -2201,7 +2305,7 @@ async function addIngredientToTarget(food, amount, kind, id) {
   const ingredient = {
     itemType: isRecipePortion ? "recipe" : "food",
     source: food.source,
-    itemId: food.id || food.sourceId || null,
+    itemId: libraryId || food.id || food.sourceId || null,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
     grams,
@@ -2356,6 +2460,22 @@ async function removeTargetItem(kind, id, index) {
   showToast("Item removed.");
 }
 
+async function incrementFoodUsageForTargetItems(items = []) {
+  const now = Date.now();
+  const foodIds = [...new Set((items || [])
+    .filter(item => item?.itemType === "food" && item.itemId)
+    .map(item => item.itemId))];
+  for (const id of foodIds) {
+    const local = state.customFoods.find(food => food.id === id);
+    if (!local) continue;
+    await updateDoc(userDoc("customFoods", id), cleanForFirestore({
+      usedCount: number(local.usedCount) + 1,
+      lastUsedAt: now,
+      updatedAt: now
+    })).catch(console.warn);
+  }
+}
+
 function openLogRecipeModal(recipe) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion);
   openModal(`
@@ -2376,6 +2496,8 @@ function openLogRecipeModal(recipe) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
+    const createdAt = Date.now();
+    const nutrientsSnapshot = scaleNutrients(perPortion, amount);
     const entry = {
       itemType: "recipe",
       itemId: recipe.id,
@@ -2384,11 +2506,13 @@ function openLogRecipeModal(recipe) {
       unit: "portion",
       meal: data.get("meal"),
       date: data.get("date"),
-      nutrientsSnapshot: scaleNutrients(perPortion, amount),
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      nutrientsSnapshot,
+      itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
+      createdAt,
+      updatedAt: createdAt
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await incrementFoodUsageForTargetItems(recipe.ingredients || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     showToast("Recipe logged.");
@@ -2415,6 +2539,8 @@ function openLogMealsetModal(mealset) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
+    const createdAt = Date.now();
+    const nutrientsSnapshot = scaleNutrients(total, amount);
     const entry = {
       itemType: "mealset",
       itemId: mealset.id,
@@ -2423,11 +2549,13 @@ function openLogMealsetModal(mealset) {
       unit: "mealset",
       meal: data.get("meal"),
       date: data.get("date"),
-      nutrientsSnapshot: scaleNutrients(total, amount),
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      nutrientsSnapshot,
+      itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
+      createdAt,
+      updatedAt: createdAt
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await incrementFoodUsageForTargetItems(mealset.items || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     showToast("Mealset logged.");
@@ -3382,6 +3510,30 @@ async function repeatYesterday() {
   showToast("Copied yesterday to this day.");
 }
 
+function openEntrySnapshotModal(id) {
+  const entry = state.logs.find(e => e.id === id);
+  const snapshot = entry?.itemSnapshot;
+  if (!entry || !snapshot) return;
+  const n = normalizeNutrients(snapshot.nutrientsSnapshot || entry.nutrientsSnapshot);
+  const ingredientRows = snapshot.itemType === "recipe" ? snapshot.ingredients || [] : snapshot.items || [];
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>${safeText(entry.nameSnapshot)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-body">
+        <p class="kicker">Logged ${entry.createdAt ? new Date(number(entry.createdAt)).toLocaleString() : "at this entry time"}. This is the saved version, independent of later recipe or mealset edits.</p>
+        ${nutrientSummaryHTML(n)}
+        ${ingredientRows.length ? `
+          <div class="detail-table">
+            ${ingredientRows.map(item => `
+              <div class="detail-row"><span>${safeText(item.nameSnapshot || item.name || "Item")}</span><strong>${itemAmountText(item)} · ${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong></div>
+            `).join("")}
+          </div>
+        ` : `<div class="empty-state">No ingredient snapshot stored for this entry.</div>`}
+      </div>
+    </div>
+  `);
+}
+
 async function editEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
@@ -3401,12 +3553,22 @@ async function editEntry(id) {
     const data = new FormData(event.currentTarget);
     const newAmount = number(data.get("amount"), entry.amount);
     const factor = entry.amount ? newAmount / entry.amount : 1;
+    const updatedAt = Date.now();
+    const nutrientsSnapshot = scaleNutrients(entry.nutrientsSnapshot, factor);
+    const itemSnapshot = entry.itemSnapshot ? {
+      ...entry.itemSnapshot,
+      amount: newAmount,
+      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.itemSnapshot.gramsEquivalent,
+      nutrientsSnapshot,
+      updatedAt
+    } : null;
     await updateDoc(entryDoc(id), cleanForFirestore({
       amount: newAmount,
       gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.gramsEquivalent,
       meal: data.get("meal"),
-      nutrientsSnapshot: scaleNutrients(entry.nutrientsSnapshot, factor),
-      updatedAt: Date.now()
+      nutrientsSnapshot,
+      ...(itemSnapshot ? { itemSnapshot } : {}),
+      updatedAt
     }));
     await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
     closeModal();
@@ -3425,7 +3587,9 @@ async function moveEntry(id) {
 async function duplicateEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
-  const copy = { ...entry, createdAt: Date.now(), updatedAt: Date.now() };
+  const createdAt = Date.now();
+  const copy = { ...entry, createdAt, updatedAt: createdAt };
+  if (copy.itemSnapshot) copy.itemSnapshot = { ...copy.itemSnapshot, loggedAt: createdAt, duplicatedFrom: entry.createdAt || null };
   delete copy.id;
   await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
   await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
@@ -3537,6 +3701,7 @@ async function handleClick(event) {
       await deleteDoc(entryDoc(btn.dataset.id));
       await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
     }
+    if (action === "entry-snapshot") openEntrySnapshotModal(btn.dataset.id);
     if (action === "edit-entry") await editEntry(btn.dataset.id);
     if (action === "move-entry") await moveEntry(btn.dataset.id);
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
@@ -3596,12 +3761,20 @@ async function handleClick(event) {
     if (action === "export-calories-json") await exportEntries("json", true);
     if (action === "set-macro-mode") {
       const form = document.getElementById("settingsForm");
-      if (form?.elements.macroGoalMode) form.elements.macroGoalMode.value = btn.dataset.mode || "manual";
+      const nextMode = btn.dataset.mode || "manual";
+      if (form?.elements.macroGoalMode) form.elements.macroGoalMode.value = nextMode;
       syncMacroGoalInputs(form);
       if (form) state.settings = collectSettingsFromForm(form);
-      state.settings.macroGoalMode = btn.dataset.mode || "manual";
+      state.settings.macroGoalMode = nextMode;
+      const dayGoal = goalSnapshotFromSettings(state.settings);
+      dayGoal.savedForDate = state.currentDate;
+      state.dailyGoals[state.currentDate] = dayGoal;
       writeLocal("settings", state.settings);
-      setDoc(userDoc("private", "settings"), cleanForFirestore(state.settings), { merge: true }).catch(console.warn);
+      writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
+      await Promise.all([
+        setDoc(userDoc("private", "settings"), cleanForFirestore(state.settings), { merge: true }),
+        setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
+      ]);
       renderSettingsV2();
     }
     if (action === "export-backup-json") exportBackupJson();
