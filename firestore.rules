@@ -13,5 +13,9 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if isOwner(uid);
     }
+
+    match /apps/food-tracker/users/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
   }
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v1";
+const CACHE_NAME = "nutripilot-v2";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -26,6 +26,15 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== location.origin || event.request.method !== "GET") return;
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  if (event.request.method !== "GET") return;
+  if (requestUrl.origin !== location.origin) return;
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+  );
 });

@@ -11,6 +11,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -43,6 +44,8 @@
           <h2 id="pageTitle">Today</h2>
         </div>
         <div class="top-actions">
+          <span id="syncStatus" class="status-chip" aria-live="polite">Offline cache</span>
+          <button id="installBtn" class="ghost-btn hidden" type="button">Install</button>
           <button id="themeToggle" class="ghost-btn" type="button">Theme</button>
           <button id="signOutBtn" class="ghost-btn hidden" type="button">Sign out</button>
         </div>

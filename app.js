@@ -16,7 +16,8 @@ import {
   collection,
   addDoc,
   getDocs,
-  onSnapshot
+  onSnapshot,
+  enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -31,6 +32,26 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+enableIndexedDbPersistence(db).catch(error => {
+  console.warn("Firestore offline persistence unavailable:", error.code || error.message);
+});
+
+const APP_STORAGE_PREFIX = "nutripilot";
+const SEARCH_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const MAX_RECENT_SEARCHES = 10;
+const MAX_CACHED_SEARCHES = 40;
+const MICRO_DEFAULTS = {
+  calcium: { target: 1000, mode: "min" },
+  iron: { target: 14, mode: "min" },
+  potassium: { target: 3500, mode: "min" },
+  magnesium: { target: 350, mode: "min" },
+  vitaminA: { target: 800, mode: "min" },
+  vitaminC: { target: 95, mode: "min" },
+  vitaminD: { target: 20, mode: "min" },
+  vitaminB12: { target: 4, mode: "min" },
+  sodium: { target: 2300, mode: "max" },
+  salt: { target: 6, mode: "max" }
+};
 
 const DEFAULT_SETTINGS = {
   calorieGoal: 2400,
@@ -44,7 +65,21 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   accent: "teal",
   searchRegion: "world",
-  databasePreference: "openfoodfacts",
+  databasePreference: "custom-first",
+  dashboardDensity: "comfortable",
+  macroGoalMode: "manual",
+  macroPercentProtein: 25,
+  macroPercentCarbs: 45,
+  macroPercentFat: 30,
+  nutrientVisibility: {
+    sugar: true,
+    fiber: true,
+    salt: true,
+    sodium: true,
+    saturatedFat: true,
+    micronutrients: true
+  },
+  micronutrientGoals: MICRO_DEFAULTS,
   modules: {
     barcode: true,
     recipes: true,
@@ -114,6 +149,8 @@ const els = {
   authMessage: document.getElementById("authMessage"),
   pageTitle: document.getElementById("pageTitle"),
   themeToggle: document.getElementById("themeToggle"),
+  installBtn: document.getElementById("installBtn"),
+  syncStatus: document.getElementById("syncStatus"),
   modalRoot: document.getElementById("modalRoot"),
   toast: document.getElementById("toast"),
   pages: {
@@ -135,10 +172,33 @@ const state = {
   recipes: [],
   mealsets: [],
   searchResults: [],
+  searchQuery: "",
+  searchLoading: false,
+  searchFeedback: "",
+  recentSearches: [],
+  searchFilters: {
+    brand: "",
+    source: "all",
+    kcalMin: "",
+    kcalMax: "",
+    highProtein: false,
+    lowSugar: false
+  },
   reportEntries: [],
+  reportRange: currentWeekRange(),
   tempFoods: new Map(),
   charts: {},
-  unsubs: []
+  unsubs: [],
+  sync: {
+    online: navigator.onLine,
+    status: navigator.onLine ? "online" : "offline",
+    fromCache: false,
+    pendingWrites: false,
+    lastSyncedAt: null,
+    persistence: "requested"
+  },
+  installPrompt: null,
+  settingsSaveTimer: null
 };
 
 function todayISO() {
@@ -190,6 +250,103 @@ function entryDoc(entryId, dateISO = state.currentDate) {
   return doc(db, "users", state.user.uid, "dailyLogs", dateISO, "entries", entryId);
 }
 
+function dailyCaloriesDoc(dateISO = state.currentDate) {
+  return doc(db, "apps", "food-tracker", "users", state.user.uid, "dailyCalories", dateISO);
+}
+
+function storageKey(name, uid = state.user?.uid || "guest") {
+  return `${APP_STORAGE_PREFIX}:${uid}:${name}`;
+}
+
+function readLocal(name, fallback, uid = state.user?.uid) {
+  try {
+    const raw = localStorage.getItem(storageKey(name, uid));
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (error) {
+    console.warn("Could not read local cache", name, error);
+    return fallback;
+  }
+}
+
+function writeLocal(name, value, uid = state.user?.uid) {
+  try {
+    localStorage.setItem(storageKey(name, uid), JSON.stringify(value));
+  } catch (error) {
+    console.warn("Could not write local cache", name, error);
+  }
+}
+
+function removeLocal(name, uid = state.user?.uid) {
+  try {
+    localStorage.removeItem(storageKey(name, uid));
+  } catch (error) {
+    console.warn("Could not clear local cache", name, error);
+  }
+}
+
+function collectionFreshness(items = []) {
+  return items.reduce((latest, item) => Math.max(latest, number(item.updatedAt), number(item.createdAt), number(item.lastUsedAt)), 0);
+}
+
+function hydrateUserCache(uid) {
+  state.settings = mergeSettings(readLocal("settings", structuredClone(DEFAULT_SETTINGS), uid));
+  state.customFoods = readLocal("customFoods", [], uid);
+  state.recipes = readLocal("recipes", [], uid);
+  state.mealsets = readLocal("mealsets", [], uid);
+  state.logs = readLocal(`logs:${state.currentDate}`, [], uid);
+  state.recentSearches = readLocal("recentSearches", [], uid);
+  renderSyncStatus();
+}
+
+function mergeSettings(raw = {}) {
+  const source = raw || {};
+  const merged = { ...structuredClone(DEFAULT_SETTINGS), ...source };
+  merged.modules = { ...DEFAULT_SETTINGS.modules, ...(source.modules || {}) };
+  merged.nutrientVisibility = { ...DEFAULT_SETTINGS.nutrientVisibility, ...(source.nutrientVisibility || {}) };
+  merged.micronutrientGoals = { ...structuredClone(MICRO_DEFAULTS), ...(source.micronutrientGoals || {}) };
+  for (const key of Object.keys(MICRO_DEFAULTS)) {
+    merged.micronutrientGoals[key] = { ...MICRO_DEFAULTS[key], ...(merged.micronutrientGoals[key] || {}) };
+  }
+  return merged;
+}
+
+function updateSyncStatus(partial = {}) {
+  state.sync = { ...state.sync, ...partial, online: navigator.onLine };
+  if (!state.sync.online) state.sync.status = "offline";
+  else if (state.sync.pendingWrites) state.sync.status = "pending";
+  else if (state.sync.fromCache) state.sync.status = "cached";
+  else state.sync.status = "online";
+  renderSyncStatus();
+}
+
+function noteSnapshotMetadata(metadata) {
+  updateSyncStatus({
+    fromCache: !!metadata?.fromCache,
+    pendingWrites: !!metadata?.hasPendingWrites,
+    lastSyncedAt: !metadata?.fromCache && !metadata?.hasPendingWrites ? Date.now() : state.sync.lastSyncedAt
+  });
+}
+
+function renderSyncStatus() {
+  if (!els.syncStatus) return;
+  const status = state.sync.status || (navigator.onLine ? "online" : "offline");
+  const label = {
+    online: "Synced",
+    pending: "Syncing",
+    cached: "Cached",
+    offline: "Offline"
+  }[status] || "Offline";
+  els.syncStatus.className = `status-chip ${status}`;
+  els.syncStatus.textContent = label;
+  els.syncStatus.title = status === "online" && state.sync.lastSyncedAt
+    ? `Last Firebase sync: ${new Date(state.sync.lastSyncedAt).toLocaleString()}`
+    : "Using local cache when Firebase is unavailable.";
+}
+
+function markSearchStateSaved() {
+  writeLocal("recentSearches", state.recentSearches);
+}
+
 function safeText(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -235,6 +392,31 @@ function addNutrients(items) {
   return total;
 }
 
+async function updateDailyCalorieSummary(dateISO, entries = null) {
+  if (!state.user || !dateISO) return;
+  let summaryEntries = entries;
+  if (!summaryEntries) {
+    const snap = await getDocs(entryCollection(dateISO));
+    summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+  }
+  const total = addNutrients(summaryEntries || []);
+  const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
+  for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
+  await setDoc(dailyCaloriesDoc(dateISO), cleanForFirestore({
+    date: dateISO,
+    uid: state.user.uid,
+    app: "NutriPilot",
+    totalKcal: round(total.kcal, 0),
+    protein: round(total.protein, 1),
+    carbs: round(total.carbs, 1),
+    fat: round(total.fat, 1),
+    fiber: round(total.fiber, 1),
+    meals: byMeal,
+    itemCount: summaryEntries?.length || 0,
+    updatedAt: Date.now()
+  }), { merge: true });
+}
+
 function scaleNutrients(nutrients, factor) {
   const out = emptyNutrients();
   for (const key of NUTRIENT_KEYS) out[key] = number(nutrients?.[key]) * number(factor);
@@ -255,6 +437,38 @@ function macroCalories(n) {
     carbsPct: total ? carbs / total * 100 : 0,
     fatPct: total ? fat / total * 100 : 0
   };
+}
+
+function effectiveMacroGoals(settings = state.settings) {
+  const calories = Math.max(1, number(settings.calorieGoal, DEFAULT_SETTINGS.calorieGoal));
+  if (settings.macroGoalMode === "percent") {
+    return {
+      proteinGoal: calories * number(settings.macroPercentProtein, 25) / 100 / 4,
+      carbsGoal: calories * number(settings.macroPercentCarbs, 45) / 100 / 4,
+      fatGoal: calories * number(settings.macroPercentFat, 30) / 100 / 9
+    };
+  }
+  if (settings.macroGoalMode === "protein-fixed") {
+    const proteinGoal = number(settings.proteinGoal, DEFAULT_SETTINGS.proteinGoal);
+    const remaining = Math.max(0, calories - proteinGoal * 4);
+    return {
+      proteinGoal,
+      carbsGoal: remaining * .55 / 4,
+      fatGoal: remaining * .45 / 9
+    };
+  }
+  return {
+    proteinGoal: number(settings.proteinGoal, DEFAULT_SETTINGS.proteinGoal),
+    carbsGoal: number(settings.carbsGoal, DEFAULT_SETTINGS.carbsGoal),
+    fatGoal: number(settings.fatGoal, DEFAULT_SETTINGS.fatGoal)
+  };
+}
+
+function nutrientVisible(key) {
+  if (["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].includes(key)) {
+    return state.settings.modules.micronutrients && state.settings.nutrientVisibility.micronutrients !== false;
+  }
+  return state.settings.nutrientVisibility?.[key] !== false;
 }
 
 function gramsFromServingString(servingSize = "") {
@@ -304,6 +518,9 @@ function setTheme() {
     ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
     : chosen;
   document.documentElement.dataset.theme = resolved;
+  document.body.dataset.density = state.settings.dashboardDensity || "comfortable";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#07111f" : "#f5f7fb");
+  if (els.themeToggle) els.themeToggle.textContent = resolved === "dark" ? "Dark" : "Light";
 }
 
 function setRoute(route) {
@@ -318,10 +535,26 @@ function setRoute(route) {
 function renderCurrentRoute() {
   if (!state.user) return;
   if (state.route === "today") renderToday();
-  if (state.route === "search") renderSearch();
-  if (state.route === "recipes") renderRecipes();
-  if (state.route === "reports") renderReportsShell();
-  if (state.route === "settings") renderSettings();
+  if (state.route === "search") renderSearchV2();
+  if (state.route === "recipes") {
+    if (state.settings.modules.recipes || state.settings.modules.mealsets) renderRecipes();
+    else renderModuleDisabled("Recipes and mealsets");
+  }
+  if (state.route === "reports") {
+    if (state.settings.modules.graphs) renderReportsShell();
+    else renderModuleDisabled("Reports and graphs");
+  }
+  if (state.route === "settings") renderSettingsV2();
+}
+
+function renderModuleDisabled(label) {
+  els.pages[state.route].innerHTML = `
+    <div class="card stack">
+      <h3>${safeText(label)} disabled</h3>
+      <p>Turn this module back on in Settings to use it again.</p>
+      <div class="inline-actions"><button class="primary-btn" data-action="go-settings">Open settings</button></div>
+    </div>
+  `;
 }
 
 function subscribeUserData() {
@@ -331,28 +564,50 @@ function subscribeUserData() {
   const settingsRef = userDoc("private", "settings");
   getDoc(settingsRef).then(snap => {
     if (!snap.exists()) setDoc(settingsRef, cleanForFirestore(DEFAULT_SETTINGS), { merge: true });
+  }).catch(error => {
+    console.warn("Settings preflight failed; using local settings.", error);
+    updateSyncStatus({ fromCache: true });
   });
 
-  state.unsubs.push(onSnapshot(settingsRef, snap => {
-    state.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(snap.data() || {}) };
-    state.settings.modules = { ...DEFAULT_SETTINGS.modules, ...(state.settings.modules || {}) };
+  state.unsubs.push(onSnapshot(settingsRef, { includeMetadataChanges: true }, snap => {
+    noteSnapshotMetadata(snap.metadata);
+    state.settings = mergeSettings(snap.data() || state.settings);
+    writeLocal("settings", state.settings);
     setTheme();
     renderCurrentRoute();
+  }, error => {
+    console.warn("Settings snapshot failed; local cache remains active.", error);
+    updateSyncStatus({ fromCache: true });
   }));
 
-  state.unsubs.push(onSnapshot(userCollection("customFoods"), snap => {
+  state.unsubs.push(onSnapshot(userCollection("customFoods"), { includeMetadataChanges: true }, snap => {
+    noteSnapshotMetadata(snap.metadata);
     state.customFoods = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => displayFoodName(a).localeCompare(displayFoodName(b)));
+    writeLocal("customFoods", state.customFoods);
     renderCurrentRoute();
+  }, error => {
+    console.warn("Custom foods snapshot failed; local cache remains active.", error);
+    updateSyncStatus({ fromCache: true });
   }));
 
-  state.unsubs.push(onSnapshot(userCollection("recipes"), snap => {
+  state.unsubs.push(onSnapshot(userCollection("recipes"), { includeMetadataChanges: true }, snap => {
+    noteSnapshotMetadata(snap.metadata);
     state.recipes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    writeLocal("recipes", state.recipes);
     renderCurrentRoute();
+  }, error => {
+    console.warn("Recipes snapshot failed; local cache remains active.", error);
+    updateSyncStatus({ fromCache: true });
   }));
 
-  state.unsubs.push(onSnapshot(userCollection("mealsets"), snap => {
+  state.unsubs.push(onSnapshot(userCollection("mealsets"), { includeMetadataChanges: true }, snap => {
+    noteSnapshotMetadata(snap.metadata);
     state.mealsets = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    writeLocal("mealsets", state.mealsets);
     renderCurrentRoute();
+  }, error => {
+    console.warn("Mealsets snapshot failed; local cache remains active.", error);
+    updateSyncStatus({ fromCache: true });
   }));
 
   subscribeLogsForCurrentDate();
@@ -360,8 +615,17 @@ function subscribeUserData() {
 
 function subscribeLogsForCurrentDate() {
   if (state.unsubLogs) state.unsubLogs();
-  state.unsubLogs = onSnapshot(entryCollection(state.currentDate), snap => {
+  state.logs = readLocal(`logs:${state.currentDate}`, []);
+  if (state.route === "today") renderToday();
+  state.unsubLogs = onSnapshot(entryCollection(state.currentDate), { includeMetadataChanges: true }, snap => {
+    noteSnapshotMetadata(snap.metadata);
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
+    writeLocal(`logs:${state.currentDate}`, state.logs);
+    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(state.currentDate, state.logs).catch(console.warn);
+    if (state.route === "today") renderToday();
+  }, error => {
+    console.warn("Log snapshot failed; local cache remains active.", error);
+    updateSyncStatus({ fromCache: true });
     if (state.route === "today") renderToday();
   });
 }
@@ -373,7 +637,7 @@ function nutrientSummaryHTML(n) {
       <span class="badge">P ${round(n.protein)}g</span>
       <span class="badge">C ${round(n.carbs)}g</span>
       <span class="badge">F ${round(n.fat)}g</span>
-      ${n.fiber ? `<span class="badge gray">Fiber ${round(n.fiber)}g</span>` : ""}
+      ${nutrientVisible("fiber") && n.fiber ? `<span class="badge gray">Fiber ${round(n.fiber)}g</span>` : ""}
     </div>
   `;
 }
@@ -381,22 +645,28 @@ function nutrientSummaryHTML(n) {
 function renderToday() {
   const total = addNutrients(state.logs);
   const goals = state.settings;
+  const macroGoals = effectiveMacroGoals(goals);
   const kcalPct = Math.min(100, goals.calorieGoal ? total.kcal / goals.calorieGoal * 100 : 0);
   const remaining = goals.calorieGoal - total.kcal;
   const macros = macroCalories(total);
   const circumference = 2 * Math.PI * 82;
   const offset = circumference - (kcalPct / 100) * circumference;
+  const metrics = [
+    metricCard("Macro calories", `${round(macros.proteinPct, 0)} / ${round(macros.carbsPct, 0)} / ${round(macros.fatPct, 0)}%`, "Protein / carbs / fat"),
+    metricCard("Protein", `${round(total.protein)} g`, `${round(macroGoals.proteinGoal - total.protein)} g left`),
+    nutrientVisible("sugar") ? metricCard("Sugar", `${round(total.sugar)} g`, `Goal ${round(goals.sugarGoal)} g`) : "",
+    nutrientVisible("sodium") ? metricCard("Sodium", `${round(total.sodium, 0)} mg`, `Max ${round(goals.sodiumMax, 0)} mg`) : ""
+  ].filter(Boolean).join("");
 
   els.pages.today.innerHTML = `
     <div class="stack">
       <div class="today-meta">
         <div class="date-control">
-          <button class="tiny-btn" data-action="change-date" data-days="-1">‹</button>
+          <button class="tiny-btn" data-action="change-date" data-days="-1" aria-label="Previous day">&lt;</button>
           <input id="currentDateInput" type="date" value="${state.currentDate}" />
-          <button class="tiny-btn" data-action="change-date" data-days="1">›</button>
+          <button class="tiny-btn" data-action="change-date" data-days="1" aria-label="Next day">&gt;</button>
         </div>
         <button class="secondary-btn" data-action="go-search">+ Add food</button>
-        <button class="ghost-btn" data-action="repeat-yesterday">Repeat yesterday</button>
       </div>
 
       <div class="card dashboard-hero">
@@ -421,19 +691,16 @@ function renderToday() {
           <span class="pill">${remaining >= 0 ? `${round(remaining, 0)} kcal remaining` : `${round(Math.abs(remaining), 0)} kcal over`}</span>
           <h3>Macro flight plan</h3>
           <div class="macro-grid">
-            ${macroRow("Protein", total.protein, goals.proteinGoal, "fill-protein")}
-            ${macroRow("Carbs", total.carbs, goals.carbsGoal, "fill-carbs")}
-            ${macroRow("Fat", total.fat, goals.fatGoal, "fill-fat")}
+            ${macroRow("Protein", total.protein, macroGoals.proteinGoal, "fill-protein")}
+            ${macroRow("Carbs", total.carbs, macroGoals.carbsGoal, "fill-carbs")}
+            ${macroRow("Fat", total.fat, macroGoals.fatGoal, "fill-fat")}
             ${macroRow("Fiber", total.fiber, goals.fiberGoal, "fill-fiber")}
           </div>
         </div>
       </div>
 
       <div class="grid-4">
-        ${metricCard("Macro calories", `${round(macros.proteinPct, 0)} / ${round(macros.carbsPct, 0)} / ${round(macros.fatPct, 0)}%`, "Protein / carbs / fat")}
-        ${metricCard("Protein", `${round(total.protein)} g`, `${round(goals.proteinGoal - total.protein)} g left`)}
-        ${metricCard("Sugar", `${round(total.sugar)} g`, `Goal ${round(goals.sugarGoal)} g`)}
-        ${metricCard("Sodium", `${round(total.sodium, 0)} mg`, `Max ${round(goals.sodiumMax, 0)} mg`)}
+        ${metrics}
       </div>
 
       <div class="meals-grid">
@@ -504,6 +771,146 @@ function renderLogEntry(entry) {
   `;
 }
 
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function foodIdentity(food) {
+  return normalizeSearchText(food.barcode || food.sourceId || `${food.name}|${food.brand || ""}`);
+}
+
+function findPersonalFoodMatch(food) {
+  const id = foodIdentity(food);
+  return state.customFoods.find(candidate => foodIdentity(candidate) === id)
+    || state.customFoods.find(candidate => normalizeSearchText(candidate.name) === normalizeSearchText(food.name)
+      && normalizeSearchText(candidate.brand) === normalizeSearchText(food.brand));
+}
+
+function searchPersonalLibrary(queryText) {
+  const query = normalizeSearchText(queryText);
+  const tokens = query.split(/\s+/).filter(Boolean);
+  const foods = [...state.customFoods].sort((a, b) => {
+    const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
+    if (favoriteDiff) return favoriteDiff;
+    return number(b.lastUsedAt) - number(a.lastUsedAt) || number(b.usedCount) - number(a.usedCount);
+  });
+  if (!tokens.length) return foods.slice(0, 20).map(food => markResultFood(food, resultKindForFood(food)));
+  return foods
+    .filter(food => {
+      const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
+      return tokens.every(token => haystack.includes(token));
+    })
+    .slice(0, 30)
+    .map(food => markResultFood(food, resultKindForFood(food)));
+}
+
+function resultKindForFood(food) {
+  if (food.source === "custom" && !food.originalSource && !food.isDatabaseFood) return "personal";
+  if (food.source === "custom" || food.usedCount || food.lastUsedAt) return "used";
+  return "database";
+}
+
+function markResultFood(food, kind = "database") {
+  return { ...food, resultKind: kind };
+}
+
+function readSearchCache() {
+  return readLocal("searchCache", { searches: {}, barcodes: {} });
+}
+
+function writeSearchCache(cache) {
+  const searches = Object.entries(cache.searches || {})
+    .sort((a, b) => number(b[1].createdAt) - number(a[1].createdAt))
+    .slice(0, MAX_CACHED_SEARCHES);
+  writeLocal("searchCache", { searches: Object.fromEntries(searches), barcodes: cache.barcodes || {} });
+}
+
+function getCachedSearch(queryText) {
+  const query = normalizeSearchText(queryText);
+  const cached = readSearchCache().searches?.[query];
+  if (!cached || Date.now() - number(cached.createdAt) > SEARCH_CACHE_TTL_MS) return null;
+  return cached.results || [];
+}
+
+function setCachedSearch(queryText, results) {
+  const cache = readSearchCache();
+  cache.searches[normalizeSearchText(queryText)] = { createdAt: Date.now(), results };
+  writeSearchCache(cache);
+}
+
+function getCachedBarcode(barcode) {
+  const cached = readSearchCache().barcodes?.[String(barcode || "")];
+  if (!cached || Date.now() - number(cached.createdAt) > SEARCH_CACHE_TTL_MS) return null;
+  return cached.food;
+}
+
+function setCachedBarcode(barcode, food) {
+  const cache = readSearchCache();
+  cache.barcodes[String(barcode || "")] = { createdAt: Date.now(), food };
+  writeSearchCache(cache);
+}
+
+function addRecentSearch(queryText) {
+  const query = String(queryText || "").trim();
+  if (!query) return;
+  state.recentSearches = [query, ...state.recentSearches.filter(item => normalizeSearchText(item) !== normalizeSearchText(query))].slice(0, MAX_RECENT_SEARCHES);
+  markSearchStateSaved();
+}
+
+function openFoodFactsHost() {
+  return {
+    world: "world.openfoodfacts.org",
+    germany: "de.openfoodfacts.org",
+    us: "us.openfoodfacts.org",
+    france: "fr.openfoodfacts.org",
+    uk: "uk.openfoodfacts.org"
+  }[state.settings.searchRegion] || "world.openfoodfacts.org";
+}
+
+function mergeFoodResults(localResults, apiResults) {
+  const map = new Map();
+  const apiMarked = (apiResults || []).map(food => {
+    const existing = findPersonalFoodMatch(food);
+    return existing ? markResultFood(existing, resultKindForFood(existing)) : markResultFood(food, "database");
+  });
+  const ordered = state.settings.databasePreference === "api-first"
+    ? [...apiMarked, ...localResults]
+    : [...localResults, ...apiMarked];
+  for (const food of ordered) {
+    const key = foodIdentity(food);
+    if (!map.has(key)) map.set(key, food);
+  }
+  return applySearchFilters([...map.values()]);
+}
+
+function applySearchFilters(results) {
+  const filters = state.searchFilters || {};
+  return (results || []).filter(food => {
+    const brand = normalizeSearchText(filters.brand);
+    if (brand && !normalizeSearchText(food.brand).includes(brand)) return false;
+    if (filters.source !== "all" && food.resultKind !== filters.source && food.source !== filters.source) return false;
+    const kcal = number(food.nutrientsPer100g?.kcal);
+    if (filters.kcalMin !== "" && kcal < number(filters.kcalMin)) return false;
+    if (filters.kcalMax !== "" && kcal > number(filters.kcalMax)) return false;
+    if (filters.highProtein && number(food.nutrientsPer100g?.protein) < 12) return false;
+    if (filters.lowSugar && number(food.nutrientsPer100g?.sugar) > 5) return false;
+    return true;
+  });
+}
+
+function foodDataWarnings(food) {
+  const n = normalizeNutrients(food.nutrientsPer100g);
+  const warnings = [];
+  if (!n.kcal) warnings.push("Missing calories");
+  if (!n.protein && !n.carbs && !n.fat) warnings.push("Missing macros");
+  if (n.kcal > 950) warnings.push("Calories look too high for 100 g");
+  if (n.protein > 100 || n.carbs > 100 || n.fat > 100) warnings.push("Macro value above 100 g");
+  const macroKcal = n.protein * 4 + n.carbs * 4 + n.fat * 9;
+  if (n.kcal && macroKcal && Math.abs(macroKcal - n.kcal) / n.kcal > .35) warnings.push("Calories and macros do not match well");
+  if (n.salt && n.sodium && Math.abs(n.salt * 400 - n.sodium) > Math.max(400, n.sodium * .4)) warnings.push("Salt and sodium look inconsistent");
+  return warnings;
+}
+
 function renderSearch() {
   const customCards = state.customFoods.slice(0, 25).map(food => renderFoodResult(food, registerTempFood(food))).join("");
   els.pages.search.innerHTML = `
@@ -572,6 +979,303 @@ function renderSearch() {
   document.getElementById("customFoodForm")?.addEventListener("submit", saveCustomFood);
 }
 
+function renderSearchV2() {
+  const combined = state.searchResults.length
+    ? state.searchResults
+    : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []);
+  const recentFoods = state.customFoods
+    .filter(food => food.favorite || food.usedCount || food.lastUsedAt)
+    .sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || number(b.lastUsedAt) - number(a.lastUsedAt))
+    .slice(0, 6);
+  const quickRecipes = state.settings.modules.recipes ? state.recipes.slice(0, 4) : [];
+  const quickMealsets = state.settings.modules.mealsets ? state.mealsets.slice(0, 4) : [];
+
+  els.pages.search.innerHTML = `
+    <div class="stack">
+      <div class="card stack">
+        <h3>Find food</h3>
+        <p>Personal foods and recently used database foods are searched first. Cached Open Food Facts results stay available offline.</p>
+        <div class="search-bar">
+          <label>Food search
+            <input id="foodSearchInput" type="search" value="${safeText(state.searchQuery)}" placeholder="e.g. Skyr Milbona, oats, tofu" autocomplete="off" />
+          </label>
+          <button class="primary-btn" data-action="search-foods" ${state.searchLoading ? "disabled" : ""}>${state.searchLoading ? "Searching..." : "Search"}</button>
+          ${state.settings.modules.barcode ? `<button class="secondary-btn" data-action="open-barcode-modal">Barcode</button>` : ""}
+        </div>
+        <div class="loading-line">${safeText(state.searchFeedback || (navigator.onLine ? "Ready." : "Offline: showing personal and cached foods."))}</div>
+        ${state.recentSearches.length ? `
+          <div class="pill-row" aria-label="Recent searches">
+            ${state.recentSearches.map(term => `<button class="tiny-btn" data-action="recent-search" data-query="${safeText(term)}">${safeText(term)}</button>`).join("")}
+          </div>
+        ` : ""}
+        <details>
+          <summary class="kicker">Filters</summary>
+          <div class="filter-row" style="margin-top:12px;">
+            <label>Brand<input id="filterBrand" value="${safeText(state.searchFilters.brand)}" placeholder="Any brand" /></label>
+            <label>Source
+              <select id="filterSource">
+                ${[
+                  ["all", "All"],
+                  ["personal", "Personal"],
+                  ["used", "Used database"],
+                  ["database", "Unused database"]
+                ].map(([value, label]) => `<option value="${value}" ${state.searchFilters.source === value ? "selected" : ""}>${label}</option>`).join("")}
+              </select>
+            </label>
+            <label>Min kcal / 100 g<input id="filterKcalMin" type="number" min="0" value="${safeText(state.searchFilters.kcalMin)}" /></label>
+            <label>Max kcal / 100 g<input id="filterKcalMax" type="number" min="0" value="${safeText(state.searchFilters.kcalMax)}" /></label>
+            <label class="switch-row"><input id="filterHighProtein" type="checkbox" ${state.searchFilters.highProtein ? "checked" : ""} /> High protein</label>
+            <label class="switch-row"><input id="filterLowSugar" type="checkbox" ${state.searchFilters.lowSugar ? "checked" : ""} /> Low sugar</label>
+          </div>
+        </details>
+      </div>
+
+      <div class="grid-2">
+        <div class="card stack">
+          <div class="meal-head">
+            <h3>Foods</h3>
+            <span class="kicker">${combined.length} result${combined.length === 1 ? "" : "s"}</span>
+          </div>
+          <div id="searchResults" class="result-grid">
+            ${combined.length ? combined.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or create a custom food.</div>`}
+          </div>
+        </div>
+
+        <div class="card stack">
+          <div class="meal-head">
+            <h3>Add options</h3>
+            <div class="inline-actions">
+              ${state.settings.modules.recipes ? `<button class="tiny-btn" data-action="create-recipe">+ Recipe</button>` : ""}
+              ${state.settings.modules.mealsets ? `<button class="tiny-btn" data-action="create-mealset">+ Mealset</button>` : ""}
+            </div>
+          </div>
+          ${recentFoods.length ? `
+            <div>
+              <p class="kicker">Favorites and recent foods</p>
+              <div class="result-grid">${recentFoods.map(food => renderFoodResultCard(markResultFood(food, resultKindForFood(food)), registerTempFood(food))).join("")}</div>
+            </div>
+          ` : ""}
+          ${(quickRecipes.length || quickMealsets.length) ? `
+            <div>
+              <p class="kicker">Recipes and mealsets</p>
+              <div class="result-grid">
+                ${quickRecipes.map(renderRecipeQuickCard).join("")}
+                ${quickMealsets.map(renderMealsetQuickCard).join("")}
+              </div>
+            </div>
+          ` : ""}
+          <h3>Create custom food</h3>
+          <form id="customFoodForm" class="stack">
+            <div class="form-grid two">
+              <label>Name<input name="name" required placeholder="Greek yogurt" /></label>
+              <label>Brand<input name="brand" placeholder="Optional" /></label>
+              <label>Serving unit
+                <select name="servingUnit">
+                  ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(unit => `<option value="${unit}">${unit}</option>`).join("")}
+                </select>
+              </label>
+              <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+            </div>
+            <div class="form-grid">
+              ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "salt", "sodium"].map(key => `
+                <label>${NUTRIENT_LABELS[key]} / 100 g
+                  <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+                </label>
+              `).join("")}
+            </div>
+            <details>
+              <summary class="kicker">Optional micronutrients</summary>
+              <div class="form-grid" style="margin-top:12px;">
+                ${["calcium", "iron", "potassium", "magnesium", "vitaminA", "vitaminC", "vitaminD", "vitaminB12"].map(key => `
+                  <label>${NUTRIENT_LABELS[key]} / 100 g
+                    <input name="${key}" type="number" step="0.01" min="0" placeholder="0" />
+                  </label>
+                `).join("")}
+              </div>
+            </details>
+            <div class="form-actions"><button class="primary-btn" type="submit">Save custom food</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("customFoodForm")?.addEventListener("submit", saveCustomFood);
+  document.getElementById("foodSearchInput")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runFoodSearch(event.currentTarget.value).catch(showError);
+    }
+  });
+  ["filterBrand", "filterSource", "filterKcalMin", "filterKcalMax", "filterHighProtein", "filterLowSugar"].forEach(id => {
+    document.getElementById(id)?.addEventListener("change", updateSearchFiltersFromInputs);
+    document.getElementById(id)?.addEventListener("input", updateSearchFiltersFromInputs);
+  });
+}
+
+function updateSearchFiltersFromInputs() {
+  state.searchFilters = {
+    brand: document.getElementById("filterBrand")?.value || "",
+    source: document.getElementById("filterSource")?.value || "all",
+    kcalMin: document.getElementById("filterKcalMin")?.value || "",
+    kcalMax: document.getElementById("filterKcalMax")?.value || "",
+    highProtein: !!document.getElementById("filterHighProtein")?.checked,
+    lowSugar: !!document.getElementById("filterLowSugar")?.checked
+  };
+  state.searchResults = mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || state.searchResults);
+  renderSearchV2();
+}
+
+function renderRecipeQuickCard(recipe) {
+  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  return `
+    <div class="result-card used">
+      <div>
+        <h4>${safeText(recipe.name)}</h4>
+        <p>${round(n.kcal, 0)} kcal / portion</p>
+      </div>
+      <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
+    </div>
+  `;
+}
+
+function renderMealsetQuickCard(mealset) {
+  const n = normalizeNutrients(mealset.totalNutrients);
+  return `
+    <div class="result-card used">
+      <div>
+        <h4>${safeText(mealset.name)}</h4>
+        <p>${round(n.kcal, 0)} kcal / mealset</p>
+      </div>
+      <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
+    </div>
+  `;
+}
+
+function renderFoodResultCard(food, key) {
+  const sourceLabel = food.resultKind === "personal" ? "Personal food"
+    : food.resultKind === "used" ? "Used before"
+    : food.source === "openfoodfacts" ? "Open Food Facts" : food.source;
+  const warnings = foodDataWarnings(food);
+  return `
+    <div class="result-card ${safeText(food.resultKind || resultKindForFood(food))} ${warnings.length ? "warning" : ""}">
+      <div>
+        <h4>${safeText(displayFoodName(food))}</h4>
+        <p>${safeText(caloriesText(food))}</p>
+        ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
+        <div class="badges">
+          <span class="badge ${food.resultKind === "database" ? "blue" : food.resultKind === "personal" ? "green" : "orange"}">${safeText(sourceLabel)}</span>
+          ${food.favorite ? `<span class="badge green">Favorite</span>` : ""}
+          ${food.barcode ? `<span class="badge gray">${safeText(food.barcode)}</span>` : ""}
+          ${warnings.length ? `<span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
+        </div>
+      </div>
+      <div class="inline-actions">
+        <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
+        <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? `
+          <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
+          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+          <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
+          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function openFoodDetailModal(food) {
+  if (!food) return;
+  const warnings = foodDataWarnings(food);
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-body">
+        <div class="badges">
+          <span class="badge ${food.resultKind === "database" ? "blue" : food.resultKind === "personal" ? "green" : "orange"}">${safeText(food.resultKind || resultKindForFood(food))}</span>
+          ${food.brand ? `<span class="badge gray">${safeText(food.brand)}</span>` : ""}
+          ${food.barcode ? `<span class="badge gray">Barcode ${safeText(food.barcode)}</span>` : ""}
+          <span class="badge gray">${safeText(food.source || "custom")}</span>
+        </div>
+        ${warnings.length ? `<div class="empty-state">${warnings.map(safeText).join("<br>")}</div>` : ""}
+        <div class="detail-table">
+          ${NUTRIENT_KEYS.filter(key => nutrientVisible(key) || ["kcal", "protein", "carbs", "fat"].includes(key)).map(key => `
+            <div class="detail-row"><span>${safeText(NUTRIENT_LABELS[key])}</span><strong>${round(food.nutrientsPer100g?.[key], key === "kcal" || key === "sodium" ? 0 : 2)} ${safeText(NUTRIENT_UNITS[key])} / 100 g</strong></div>
+          `).join("")}
+        </div>
+        <div>
+          <p class="kicker">Servings</p>
+          <div class="badges">
+            ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g/ml</span>`).join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function openCustomFoodEditor(food, duplicate = false) {
+  if (!food) return;
+  const serving = food.defaultServing || food.servingOptions?.[0] || { label: "100 g", grams: 100, unit: "g" };
+  const unit = serving.unit || String(serving.label || "g").replace(/[0-9.,\s]/g, "") || "g";
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>${duplicate ? "Duplicate" : "Edit"} custom food</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <form id="customFoodEditForm" class="modal-body">
+        <div class="form-grid two">
+          <label>Name<input name="name" required value="${safeText(duplicate ? `${food.name} copy` : food.name)}" /></label>
+          <label>Brand<input name="brand" value="${safeText(food.brand || "")}" /></label>
+          <label>Serving unit
+            <select name="servingUnit">
+              ${["g", "ml", "cup", "scoop", "piece", "package", "tablespoon", "teaspoon", "custom"].map(v => `<option value="${v}" ${normalizeSearchText(unit) === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </label>
+          <label>Serving grams / ml<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
+        </div>
+        <div class="form-grid">
+          ${NUTRIENT_KEYS.map(key => `
+            <label>${NUTRIENT_LABELS[key]} / 100 g
+              <input name="${key}" type="number" step="0.01" min="0" value="${round(food.nutrientsPer100g?.[key], 3)}" />
+            </label>
+          `).join("")}
+        </div>
+        <div class="form-actions"><button class="primary-btn" type="submit">${duplicate ? "Create copy" : "Save changes"}</button></div>
+      </form>
+    </div>
+  `);
+  document.getElementById("customFoodEditForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const servingGrams = number(data.get("servingGrams"), 100) || 100;
+    const servingUnit = String(data.get("servingUnit") || "g");
+    const servingLabel = servingUnit === "g" || servingUnit === "ml" ? `${servingGrams} ${servingUnit}` : `1 ${servingUnit}`;
+    const next = {
+      ...food,
+      source: "custom",
+      name: String(data.get("name") || "").trim(),
+      nameLower: String(data.get("name") || "").trim().toLowerCase(),
+      brand: String(data.get("brand") || "").trim() || null,
+      defaultServing: { label: servingLabel, grams: servingGrams, unit: servingUnit },
+      servingOptions: [{ label: servingLabel, grams: servingGrams, unit: servingUnit }, { label: "100 g", grams: 100, unit: "g" }],
+      nutrientsPer100g: normalizeNutrients(Object.fromEntries(NUTRIENT_KEYS.map(k => [k, data.get(k)]))),
+      updatedAt: Date.now()
+    };
+    delete next.id;
+    const warnings = foodDataWarnings(next);
+    if (warnings.length && !confirm(`This food has data warnings:\n\n${warnings.join("\n")}\n\nSave anyway?`)) return;
+    if (duplicate) await addDoc(userCollection("customFoods"), cleanForFirestore({ ...next, createdAt: Date.now(), usedCount: 0, lastUsedAt: null }));
+    else await updateDoc(userDoc("customFoods", food.id), cleanForFirestore(next));
+    closeModal();
+    showToast(duplicate ? "Custom food duplicated." : "Custom food updated.");
+  });
+}
+
+async function toggleFavoriteFood(id) {
+  const food = state.customFoods.find(item => item.id === id);
+  if (!food) return;
+  await updateDoc(userDoc("customFoods", id), { favorite: !food.favorite, updatedAt: Date.now() });
+}
+
 function renderFoodResult(food, key) {
   const sourceLabel = food.source === "custom" ? "Custom" : food.source === "openfoodfacts" ? "Open Food Facts" : food.source;
   return `
@@ -631,6 +1335,94 @@ async function getOpenFoodFactsByBarcode(barcode) {
   showToast(`Found ${displayFoodName(food)}.`);
 }
 
+async function fetchOpenFoodFacts(queryText) {
+  const queryTextTrimmed = queryText.trim();
+  if (!queryTextTrimmed) return [];
+  const url = new URL(`https://${openFoodFactsHost()}/cgi/search.pl`);
+  url.searchParams.set("search_terms", queryTextTrimmed);
+  url.searchParams.set("search_simple", "1");
+  url.searchParams.set("action", "process");
+  url.searchParams.set("json", "1");
+  url.searchParams.set("page_size", "25");
+  url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+  const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("Open Food Facts search failed.");
+  const data = await res.json();
+  return (data.products || [])
+    .map(normalizeOpenFoodFactsProduct)
+    .filter(Boolean)
+    .filter(food => food.nutrientsPer100g.kcal > 0)
+    .slice(0, 25);
+}
+
+async function runFoodSearch(queryText, options = {}) {
+  const query = String(queryText || "").trim();
+  if (!query) {
+    state.searchQuery = "";
+    state.searchResults = mergeFoodResults(searchPersonalLibrary(""), []);
+    state.searchFeedback = "Showing favorites and recent personal foods.";
+    if (options.updateState !== false) renderSearchV2();
+    return state.searchResults;
+  }
+  state.searchQuery = query;
+  addRecentSearch(query);
+  const localResults = searchPersonalLibrary(query);
+  const cached = getCachedSearch(query) || [];
+  state.searchResults = mergeFoodResults(localResults, cached);
+  state.searchFeedback = cached.length ? `Showing ${cached.length} cached database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
+  state.searchLoading = true;
+  if (options.updateState !== false) renderSearchV2();
+
+  if (!navigator.onLine || state.settings.databasePreference === "offline-only") {
+    state.searchLoading = false;
+    state.searchFeedback = `Offline: ${state.searchResults.length} personal/cached result${state.searchResults.length === 1 ? "" : "s"}.`;
+    if (options.updateState !== false) renderSearchV2();
+    return state.searchResults;
+  }
+
+  try {
+    const apiResults = await fetchOpenFoodFacts(query);
+    setCachedSearch(query, apiResults);
+    state.searchResults = mergeFoodResults(localResults, apiResults);
+    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
+    return state.searchResults;
+  } catch (error) {
+    state.searchFeedback = cached.length ? "Network search failed, using cached results." : "Network search failed and no cache was found.";
+    if (!cached.length && !localResults.length) throw error;
+    return state.searchResults;
+  } finally {
+    state.searchLoading = false;
+    if (options.updateState !== false) renderSearchV2();
+  }
+}
+
+async function lookupBarcodeCached(barcode) {
+  const cleanBarcode = String(barcode || "").replace(/\D/g, "");
+  if (!cleanBarcode) throw new Error("Enter a barcode first.");
+  const cached = getCachedBarcode(cleanBarcode);
+  if (cached) {
+    state.searchQuery = cleanBarcode;
+    state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [cached]);
+    state.searchFeedback = "Barcode loaded from cache.";
+    renderSearchV2();
+    return cached;
+  }
+  if (!navigator.onLine) throw new Error("No cached barcode result is available offline.");
+  const url = `https://${openFoodFactsHost()}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("Barcode lookup failed.");
+  const data = await res.json();
+  if (!data.product) throw new Error("No product found for this barcode.");
+  const food = normalizeOpenFoodFactsProduct(data.product);
+  if (!food) throw new Error("Product found, but nutrition data is incomplete.");
+  setCachedBarcode(cleanBarcode, food);
+  state.searchQuery = cleanBarcode;
+  state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [food]);
+  state.searchFeedback = `Found ${displayFoodName(food)}.`;
+  renderSearchV2();
+  return food;
+}
+
 function normalizeOpenFoodFactsProduct(product) {
   const nutriments = product.nutriments || {};
   const name = product.product_name || product.generic_name || product.abbreviated_product_name;
@@ -675,6 +1467,8 @@ async function saveCustomFood(event) {
   const name = String(data.get("name") || "").trim();
   if (!name) return;
   const servingGrams = number(data.get("servingGrams"), 100) || 100;
+  const servingUnit = String(data.get("servingUnit") || data.get("servingLabel") || "g").trim();
+  const servingLabel = servingUnit === "g" || servingUnit === "ml" ? `${servingGrams} ${servingUnit}` : `1 ${servingUnit}`;
   const nutrientsPer100g = normalizeNutrients(Object.fromEntries(NUTRIENT_KEYS.map(k => [k, data.get(k)])));
   const food = {
     source: "custom",
@@ -682,14 +1476,19 @@ async function saveCustomFood(event) {
     nameLower: name.toLowerCase(),
     brand: String(data.get("brand") || "").trim() || null,
     defaultServing: {
-      label: String(data.get("servingLabel") || `${servingGrams} g`).trim(),
+      label: servingLabel,
       grams: servingGrams
     },
-    servingOptions: [{ label: String(data.get("servingLabel") || `${servingGrams} g`).trim(), grams: servingGrams }],
+    servingOptions: [
+      { label: servingLabel, grams: servingGrams, unit: servingUnit },
+      { label: "100 g", grams: 100, unit: "g" }
+    ],
     nutrientsPer100g,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
+  const warnings = foodDataWarnings(food);
+  if (warnings.length && !confirm(`This food has data warnings:\n\n${warnings.join("\n")}\n\nSave anyway?`)) return;
   await addDoc(userCollection("customFoods"), cleanForFirestore(food));
   form.reset();
   showToast("Custom food saved.");
@@ -698,25 +1497,61 @@ async function saveCustomFood(event) {
 async function saveApiFoodAsCustom(key) {
   const food = getFoodByKey(key);
   if (!food) return;
+  await ensureFoodInPersonalLibrary(food, { incrementUsage: false });
+  showToast("Saved to your personal library.");
+}
+
+async function ensureFoodInPersonalLibrary(food, options = { incrementUsage: true }) {
+  if (!food || food.source === "recipe" || food.source === "mealset") return null;
+  const now = Date.now();
+  const existing = food.source === "custom" && food.id ? food : findPersonalFoodMatch(food);
+  if (existing?.id) {
+    const patch = {
+      usedCount: number(existing.usedCount) + (options.incrementUsage === false ? 0 : 1),
+      lastUsedAt: options.incrementUsage === false ? existing.lastUsedAt || null : now,
+      updatedAt: now
+    };
+    await updateDoc(userDoc("customFoods", existing.id), cleanForFirestore(patch));
+    return existing.id;
+  }
   const copy = {
     ...food,
     source: "custom",
     originalSource: food.source,
+    isDatabaseFood: true,
     nameLower: food.name.toLowerCase(),
+    usedCount: options.incrementUsage === false ? 0 : 1,
+    lastUsedAt: options.incrementUsage === false ? null : now,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: now
   };
   delete copy.id;
-  await addDoc(userCollection("customFoods"), cleanForFirestore(copy));
-  showToast("Saved to your custom foods.");
+  const ref = await addDoc(userCollection("customFoods"), cleanForFirestore(copy));
+  return ref.id;
+}
+
+function buildServingOptions(food) {
+  const options = [
+    { label: "grams", grams: 1, mode: "grams" },
+    { label: "100 g", grams: 100, mode: "serving" }
+  ];
+  for (const serving of food.servingOptions || []) {
+    if (number(serving.grams) > 0 && !options.some(option => normalizeSearchText(option.label) === normalizeSearchText(serving.label))) {
+      options.push({ ...serving, mode: "serving" });
+    }
+  }
+  if (food.defaultServing?.grams && !options.some(option => normalizeSearchText(option.label) === normalizeSearchText(food.defaultServing.label))) {
+    options.push({ ...food.defaultServing, mode: "serving" });
+  }
+  return options;
 }
 
 function openLogFoodModal(food) {
   if (!food) return;
-  const servingOptions = [{ label: "grams", grams: 1, mode: "grams" }, ...(food.servingOptions || []).map(s => ({ ...s, mode: "serving" }))];
+  const servingOptions = buildServingOptions(food);
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body">
         <div class="form-grid two">
           <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${food.defaultServing?.grams ? 1 : 100}" required /></label>
@@ -748,9 +1583,10 @@ function openLogFoodModal(food) {
 
 async function logFood(food, amount, unit, grams, meal, dateISO) {
   const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
+  const libraryId = await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
   const entry = {
     itemType: "food",
-    itemId: food.id || food.sourceId || null,
+    itemId: libraryId || food.id || food.sourceId || null,
     source: food.source,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
@@ -764,31 +1600,36 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     updatedAt: Date.now()
   };
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
+  await updateDailyCalorieSummary(dateISO).catch(console.warn);
   showToast("Food logged.");
 }
 
 function renderRecipes() {
   els.pages.recipes.innerHTML = `
     <div class="grid-2">
-      <div class="card stack">
+      ${state.settings.modules.recipes ? `<div class="card stack">
         <div class="meal-head">
           <h3>Recipes</h3>
           <button class="primary-btn" data-action="create-recipe">+ Recipe</button>
         </div>
         <p>Recipes split a batch into portions. Logging stores a nutrition snapshot so old days stay stable even if you edit later.</p>
         <div class="result-grid">${state.recipes.length ? state.recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
-      </div>
+      </div>` : `<div class="card"><div class="empty-state">Recipes are disabled in Settings.</div></div>`}
 
-      <div class="card stack">
+      ${state.settings.modules.mealsets ? `<div class="card stack">
         <div class="meal-head">
           <h3>Mealsets</h3>
           <button class="primary-btn" data-action="create-mealset">+ Mealset</button>
         </div>
         <p>Mealsets are reusable full meals. One mealset equals one complete meal.</p>
         <div class="result-grid">${state.mealsets.length ? state.mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
-      </div>
+      </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
     </div>
   `;
+}
+
+function itemAmountText(item) {
+  return `${round(item.amount ?? item.grams)} ${safeText(item.unit || "g")}`;
 }
 
 function renderRecipeCard(recipe) {
@@ -802,11 +1643,14 @@ function renderRecipeCard(recipe) {
         ${nutrientSummaryHTML(perPortion)}
         <details>
           <summary class="kicker">Ingredients (${recipe.ingredients?.length || 0})</summary>
-          <ul>${(recipe.ingredients || []).map(i => `<li>${safeText(i.nameSnapshot)} — ${round(i.grams)} g, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No ingredients yet.</li>"}</ul>
+          <ul>${(recipe.ingredients || []).map(i => `<li>${safeText(i.nameSnapshot)} - ${itemAmountText(i)}, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No ingredients yet.</li>"}</ul>
         </details>
       </div>
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
+        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Detail</button>
+        <button class="tiny-btn" data-action="edit-recipe" data-id="${recipe.id}">Edit</button>
+        <button class="tiny-btn" data-action="duplicate-recipe" data-id="${recipe.id}">Duplicate</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="recipe" data-id="${recipe.id}">Ingredient</button>
         <button class="tiny-btn" data-action="delete-recipe" data-id="${recipe.id}">Delete</button>
       </div>
@@ -825,11 +1669,14 @@ function renderMealsetCard(mealset) {
         ${nutrientSummaryHTML(total)}
         <details>
           <summary class="kicker">Items (${mealset.items?.length || 0})</summary>
-          <ul>${(mealset.items || []).map(i => `<li>${safeText(i.nameSnapshot)} — ${round(i.grams || 0)} g, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No items yet.</li>"}</ul>
+          <ul>${(mealset.items || []).map(i => `<li>${safeText(i.nameSnapshot)} - ${itemAmountText(i)}, ${round(i.nutrientsSnapshot?.kcal, 0)} kcal</li>`).join("") || "<li>No items yet.</li>"}</ul>
         </details>
       </div>
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
+        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
+        <button class="tiny-btn" data-action="edit-mealset" data-id="${mealset.id}">Edit</button>
+        <button class="tiny-btn" data-action="duplicate-mealset" data-id="${mealset.id}">Duplicate</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="mealset" data-id="${mealset.id}">Item</button>
         <button class="tiny-btn" data-action="delete-mealset" data-id="${mealset.id}">Delete</button>
       </div>
@@ -844,6 +1691,7 @@ async function createRecipe() {
       <form id="createRecipeForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Protein oats" /></label>
         <label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="1" required /></label>
+        <label>Notes<textarea name="notes" placeholder="Optional prep notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
@@ -854,6 +1702,7 @@ async function createRecipe() {
     const recipe = {
       name: String(data.get("name") || "").trim(),
       portions: number(data.get("portions"), 1),
+      notes: String(data.get("notes") || "").trim(),
       ingredients: [],
       totalNutrients: emptyNutrients(),
       nutrientsPerPortion: emptyNutrients(),
@@ -872,6 +1721,7 @@ async function createMealset() {
       <div class="modal-head"><h3>Create mealset</h3><button class="close-btn" data-action="close-modal">×</button></div>
       <form id="createMealsetForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Post-workout meal" /></label>
+        <label>Notes<textarea name="notes" placeholder="Optional notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
     </div>
@@ -881,6 +1731,7 @@ async function createMealset() {
     const data = new FormData(event.currentTarget);
     const mealset = {
       name: String(data.get("name") || "").trim(),
+      notes: String(data.get("notes") || "").trim(),
       items: [],
       totalNutrients: emptyNutrients(),
       createdAt: Date.now(),
@@ -892,12 +1743,29 @@ async function createMealset() {
   });
 }
 
+function recipePortionAsFood(recipe) {
+  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  return {
+    id: recipe.id,
+    source: "recipe",
+    name: `${recipe.name} portion`,
+    brand: "Recipe",
+    nutrientsPerPortion: perPortion,
+    nutrientsPer100g: perPortion,
+    defaultServing: { label: "portion", grams: 100 },
+    servingOptions: [{ label: "portion", grams: 100 }]
+  };
+}
+
 function openIngredientModal(kind, id) {
   const target = kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
   if (!target) return;
+  const recipePortions = state.settings.modules.recipes
+    ? state.recipes.filter(recipe => !(kind === "recipe" && recipe.id === id)).map(recipePortionAsFood)
+    : [];
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Add ${kind === "recipe" ? "ingredient" : "item"} to ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Add ${kind === "recipe" ? "ingredient" : "item"} to ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
         <div class="search-bar">
           <label>Search<input id="ingredientSearchInput" type="search" placeholder="Search API or your custom foods" /></label>
@@ -905,7 +1773,8 @@ function openIngredientModal(kind, id) {
           <button class="secondary-btn" data-action="show-custom-ingredients" data-kind="${kind}" data-id="${id}">Your foods</button>
         </div>
         <div id="ingredientResults" class="result-grid">
-          ${state.customFoods.slice(0, 12).map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || `<div class="empty-state">Create a custom food first or search Open Food Facts.</div>`}
+          ${recipePortions.map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("")}
+          ${state.customFoods.slice(0, 12).map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || (recipePortions.length ? "" : `<div class="empty-state">Create a custom food first or search Open Food Facts.</div>`)}
         </div>
       </div>
     </div>
@@ -913,11 +1782,14 @@ function openIngredientModal(kind, id) {
 }
 
 function renderIngredientResult(food, key, kind, id) {
+  const detail = food.source === "recipe"
+    ? `${round(food.nutrientsPerPortion?.kcal, 0)} kcal / portion`
+    : caloriesText(food);
   return `
     <div class="result-card">
       <div>
         <h4>${safeText(displayFoodName(food))}</h4>
-        <p>${safeText(caloriesText(food))}</p>
+        <p>${safeText(detail)}</p>
       </div>
       <button class="primary-btn" data-action="select-ingredient" data-key="${safeText(key)}" data-kind="${kind}" data-id="${id}">Add</button>
     </div>
@@ -925,34 +1797,40 @@ function renderIngredientResult(food, key, kind, id) {
 }
 
 function openIngredientAmountModal(food, kind, id) {
+  const isRecipePortion = food?.source === "recipe";
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>Add ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">×</button></div>
       <form id="ingredientAmountForm" class="modal-body">
-        <label>Amount in grams<input name="grams" type="number" step="0.1" min="0" value="100" required /></label>
+        <label>${isRecipePortion ? "Portions" : "Amount in grams"}<input name="amount" type="number" step="0.1" min="0" value="${isRecipePortion ? 1 : 100}" required /></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
       </form>
     </div>
   `);
   document.getElementById("ingredientAmountForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const grams = number(new FormData(event.currentTarget).get("grams"));
-    await addIngredientToTarget(food, grams, kind, id);
+    const amount = number(new FormData(event.currentTarget).get("amount"));
+    await addIngredientToTarget(food, amount, kind, id);
     closeModal();
   });
 }
 
-async function addIngredientToTarget(food, grams, kind, id) {
-  const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
+async function addIngredientToTarget(food, amount, kind, id) {
+  const isRecipePortion = food?.source === "recipe";
+  if (!isRecipePortion) await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
+  const grams = isRecipePortion ? null : amount;
+  const nutrientsSnapshot = isRecipePortion
+    ? scaleNutrients(food.nutrientsPerPortion, amount)
+    : scaleNutrients(food.nutrientsPer100g, amount / 100);
   const ingredient = {
-    itemType: "food",
+    itemType: isRecipePortion ? "recipe" : "food",
     source: food.source,
     itemId: food.id || food.sourceId || null,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
     grams,
-    amount: grams,
-    unit: "g",
+    amount,
+    unit: isRecipePortion ? "portion" : "g",
     nutrientsSnapshot,
     createdAt: Date.now()
   };
@@ -970,6 +1848,136 @@ async function addIngredientToTarget(food, grams, kind, id) {
     await updateDoc(userDoc("mealsets", id), cleanForFirestore({ items, totalNutrients, updatedAt: Date.now() }));
   }
   showToast("Ingredient added.");
+}
+
+function recalculateTarget(kind, target, items) {
+  const totalNutrients = addNutrients(items);
+  if (kind === "recipe") {
+    return {
+      ingredients: items,
+      totalNutrients,
+      nutrientsPerPortion: scaleNutrients(totalNutrients, 1 / Math.max(1, number(target.portions, 1))),
+      updatedAt: Date.now()
+    };
+  }
+  return { items, totalNutrients, updatedAt: Date.now() };
+}
+
+function openTargetDetail(kind, id) {
+  const isRecipe = kind === "recipe";
+  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  if (!target) return;
+  const items = isRecipe ? target.ingredients || [] : target.items || [];
+  const total = isRecipe ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(target.totalNutrients, 1 / Math.max(1, target.portions || 1))) : normalizeNutrients(target.totalNutrients);
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-body">
+        <p class="kicker">${isRecipe ? `${target.portions || 1} portions` : "Mealset"}${target.notes ? ` - ${safeText(target.notes)}` : ""}</p>
+        ${nutrientSummaryHTML(total)}
+        <div class="result-grid">
+          ${items.length ? items.map((item, index) => `
+            <div class="food-entry">
+              <div class="food-entry-head">
+                <div><strong>${safeText(item.nameSnapshot)}</strong><br><small>${itemAmountText(item)}</small></div>
+                <strong>${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong>
+              </div>
+              <div class="inline-actions">
+                <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Edit amount</button>
+                <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
+              </div>
+            </div>
+          `).join("") : `<div class="empty-state">No ${isRecipe ? "ingredients" : "items"} yet.</div>`}
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function openTargetEditor(kind, id) {
+  const isRecipe = kind === "recipe";
+  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  if (!target) return;
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Edit ${isRecipe ? "recipe" : "mealset"}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <form id="targetEditForm" class="modal-body">
+        <label>Name<input name="name" required value="${safeText(target.name)}" /></label>
+        ${isRecipe ? `<label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="${target.portions || 1}" /></label>` : ""}
+        <label>Notes<textarea name="notes">${safeText(target.notes || "")}</textarea></label>
+        <div class="form-actions"><button class="primary-btn" type="submit">Save changes</button></div>
+      </form>
+    </div>
+  `);
+  document.getElementById("targetEditForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const patch = {
+      name: String(data.get("name") || "").trim(),
+      notes: String(data.get("notes") || "").trim(),
+      updatedAt: Date.now()
+    };
+    if (isRecipe) {
+      patch.portions = number(data.get("portions"), target.portions || 1);
+      patch.nutrientsPerPortion = scaleNutrients(target.totalNutrients, 1 / Math.max(1, patch.portions));
+    }
+    await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
+    closeModal();
+  });
+}
+
+async function duplicateTarget(kind, id) {
+  const isRecipe = kind === "recipe";
+  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  if (!target) return;
+  const copy = { ...target, name: `${target.name} copy`, createdAt: Date.now(), updatedAt: Date.now() };
+  delete copy.id;
+  await addDoc(userCollection(isRecipe ? "recipes" : "mealsets"), cleanForFirestore(copy));
+  showToast(`${isRecipe ? "Recipe" : "Mealset"} duplicated.`);
+}
+
+function openTargetItemAmountEditor(kind, id, index) {
+  const isRecipe = kind === "recipe";
+  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  const items = [...(isRecipe ? target?.ingredients || [] : target?.items || [])];
+  const item = items[number(index)];
+  if (!target || !item) return;
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <form id="targetItemEditForm" class="modal-body">
+        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" step="0.1" min="0" value="${round(item.amount ?? item.grams, 2)}" /></label>
+        <div class="form-actions"><button class="primary-btn" type="submit">Save amount</button></div>
+      </form>
+    </div>
+  `);
+  document.getElementById("targetItemEditForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const newAmount = number(new FormData(event.currentTarget).get("amount"), item.amount ?? item.grams);
+    const oldAmount = number(item.amount ?? item.grams, 1) || 1;
+    const factor = newAmount / oldAmount;
+    items[number(index)] = {
+      ...item,
+      amount: newAmount,
+      grams: item.unit === "g" ? newAmount : item.grams,
+      nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
+      updatedAt: Date.now()
+    };
+    await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(recalculateTarget(kind, target, items)));
+    closeModal();
+    showToast("Amount updated.");
+  });
+}
+
+async function removeTargetItem(kind, id, index) {
+  const isRecipe = kind === "recipe";
+  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  if (!target) return;
+  const items = [...(isRecipe ? target.ingredients || [] : target.items || [])];
+  items.splice(number(index), 1);
+  await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(recalculateTarget(kind, target, items)));
+  closeModal();
+  showToast("Item removed.");
 }
 
 function openLogRecipeModal(recipe) {
@@ -1005,6 +2013,7 @@ function openLogRecipeModal(recipe) {
       updatedAt: Date.now()
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     showToast("Recipe logged.");
   });
@@ -1043,13 +2052,14 @@ function openLogMealsetModal(mealset) {
       updatedAt: Date.now()
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     showToast("Mealset logged.");
   });
 }
 
 function renderReportsShell() {
-  const [start, end] = currentWeekRange(state.currentDate);
+  const [start, end] = state.reportRange || currentWeekRange(state.currentDate);
   els.pages.reports.innerHTML = `
     <div class="stack">
       <div class="card">
@@ -1059,24 +2069,36 @@ function renderReportsShell() {
           <label>End<input id="reportEnd" type="date" value="${end}" /></label>
         </div>
         <div class="form-actions" style="margin-top:12px;">
+          <button class="ghost-btn" data-action="report-prev-week">Previous week</button>
           <button class="primary-btn" data-action="load-report">Load report</button>
+          <button class="ghost-btn" data-action="report-next-week">Next week</button>
           <button class="secondary-btn" data-action="export-full-csv">Export full CSV</button>
           <button class="secondary-btn" data-action="export-calories-csv">Export calories CSV</button>
           <button class="ghost-btn" data-action="export-calories-json">Export calories JSON</button>
         </div>
+        <details style="margin-top:12px;">
+          <summary class="kicker">Frequency filters</summary>
+          <div class="form-grid" style="margin-top:12px;">
+            <label>Meal<select id="reportMealFilter"><option value="all">All meals</option>${MEALS.map(([id, label]) => `<option value="${id}">${label}</option>`).join("")}</select></label>
+            <label>Brand<input id="reportBrandFilter" placeholder="Any brand" /></label>
+            <label>Source<input id="reportSourceFilter" placeholder="Any source" /></label>
+          </div>
+        </details>
       </div>
       <div id="reportOutput" class="stack">
-        <div class="empty-state">Load a report to see weekly calories, macros, micronutrients and food frequency.</div>
+        <div class="empty-state">Loading current week...</div>
       </div>
     </div>
   `;
+  setTimeout(() => loadReport().catch(showError), 0);
 }
 
 async function loadReport() {
   const start = document.getElementById("reportStart")?.value;
   const end = document.getElementById("reportEnd")?.value;
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
-  showToast("Loading report…");
+  state.reportRange = [start, end];
+  showToast("Loading report...");
   const entries = [];
   for (const dateISO of dateRange(start, end)) {
     const snap = await getDocs(entryCollection(dateISO));
@@ -1093,7 +2115,13 @@ function renderReportOutput(start, end, entries) {
   const macro = macroCalories(total);
   const byDate = Object.fromEntries(dateRange(start, end).map(d => [d, emptyNutrients()]));
   for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const foodRows = foodFrequencyRows(entries);
+  const filteredEntries = applyReportEntryFilters(entries);
+  const foodRows = foodFrequencyRows(filteredEntries);
+  const rolling = rollingCalorieAverage(byDate);
+  const mealSplit = caloriesByMeal(entries);
+  const weekday = weekdayWeekendStats(entries);
+  const topCalories = topNutrientSources(entries, "kcal").slice(0, 5);
+  const topProtein = topNutrientSources(entries, "protein").slice(0, 5);
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
     <div class="grid-4">
@@ -1101,6 +2129,10 @@ function renderReportOutput(start, end, entries) {
       ${metricCard("Average protein", `${round(avg.protein)} g`, `${round(total.protein)} g total`)}
       ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, "Protein / carbs / fat")}
       ${metricCard("Weekly difference", `${round(total.kcal - state.settings.calorieGoal * days, 0)} kcal`, `vs ${round(state.settings.calorieGoal * days, 0)} kcal goal`)}
+      ${metricCard("Rolling kcal", `${round(rolling.at(-1)?.average || 0, 0)}`, "3-day average")}
+      ${metricCard("Weekday avg", `${round(weekday.weekdayAvg, 0)} kcal`, "Monday-Friday")}
+      ${metricCard("Weekend avg", `${round(weekday.weekendAvg, 0)} kcal`, "Saturday-Sunday")}
+      ${metricCard("Top protein source", topProtein[0]?.name || "None", `${round(topProtein[0]?.value || 0)} g`)}
     </div>
 
     <div class="grid-2">
@@ -1114,12 +2146,39 @@ function renderReportOutput(start, end, entries) {
       </div>
     </div>
 
+    <div class="grid-2">
+      <div class="card chart-card">
+        <h3>Rolling average</h3>
+        <canvas id="rollingChart"></canvas>
+      </div>
+      <div class="card chart-card">
+        <h3>Calories by meal</h3>
+        <canvas id="mealChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <h3>Nutrient trends</h3>
+      <canvas id="nutrientTrendChart"></canvas>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Top calorie sources</h3>
+        <div class="table-wrap"><table><thead><tr><th>Food</th><th>kcal</th></tr></thead><tbody>${topCalories.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.value, 0)}</td></tr>`).join("") || `<tr><td colspan="2">No entries.</td></tr>`}</tbody></table></div>
+      </div>
+      <div class="card">
+        <h3>Top protein sources</h3>
+        <div class="table-wrap"><table><thead><tr><th>Food</th><th>Protein</th></tr></thead><tbody>${topProtein.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.value)} g</td></tr>`).join("") || `<tr><td colspan="2">No entries.</td></tr>`}</tbody></table></div>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Food frequency</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Food</th><th>Times</th><th>Total amount</th><th>Total kcal</th><th>Avg kcal/day</th></tr></thead>
-          <tbody>${foodRows.length ? foodRows.map(row => `<tr><td>${safeText(row.name)}</td><td>${row.count}</td><td>${round(row.grams)} g</td><td>${round(row.kcal, 0)}</td><td>${round(row.kcal / days, 0)}</td></tr>`).join("") : `<tr><td colspan="5">No entries in this range.</td></tr>`}</tbody>
+          <thead><tr><th>Food</th><th>Times</th><th>Units/servings</th><th>Brand</th><th>Source</th><th>Total kcal</th><th>Avg kcal/day</th></tr></thead>
+          <tbody>${foodRows.length ? foodRows.map(row => `<tr><td>${safeText(row.name)}</td><td>${row.count}</td><td>${safeText(row.units)}</td><td>${safeText(row.brand || "")}</td><td>${safeText(row.source || "")}</td><td>${round(row.kcal, 0)}</td><td>${round(row.kcal / days, 0)}</td></tr>`).join("") : `<tr><td colspan="7">No entries in this range.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -1141,35 +2200,91 @@ function foodFrequencyRows(entries) {
   const map = new Map();
   for (const entry of entries) {
     const key = entry.nameSnapshot || "Unnamed";
-    const current = map.get(key) || { name: key, count: 0, grams: 0, kcal: 0 };
+    const current = map.get(key) || { name: key, count: 0, grams: 0, kcal: 0, unitsMap: new Map(), brand: entry.brandSnapshot || "", source: entry.source || entry.itemType || "" };
     current.count += 1;
     current.grams += number(entry.gramsEquivalent || (entry.unit === "g" ? entry.amount : 0));
     current.kcal += number(entry.nutrientsSnapshot?.kcal);
+    const unitLabel = `${round(entry.amount)} ${entry.unit || ""}`.trim();
+    current.unitsMap.set(unitLabel, (current.unitsMap.get(unitLabel) || 0) + 1);
     map.set(key, current);
   }
-  return [...map.values()].sort((a, b) => b.kcal - a.kcal);
+  return [...map.values()].map(row => ({
+    ...row,
+    units: [...row.unitsMap.entries()].map(([unit, count]) => `${count}x ${unit}`).join(", ")
+  })).sort((a, b) => b.kcal - a.kcal);
+}
+
+function applyReportEntryFilters(entries) {
+  const meal = document.getElementById("reportMealFilter")?.value || "all";
+  const brand = normalizeSearchText(document.getElementById("reportBrandFilter")?.value || "");
+  const source = normalizeSearchText(document.getElementById("reportSourceFilter")?.value || "");
+  return entries.filter(entry => {
+    if (meal !== "all" && entry.meal !== meal) return false;
+    if (brand && !normalizeSearchText(entry.brandSnapshot).includes(brand)) return false;
+    if (source && !normalizeSearchText(entry.source || entry.itemType).includes(source)) return false;
+    return true;
+  });
+}
+
+function rollingCalorieAverage(byDate) {
+  const labels = Object.keys(byDate);
+  return labels.map((date, index) => {
+    const slice = labels.slice(Math.max(0, index - 2), index + 1);
+    const total = slice.reduce((sum, day) => sum + number(byDate[day].kcal), 0);
+    return { date, average: total / slice.length };
+  });
+}
+
+function caloriesByMeal(entries) {
+  const totals = Object.fromEntries(MEALS.map(([id, label]) => [label, 0]));
+  for (const entry of entries) {
+    const label = MEALS.find(([id]) => id === entry.meal)?.[1] || entry.meal || "Other";
+    totals[label] = number(totals[label]) + number(entry.nutrientsSnapshot?.kcal);
+  }
+  return totals;
+}
+
+function weekdayWeekendStats(entries) {
+  const days = new Map();
+  for (const entry of entries) {
+    const current = days.get(entry.date) || 0;
+    days.set(entry.date, current + number(entry.nutrientsSnapshot?.kcal));
+  }
+  const weekdayVals = [];
+  const weekendVals = [];
+  for (const [date, kcal] of days.entries()) {
+    const day = new Date(`${date}T12:00:00`).getDay();
+    (day === 0 || day === 6 ? weekendVals : weekdayVals).push(kcal);
+  }
+  const avg = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  return { weekdayAvg: avg(weekdayVals), weekendAvg: avg(weekendVals) };
+}
+
+function topNutrientSources(entries, key) {
+  const map = new Map();
+  for (const entry of entries) {
+    const name = entry.nameSnapshot || "Unnamed";
+    map.set(name, (map.get(name) || 0) + number(entry.nutrientsSnapshot?.[key]));
+  }
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 }
 
 function renderMicroRows(total, days) {
   const rows = [
-    ["fiber", state.settings.fiberGoal * days, "goal"],
-    ["sugar", state.settings.sugarGoal * days, "goal"],
+    ["fiber", state.settings.fiberGoal * days, "min"],
+    ["sugar", state.settings.sugarGoal * days, "max"],
     ["sodium", state.settings.sodiumMax * days, "max"],
     ["salt", state.settings.saltMax * days, "max"],
-    ["calcium", 1000 * days, "goal"],
-    ["iron", 14 * days, "goal"],
-    ["potassium", 3500 * days, "goal"],
-    ["magnesium", 350 * days, "goal"],
-    ["vitaminC", 95 * days, "goal"],
-    ["vitaminD", 20 * days, "goal"],
-    ["vitaminB12", 4 * days, "goal"]
-  ];
+    ...Object.entries(state.settings.micronutrientGoals || {})
+      .filter(([key]) => !["sodium", "salt"].includes(key))
+      .map(([key, value]) => [key, number(value.target) * days, value.mode || "min"])
+  ].filter(([key]) => nutrientVisible(key));
   return rows.map(([key, target, mode]) => {
     const consumed = number(total[key]);
     const diff = consumed - target;
     const unit = NUTRIENT_UNITS[key];
     const badgeClass = mode === "max" ? (diff > 0 ? "orange" : "") : (diff >= 0 ? "" : "orange");
-    return `<tr><td>${NUTRIENT_LABELS[key]}</td><td>${round(consumed, key === "sodium" ? 0 : 1)} ${unit}</td><td>${round(target, key === "sodium" ? 0 : 1)} ${unit} ${mode}</td><td><span class="badge ${badgeClass}">${diff >= 0 ? "+" : ""}${round(diff, key === "sodium" ? 0 : 1)} ${unit}</span></td></tr>`;
+    return `<tr><td>${NUTRIENT_LABELS[key]}</td><td>${round(consumed, key === "sodium" ? 0 : 1)} ${unit}</td><td>${round(target, key === "sodium" ? 0 : 1)} ${unit} ${mode === "max" ? "max" : "min"}</td><td><span class="badge ${badgeClass}">${diff >= 0 ? "+" : ""}${round(diff, key === "sodium" ? 0 : 1)} ${unit}</span></td></tr>`;
   }).join("");
 }
 
@@ -1181,8 +2296,14 @@ function renderCharts(byDate) {
   const protein = labels.map(d => round(byDate[d].protein, 1));
   const carbs = labels.map(d => round(byDate[d].carbs, 1));
   const fat = labels.map(d => round(byDate[d].fat, 1));
+  const rolling = rollingCalorieAverage(byDate).map(row => round(row.average, 0));
+  const fiber = labels.map(d => round(byDate[d].fiber, 1));
+  const sugar = labels.map(d => round(byDate[d].sugar, 1));
   const calorieCtx = document.getElementById("calorieChart");
   const macroCtx = document.getElementById("macroChart");
+  const rollingCtx = document.getElementById("rollingChart");
+  const mealCtx = document.getElementById("mealChart");
+  const trendCtx = document.getElementById("nutrientTrendChart");
   if (calorieCtx) {
     state.charts.calorie = new Chart(calorieCtx, {
       type: "line",
@@ -1194,6 +2315,28 @@ function renderCharts(byDate) {
     state.charts.macro = new Chart(macroCtx, {
       type: "bar",
       data: { labels, datasets: [{ label: "Protein", data: protein }, { label: "Carbs", data: carbs }, { label: "Fat", data: fat }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+  if (rollingCtx) {
+    state.charts.rolling = new Chart(rollingCtx, {
+      type: "line",
+      data: { labels, datasets: [{ label: "3-day kcal average", data: rolling, tension: .35 }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+  if (mealCtx) {
+    const meals = caloriesByMeal(state.reportEntries);
+    state.charts.meal = new Chart(mealCtx, {
+      type: "doughnut",
+      data: { labels: Object.keys(meals), datasets: [{ label: "kcal", data: Object.values(meals).map(value => round(value, 0)) }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+  if (trendCtx) {
+    state.charts.trend = new Chart(trendCtx, {
+      type: "line",
+      data: { labels, datasets: [{ label: "Fiber", data: fiber, tension: .35 }, { label: "Sugar", data: sugar, tension: .35 }] },
       options: { responsive: true, maintainAspectRatio: false }
     });
   }
@@ -1321,11 +2464,305 @@ async function saveSettings(event) {
   showToast("Settings saved.");
 }
 
-function openBarcodeModal() {
-  const canScan = "BarcodeDetector" in window && navigator.mediaDevices?.getUserMedia;
+function renderSettingsV2() {
+  const s = state.settings;
+  const microKeys = Object.keys(MICRO_DEFAULTS).filter(key => !["sodium", "salt"].includes(key));
+  els.pages.settings.innerHTML = `
+    <form id="settingsForm" class="stack">
+      <div class="card">
+        <h3>Goals</h3>
+        <div class="form-grid">
+          <label>Calories / day<input name="calorieGoal" type="number" min="0" value="${s.calorieGoal}" /></label>
+          <label>Macro mode
+            <select name="macroGoalMode">
+              ${[
+                ["manual", "Manual grams"],
+                ["percent", "Percentage split"],
+                ["protein-fixed", "Protein fixed"]
+              ].map(([value, label]) => `<option value="${value}" ${s.macroGoalMode === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+          <label>Protein g / day<input name="proteinGoal" type="number" min="0" value="${s.proteinGoal}" /></label>
+          <label>Carbs g / day<input name="carbsGoal" type="number" min="0" value="${s.carbsGoal}" /></label>
+          <label>Fat g / day<input name="fatGoal" type="number" min="0" value="${s.fatGoal}" /></label>
+          <label>Protein %<input name="macroPercentProtein" type="number" min="0" max="100" value="${s.macroPercentProtein}" /></label>
+          <label>Carbs %<input name="macroPercentCarbs" type="number" min="0" max="100" value="${s.macroPercentCarbs}" /></label>
+          <label>Fat %<input name="macroPercentFat" type="number" min="0" max="100" value="${s.macroPercentFat}" /></label>
+          <label>Fiber g / day<input name="fiberGoal" type="number" min="0" value="${s.fiberGoal}" /></label>
+          <label>Sugar g / day<input name="sugarGoal" type="number" min="0" value="${s.sugarGoal}" /></label>
+          <label>Sodium max mg / day<input name="sodiumMax" type="number" min="0" value="${s.sodiumMax}" /></label>
+          <label>Salt max g / day<input name="saltMax" type="number" min="0" step="0.1" value="${s.saltMax}" /></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Appearance and modules</h3>
+        <div class="form-grid">
+          <label>Theme
+            <select name="theme">
+              ${["system", "light", "dark"].map(v => `<option value="${v}" ${s.theme === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </label>
+          <label>Dashboard density
+            <select name="dashboardDensity">
+              ${["comfortable", "compact"].map(v => `<option value="${v}" ${s.dashboardDensity === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </label>
+          <label>Search region
+            <select name="searchRegion">
+              ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </label>
+          <label>Database preference
+            <select name="databasePreference">
+              ${[
+                ["custom-first", "Personal first"],
+                ["api-first", "API first"],
+                ["offline-only", "Offline/cache only"]
+              ].map(([value, label]) => `<option value="${value}" ${s.databasePreference === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        <div class="grid-3" style="margin-top:14px;">
+          ${Object.entries(DEFAULT_SETTINGS.modules).map(([key]) => `
+            <label class="switch-row"><input name="module_${key}" type="checkbox" ${s.modules[key] ? "checked" : ""} /> ${key}</label>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Nutrients</h3>
+        <div class="grid-3">
+          ${Object.entries(DEFAULT_SETTINGS.nutrientVisibility).map(([key]) => `
+            <label class="switch-row"><input name="visible_${key}" type="checkbox" ${s.nutrientVisibility[key] ? "checked" : ""} /> ${key}</label>
+          `).join("")}
+        </div>
+        <details style="margin-top:14px;">
+          <summary class="kicker">Micronutrient targets</summary>
+          <div class="form-grid" style="margin-top:12px;">
+            ${microKeys.map(key => `
+              <label>${NUTRIENT_LABELS[key]}
+                <input name="micro_${key}_target" type="number" step="0.01" min="0" value="${s.micronutrientGoals[key]?.target ?? MICRO_DEFAULTS[key].target}" />
+              </label>
+              <label>${NUTRIENT_LABELS[key]} mode
+                <select name="micro_${key}_mode">
+                  <option value="min" ${s.micronutrientGoals[key]?.mode === "min" ? "selected" : ""}>Minimum target</option>
+                  <option value="max" ${s.micronutrientGoals[key]?.mode === "max" ? "selected" : ""}>Maximum limit</option>
+                </select>
+              </label>
+            `).join("")}
+          </div>
+        </details>
+      </div>
+
+      <div class="card stack">
+        <h3>Data and sync</h3>
+        <p>Current state: <strong>${safeText(els.syncStatus?.textContent || "Offline cache")}</strong>. Firestore persistence and local browser cache are both used when available.</p>
+        <div class="inline-actions">
+          <button class="secondary-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
+          <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
+          <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
+          <button class="ghost-btn" type="button" data-action="go-reports">Open reports and exports</button>
+          <button class="danger-btn" type="button" data-action="clear-current-logs">Clear current day logs</button>
+          <button class="danger-btn" type="button" data-action="clear-custom-foods">Clear custom foods</button>
+        </div>
+        <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
+        <p class="form-message" id="settingsSaveMessage"></p>
+      </div>
+    </form>
+  `;
+  const form = document.getElementById("settingsForm");
+  form?.addEventListener("input", queueSettingsAutosave);
+  form?.addEventListener("change", queueSettingsAutosave);
+  document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
+}
+
+function collectSettingsFromForm(form) {
+  const data = new FormData(form);
+  const next = {
+    ...state.settings,
+    calorieGoal: number(data.get("calorieGoal"), state.settings.calorieGoal),
+    proteinGoal: number(data.get("proteinGoal"), state.settings.proteinGoal),
+    carbsGoal: number(data.get("carbsGoal"), state.settings.carbsGoal),
+    fatGoal: number(data.get("fatGoal"), state.settings.fatGoal),
+    fiberGoal: number(data.get("fiberGoal"), state.settings.fiberGoal),
+    sugarGoal: number(data.get("sugarGoal"), state.settings.sugarGoal),
+    sodiumMax: number(data.get("sodiumMax"), state.settings.sodiumMax),
+    saltMax: number(data.get("saltMax"), state.settings.saltMax),
+    theme: String(data.get("theme") || "system"),
+    searchRegion: String(data.get("searchRegion") || "world"),
+    databasePreference: String(data.get("databasePreference") || "custom-first"),
+    dashboardDensity: String(data.get("dashboardDensity") || "comfortable"),
+    macroGoalMode: String(data.get("macroGoalMode") || "manual"),
+    macroPercentProtein: number(data.get("macroPercentProtein"), 25),
+    macroPercentCarbs: number(data.get("macroPercentCarbs"), 45),
+    macroPercentFat: number(data.get("macroPercentFat"), 30),
+    modules: { ...state.settings.modules },
+    nutrientVisibility: { ...state.settings.nutrientVisibility },
+    micronutrientGoals: structuredClone(state.settings.micronutrientGoals)
+  };
+  Object.keys(next.modules).forEach(key => next.modules[key] = data.get(`module_${key}`) === "on");
+  Object.keys(next.nutrientVisibility).forEach(key => next.nutrientVisibility[key] = data.get(`visible_${key}`) === "on");
+  Object.keys(MICRO_DEFAULTS).forEach(key => {
+    next.micronutrientGoals[key] = {
+      target: number(data.get(`micro_${key}_target`), MICRO_DEFAULTS[key].target),
+      mode: String(data.get(`micro_${key}_mode`) || MICRO_DEFAULTS[key].mode)
+    };
+  });
+  return mergeSettings(next);
+}
+
+function queueSettingsAutosave(event) {
+  const form = event.currentTarget;
+  clearTimeout(state.settingsSaveTimer);
+  state.settingsSaveTimer = setTimeout(async () => {
+    try {
+      const next = collectSettingsFromForm(form);
+      state.settings = next;
+      setTheme();
+      writeLocal("settings", next);
+      await setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true });
+      const message = document.getElementById("settingsSaveMessage");
+      if (message) message.textContent = "Saved automatically.";
+    } catch (error) {
+      showError(error, "Could not save settings.");
+    }
+  }, 450);
+}
+
+function exportBackupJson() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    settings: state.settings,
+    customFoods: state.customFoods,
+    recipes: state.recipes,
+    mealsets: state.mealsets,
+    currentDate: state.currentDate,
+    currentLogs: state.logs,
+    reportEntries: state.reportEntries
+  };
+  downloadFile(`nutripilot_backup_${todayISO()}.json`, JSON.stringify(payload, null, 2), "application/json");
+}
+
+async function importBackupFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  const payload = JSON.parse(text);
+  if (!payload || typeof payload !== "object") throw new Error("Invalid backup file.");
+  if (!confirm("Import this backup into Firebase? Existing ids in the backup will be overwritten.")) return;
+  if (payload.settings) await setDoc(userDoc("private", "settings"), cleanForFirestore(mergeSettings(payload.settings)), { merge: true });
+  for (const [collectionName, items] of [["customFoods", payload.customFoods], ["recipes", payload.recipes], ["mealsets", payload.mealsets]]) {
+    for (const item of items || []) {
+      const id = item.id || crypto.randomUUID();
+      const copy = { ...item, updatedAt: Date.now() };
+      delete copy.id;
+      await setDoc(userDoc(collectionName, id), cleanForFirestore(copy), { merge: true });
+    }
+  }
+  for (const entry of payload.currentLogs || []) {
+    const id = entry.id || crypto.randomUUID();
+    const copy = { ...entry, updatedAt: Date.now() };
+    delete copy.id;
+    await setDoc(entryDoc(id, entry.date || payload.currentDate || state.currentDate), cleanForFirestore(copy), { merge: true });
+  }
+  showToast("Backup imported.");
+  event.target.value = "";
+}
+
+async function clearCurrentLogs() {
+  if (!confirm(`Delete all logs for ${state.currentDate}?`)) return;
+  const snap = await getDocs(entryCollection(state.currentDate));
+  for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, state.currentDate));
+  writeLocal(`logs:${state.currentDate}`, []);
+  await updateDailyCalorieSummary(state.currentDate, []);
+  showToast("Current day logs cleared.");
+}
+
+async function clearCustomFoods() {
+  if (!confirm("Delete all custom and used foods from your personal library?")) return;
+  const snap = await getDocs(userCollection("customFoods"));
+  for (const docSnap of snap.docs) await deleteDoc(userDoc("customFoods", docSnap.id));
+  writeLocal("customFoods", []);
+  showToast("Custom foods cleared.");
+}
+
+function openSyncConflictResolver() {
+  const local = {
+    settings: readLocal("settings", null),
+    customFoods: readLocal("customFoods", []),
+    recipes: readLocal("recipes", []),
+    mealsets: readLocal("mealsets", []),
+    logs: readLocal(`logs:${state.currentDate}`, [])
+  };
+  const remote = {
+    settings: state.settings,
+    customFoods: state.customFoods,
+    recipes: state.recipes,
+    mealsets: state.mealsets,
+    logs: state.logs
+  };
+  const localFreshness = Math.max(collectionFreshness(local.customFoods), collectionFreshness(local.recipes), collectionFreshness(local.mealsets), collectionFreshness(local.logs));
+  const remoteFreshness = Math.max(collectionFreshness(remote.customFoods), collectionFreshness(remote.recipes), collectionFreshness(remote.mealsets), collectionFreshness(remote.logs));
+  const differs = JSON.stringify(local) !== JSON.stringify(remote);
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Barcode lookup</h3><button class="close-btn" data-action="close-modal">×</button></div>
+      <div class="modal-head"><h3>Sync check</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-body">
+        <p>${differs ? "Local cache and Firebase data differ." : "Local cache and Firebase currently match for cached collections."}</p>
+        <div class="grid-2">
+          ${metricCard("Local cache", localFreshness ? new Date(localFreshness).toLocaleString() : "No timestamp", `${local.logs.length} logs cached`)}
+          ${metricCard("Firebase view", remoteFreshness ? new Date(remoteFreshness).toLocaleString() : "No timestamp", `${remote.logs.length} logs loaded`)}
+        </div>
+        <div class="form-actions">
+          <button class="secondary-btn" data-action="use-local-cache">Use local cache</button>
+          <button class="primary-btn" data-action="use-firebase-cache">Use Firebase copy</button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function useLocalCacheForFirebase() {
+  const settings = mergeSettings(readLocal("settings", state.settings));
+  await setDoc(userDoc("private", "settings"), cleanForFirestore(settings), { merge: true });
+  for (const [collectionName, items] of [["customFoods", readLocal("customFoods", [])], ["recipes", readLocal("recipes", [])], ["mealsets", readLocal("mealsets", [])]]) {
+    for (const item of items || []) {
+      const id = item.id || crypto.randomUUID();
+      const copy = { ...item, updatedAt: Date.now() };
+      delete copy.id;
+      await setDoc(userDoc(collectionName, id), cleanForFirestore(copy), { merge: true });
+    }
+  }
+  for (const entry of readLocal(`logs:${state.currentDate}`, [])) {
+    const id = entry.id || crypto.randomUUID();
+    const copy = { ...entry, updatedAt: Date.now() };
+    delete copy.id;
+    await setDoc(entryDoc(id, state.currentDate), cleanForFirestore(copy), { merge: true });
+  }
+  closeModal();
+  showToast("Local cache copied to Firebase.");
+}
+
+function useFirebaseForLocalCache() {
+  writeLocal("settings", state.settings);
+  writeLocal("customFoods", state.customFoods);
+  writeLocal("recipes", state.recipes);
+  writeLocal("mealsets", state.mealsets);
+  writeLocal(`logs:${state.currentDate}`, state.logs);
+  closeModal();
+  showToast("Firebase copy saved to local cache.");
+}
+
+function openBarcodeModal() {
+  if (!state.settings.modules.barcode) {
+    showToast("Barcode module is disabled in Settings.");
+    return;
+  }
+  const canScan = (("BarcodeDetector" in window) || window.ZXing?.BrowserMultiFormatReader) && navigator.mediaDevices?.getUserMedia;
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Barcode lookup</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
         <div class="form-grid two">
           <label>Barcode<input id="barcodeInput" inputmode="numeric" placeholder="e.g. 4008400401621" /></label>
@@ -1334,15 +2771,25 @@ function openBarcodeModal() {
         ${canScan ? `
           <div class="video-box"><video id="barcodeVideo" muted playsinline></video></div>
           <button class="secondary-btn" data-action="start-barcode-scan">Start camera scan</button>
-        ` : `<div class="empty-state">Native barcode scanning is not available in this browser. Manual barcode lookup still works.</div>`}
+        ` : `<div class="empty-state">Camera barcode scanning is not available in this browser. Manual barcode lookup still works.</div>`}
       </div>
     </div>
   `);
 }
 
 async function startBarcodeScan() {
-  if (!("BarcodeDetector" in window)) throw new Error("Barcode scanning is not supported in this browser.");
   const video = document.getElementById("barcodeVideo");
+  if (!video) return;
+  if (!("BarcodeDetector" in window) && window.ZXing?.BrowserMultiFormatReader) {
+    const reader = new ZXing.BrowserMultiFormatReader();
+    const result = await reader.decodeOnceFromVideoDevice(undefined, video);
+    reader.reset();
+    closeModal();
+    await lookupBarcodeCached(result.getText());
+    setRoute("search");
+    return;
+  }
+  if (!("BarcodeDetector" in window)) throw new Error("Barcode scanning is not supported in this browser.");
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   video.srcObject = stream;
   await video.play();
@@ -1360,7 +2807,7 @@ async function startBarcodeScan() {
         const rawValue = codes[0].rawValue;
         stop();
         closeModal();
-        await getOpenFoodFactsByBarcode(rawValue);
+        await lookupBarcodeCached(rawValue);
         setRoute("search");
         return;
       }
@@ -1411,6 +2858,7 @@ async function editEntry(id) {
       nutrientsSnapshot: scaleNutrients(entry.nutrientsSnapshot, factor),
       updatedAt: Date.now()
     }));
+    await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
     closeModal();
   });
 }
@@ -1421,6 +2869,7 @@ async function moveEntry(id) {
   const meal = prompt(`Move to meal: breakfast, lunch, dinner, snack`, entry.meal);
   if (!MEALS.some(([id]) => id === meal)) return;
   await updateDoc(entryDoc(id), { meal, updatedAt: Date.now() });
+  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
 }
 
 async function duplicateEntry(id) {
@@ -1429,6 +2878,7 @@ async function duplicateEntry(id) {
   const copy = { ...entry, createdAt: Date.now(), updatedAt: Date.now() };
   delete copy.id;
   await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
+  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
 }
 
 function openModal(html) {
@@ -1455,47 +2905,79 @@ async function handleClick(event) {
     if (action === "close-modal") closeModal();
     if (action === "go-search") setRoute("search");
     if (action === "go-reports") setRoute("reports");
+    if (action === "go-settings") setRoute("settings");
     if (action === "change-date") {
       state.currentDate = addDaysISO(state.currentDate, number(btn.dataset.days));
       subscribeLogsForCurrentDate();
     }
-    if (action === "repeat-yesterday") await repeatYesterday();
-    if (action === "search-foods") await searchOpenFoodFacts(document.getElementById("foodSearchInput")?.value || "");
+    if (action === "recent-search") await runFoodSearch(btn.dataset.query || "");
+    if (action === "search-foods") await runFoodSearch(document.getElementById("foodSearchInput")?.value || "");
     if (action === "open-barcode-modal") openBarcodeModal();
     if (action === "lookup-barcode") {
-      await getOpenFoodFactsByBarcode(document.getElementById("barcodeInput")?.value || "");
+      await lookupBarcodeCached(document.getElementById("barcodeInput")?.value || "");
       closeModal();
       setRoute("search");
     }
     if (action === "start-barcode-scan") await startBarcodeScan();
     if (action === "log-food") openLogFoodModal(getFoodByKey(btn.dataset.key));
+    if (action === "food-detail") openFoodDetailModal(getFoodByKey(btn.dataset.key));
     if (action === "save-api-food") await saveApiFoodAsCustom(btn.dataset.key);
-    if (action === "delete-custom-food") await deleteDoc(userDoc("customFoods", btn.dataset.id));
-    if (action === "delete-entry") await deleteDoc(entryDoc(btn.dataset.id));
+    if (action === "toggle-favorite-food") await toggleFavoriteFood(btn.dataset.id);
+    if (action === "edit-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id));
+    if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
+    if (action === "delete-custom-food" && confirm("Delete this custom food?")) await deleteDoc(userDoc("customFoods", btn.dataset.id));
+    if (action === "delete-entry") {
+      await deleteDoc(entryDoc(btn.dataset.id));
+      await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+    }
     if (action === "edit-entry") await editEntry(btn.dataset.id);
     if (action === "move-entry") await moveEntry(btn.dataset.id);
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
     if (action === "create-recipe") await createRecipe();
     if (action === "create-mealset") await createMealset();
-    if (action === "delete-recipe") await deleteDoc(userDoc("recipes", btn.dataset.id));
-    if (action === "delete-mealset") await deleteDoc(userDoc("mealsets", btn.dataset.id));
+    if (action === "detail-recipe") openTargetDetail("recipe", btn.dataset.id);
+    if (action === "detail-mealset") openTargetDetail("mealset", btn.dataset.id);
+    if (action === "edit-recipe") openTargetEditor("recipe", btn.dataset.id);
+    if (action === "edit-mealset") openTargetEditor("mealset", btn.dataset.id);
+    if (action === "duplicate-recipe") await duplicateTarget("recipe", btn.dataset.id);
+    if (action === "duplicate-mealset") await duplicateTarget("mealset", btn.dataset.id);
+    if (action === "delete-recipe" && confirm("Delete this recipe?")) await deleteDoc(userDoc("recipes", btn.dataset.id));
+    if (action === "delete-mealset" && confirm("Delete this mealset?")) await deleteDoc(userDoc("mealsets", btn.dataset.id));
     if (action === "add-ingredient") openIngredientModal(btn.dataset.kind, btn.dataset.id);
     if (action === "ingredient-search") {
       const query = document.getElementById("ingredientSearchInput")?.value || "";
-      await searchOpenFoodFacts(query);
+      const results = await runFoodSearch(query, { updateState: false });
       const root = document.getElementById("ingredientResults");
-      root.innerHTML = state.searchResults.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No results.</div>`;
+      root.innerHTML = results.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No results.</div>`;
     }
     if (action === "show-custom-ingredients") {
-      document.getElementById("ingredientResults").innerHTML = state.customFoods.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No custom foods yet.</div>`;
+      const recipePortions = state.recipes.filter(recipe => !(btn.dataset.kind === "recipe" && recipe.id === btn.dataset.id)).map(recipePortionAsFood);
+      document.getElementById("ingredientResults").innerHTML = [
+        ...recipePortions,
+        ...state.customFoods
+      ].map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No custom foods yet.</div>`;
     }
     if (action === "select-ingredient") openIngredientAmountModal(getFoodByKey(btn.dataset.key), btn.dataset.kind, btn.dataset.id);
+    if (action === "edit-target-item") openTargetItemAmountEditor(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
+    if (action === "remove-target-item") await removeTargetItem(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
     if (action === "log-recipe") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id));
     if (action === "log-mealset") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id));
+    if (action === "report-prev-week" || action === "report-next-week") {
+      const days = action === "report-prev-week" ? -7 : 7;
+      state.reportRange = [addDaysISO(document.getElementById("reportStart")?.value || state.reportRange[0], days), addDaysISO(document.getElementById("reportEnd")?.value || state.reportRange[1], days)];
+      renderReportsShell();
+    }
     if (action === "load-report") await loadReport();
     if (action === "export-full-csv") await exportEntries("csv", false);
     if (action === "export-calories-csv") await exportEntries("csv", true);
     if (action === "export-calories-json") await exportEntries("json", true);
+    if (action === "export-backup-json") exportBackupJson();
+    if (action === "trigger-import") document.getElementById("backupImportInput")?.click();
+    if (action === "clear-current-logs") await clearCurrentLogs();
+    if (action === "clear-custom-foods") await clearCustomFoods();
+    if (action === "resolve-sync-conflict") openSyncConflictResolver();
+    if (action === "use-local-cache") await useLocalCacheForFirebase();
+    if (action === "use-firebase-cache") useFirebaseForLocalCache();
   } catch (error) {
     showError(error);
   }
@@ -1531,12 +3013,38 @@ els.themeToggle.addEventListener("click", async () => {
   await setDoc(userDoc("private", "settings"), { theme: next }, { merge: true });
 });
 
+els.installBtn?.addEventListener("click", async () => {
+  if (!state.installPrompt) return;
+  state.installPrompt.prompt();
+  await state.installPrompt.userChoice.catch(() => null);
+  state.installPrompt = null;
+  els.installBtn.classList.add("hidden");
+});
+
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  state.installPrompt = event;
+  els.installBtn?.classList.remove("hidden");
+});
+
+window.addEventListener("online", () => {
+  updateSyncStatus({ online: true, fromCache: false });
+  showToast("Back online. Firebase sync will resume.");
+});
+
+window.addEventListener("offline", () => {
+  updateSyncStatus({ online: false });
+  showToast("Offline mode active. Cached data remains available.");
+});
+
 onAuthStateChanged(auth, user => {
   state.user = user;
   els.authView.classList.toggle("hidden", !!user);
   els.appView.classList.toggle("hidden", !user);
   els.signOutBtn.classList.toggle("hidden", !user);
   if (user) {
+    hydrateUserCache(user.uid);
+    setTheme();
     subscribeUserData();
     setRoute(state.route);
   } else {
@@ -1546,9 +3054,20 @@ onAuthStateChanged(auth, user => {
     state.customFoods = [];
     state.recipes = [];
     state.mealsets = [];
+    state.searchResults = [];
+    state.recentSearches = [];
   }
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.warn));
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
+    reg.addEventListener("updatefound", () => {
+      const worker = reg.installing;
+      worker?.addEventListener("statechange", () => {
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          showToast("Update ready. Reload to use the newest NutriPilot.");
+        }
+      });
+    });
+  }).catch(console.warn));
 }
