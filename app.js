@@ -926,6 +926,20 @@ function searchLibraryItems(items, queryText) {
   });
 }
 
+function ringPoint(radius, pct) {
+  const clamped = Math.max(0, Math.min(100, number(pct)));
+  const angle = clamped / 100 * Math.PI * 2;
+  return {
+    x: 100 + radius * Math.cos(angle),
+    y: 100 + radius * Math.sin(angle)
+  };
+}
+
+function ringDotHTML(radius, pct, className) {
+  const point = ringPoint(radius, pct);
+  return `<circle class="${safeText(className)}" cx="${round(point.x, 3)}" cy="${round(point.y, 3)}" r="6" />`;
+}
+
 function renderToday() {
   const total = addNutrients(state.logs);
   const goals = effectiveGoalsForDate(state.currentDate);
@@ -968,7 +982,8 @@ function renderToday() {
               </defs>
               <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
               <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
-              ${kcalOverPct ? `<circle class="ring-over" cx="100" cy="100" r="68" fill="none" stroke-width="8" stroke-dasharray="${overCircumference}" stroke-dashoffset="${overOffset}" />` : ""}
+              ${ringDotHTML(82, kcalPct, "ring-dot")}
+              ${kcalOverPct ? `<circle class="ring-over" cx="100" cy="100" r="68" fill="none" stroke-width="8" stroke-dasharray="${overCircumference}" stroke-dashoffset="${overOffset}" />${ringDotHTML(68, kcalOverPct, "ring-dot ring-over-dot")}` : ""}
             </svg>
             <div class="ring-center">
               <strong>${round(total.kcal, 0)}</strong>
@@ -1345,7 +1360,7 @@ function renderSearchV2() {
           <div>
             <h3>Find food</h3>
           </div>
-          <button class="secondary-btn" data-action="open-custom-food-modal">Add food</button>
+          <button class="secondary-btn" data-action="open-custom-food-modal">Add custom food</button>
         </div>
         <div class="search-bar search-bar-compact">
           <input id="foodSearchInput" type="search" value="${safeText(state.searchQuery)}" placeholder="Name or barcode" autocomplete="off" aria-label="Food search" />
@@ -2615,10 +2630,10 @@ function openTargetDetail(kind, id) {
         <p class="kicker">${isRecipe ? `${target.portions || 1} portions` : "Mealset"}${target.notes ? ` - ${safeText(target.notes)}` : ""}</p>
         ${targetDetailSummaryHTML(total, isRecipe ? "per portion" : "per mealset")}
         <div class="target-detail-actions">
-          <button class="primary-btn" data-action="log-${kind}-from-detail" data-id="${id}">Log</button>
-          <button class="tiny-btn" data-action="add-ingredient" data-kind="${kind}" data-id="${id}">${isRecipe ? "Ingredient" : "Item"}</button>
-          <button class="tiny-btn" data-action="edit-${kind}" data-id="${id}">Edit</button>
-          <button class="danger-btn" data-action="delete-${kind}" data-id="${id}">Delete</button>
+          <button class="primary-btn target-action-log" data-action="log-${kind}-from-detail" data-id="${id}">Log</button>
+          <button class="tiny-btn target-action-item" data-action="add-ingredient" data-kind="${kind}" data-id="${id}">${isRecipe ? "Ingredient" : "Item"}</button>
+          <button class="tiny-btn target-action-edit" data-action="edit-${kind}" data-id="${id}">Edit</button>
+          <button class="danger-btn target-action-delete" data-action="delete-${kind}" data-id="${id}">Delete</button>
         </div>
         <div class="result-grid">
           ${items.length ? items.map((item, index) => {
@@ -2872,12 +2887,12 @@ function renderReportsShell() {
   els.pages.reports.innerHTML = `
     <div class="stack">
       <div class="card">
-        <div class="meal-head">
-          <div>
+        <div class="meal-head report-period-head">
+          <div class="report-period-title">
             <h3>${safeText(label)}</h3>
-            <span>${safeText(start)} to ${safeText(end)}</span>
+            <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
-          <div class="segmented" aria-label="Report period">
+          <div class="segmented report-period-tabs" aria-label="Report period">
             ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
           </div>
         </div>
@@ -2949,8 +2964,9 @@ function reportActiveDates(entries, dates) {
 function reportSortButton(table, key, label) {
   const sort = state.reportSorts?.[table] || {};
   const active = sort.key === key;
-  const marker = active ? (sort.dir === "asc" ? "up" : "down") : "";
-  return `<button class="sort-btn ${active ? "active" : ""}" type="button" data-action="report-sort" data-table="${table}" data-key="${key}">${safeText(label)}${marker ? `<span>${marker}</span>` : ""}</button>`;
+  const marker = active ? (sort.dir === "asc" ? "↑" : "↓") : "";
+  const directionLabel = active ? (sort.dir === "asc" ? "ascending" : "descending") : "unsorted";
+  return `<button class="sort-btn ${active ? "active" : ""}" type="button" data-action="report-sort" data-table="${table}" data-key="${key}" aria-label="Sort ${safeText(label)} ${directionLabel}">${safeText(label)}${marker ? `<span aria-hidden="true">${marker}</span>` : ""}</button>`;
 }
 
 function setReportSort(table, key) {
@@ -3021,7 +3037,7 @@ function renderReportOutput(start, end, entries) {
       ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"), `target ${round(avgGoals.calorieGoal, 0)}`)}
       ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
       ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, macroGoalStatus(avg, avgGoals), `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
-      ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target over logged days`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `vs ${round(targetCaloriesTotal, 0)}`)}
+      ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target - ${loggedDayLabel}`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `vs ${round(targetCaloriesTotal, 0)}`)}
     </div>
 
     <div class="grid-2">
@@ -3304,10 +3320,10 @@ function renderCharts(byDate) {
         labels,
         datasets: [
           { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .35 },
-          { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0 }
+          { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: item => !String(item.text || "").toLowerCase().includes("target") } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
     });
   }
   if (macroCtx) {
@@ -3317,14 +3333,14 @@ function renderCharts(byDate) {
         labels,
         datasets: [
           { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .35 },
-          { label: "Protein target", data: proteinTarget, borderColor: "#2563eb", borderDash: [6, 6], pointRadius: 0, tension: 0 },
+          { label: "Protein target", data: proteinTarget, borderColor: "#2563eb", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
           { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .35 },
-          { label: "Carbs target", data: carbsTarget, borderColor: "#7c3aed", borderDash: [6, 6], pointRadius: 0, tension: 0 },
+          { label: "Carbs target", data: carbsTarget, borderColor: "#7c3aed", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
           { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .35 },
-          { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0 }
+          { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: item => !String(item.text || "").toLowerCase().includes("target") } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
     });
   }
 }

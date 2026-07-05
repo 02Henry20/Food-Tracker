@@ -2063,3 +2063,114 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     justify-self: stretch;
   }
 }
+
+/* Current polish pass v12: progress dots, report mobile header, sticky detail close */
+.ring-dot {
+  fill: var(--surface-solid);
+  stroke: #f97316;
+  stroke-width: 4;
+  filter: drop-shadow(0 4px 8px rgba(15, 23, 42, .18));
+}
+.ring-over-dot {
+  stroke: #fb6f4a;
+  fill: #fff7ed;
+}
+.search-panel h3 {
+  font-size: clamp(1.45rem, 2.1vw, 2.05rem);
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+.target-section > .meal-head {
+  min-height: 46px;
+  align-items: flex-start;
+}
+.target-section > .result-grid {
+  align-content: start;
+}
+.target-detail-modal .modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  padding-bottom: 12px;
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--border);
+}
+.target-detail-modal .modal-body {
+  padding-top: 14px;
+}
+.report-date-range {
+  display: inline-flex;
+  gap: 5px;
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.report-period-tabs {
+  flex-wrap: nowrap;
+}
+.report-period-tabs .tiny-btn {
+  text-transform: capitalize;
+}
+.sort-btn span {
+  min-width: 1.15em;
+  padding: 0 3px;
+  background: transparent;
+  color: currentColor;
+  font-size: .9em;
+  line-height: 1;
+}
+
+@media (max-width: 560px) {
+  .report-period-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+  }
+  .report-period-title {
+    min-width: 0;
+  }
+  .report-date-range {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    font-size: .78rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+  .report-date-range .range-separator {
+    display: none;
+  }
+  .report-date-range span:last-child::before {
+    content: "to ";
+  }
+  .report-period-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(42px, 1fr));
+    gap: 5px;
+    justify-self: end;
+  }
+  .report-period-tabs .tiny-btn {
+    min-height: 34px;
+    padding: 7px 8px;
+    font-size: .74rem;
+  }
+  .report-metrics-grid .metric-card {
+    text-align: center;
+    justify-items: center;
+    align-content: center;
+  }
+  .target-detail-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .target-detail-actions button {
+    width: 100%;
+    min-height: 44px;
+    font-size: .94rem;
+    padding-inline: 8px;
+  }
+  .target-detail-actions .target-action-item { order: 1; }
+  .target-detail-actions .target-action-edit { order: 2; }
+  .target-detail-actions .target-action-log { order: 3; }
+  .target-detail-actions .target-action-delete { order: 4; }
+}
