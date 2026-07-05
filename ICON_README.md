@@ -1,13 +1,18 @@
-# NutriPilot icon assets
+# NutriPilot icon pack
 
-This pack contains the selected spoon + leaf progress-ring symbol prepared for browser tabs, PWA install icons, Apple touch icons, Android launcher icons, circular variants and maskable variants.
+This pack contains the dot-free NutriPilot icon assets.
 
-## Key files
-- `favicon.ico`: browser tab favicon with 16/32/48 px transparent-background variants.
-- `icons/favicon-16x16.png`, `icons/favicon-32x32.png`, `icons/favicon-48x48.png`: transparent browser tab fallbacks.
-- `icons/logo-mark.svg`: transparent vector symbol used inside the app header/login brand mark.
-- `icons/icon-*.png`: standard app icons.
-- `icons/circle-*.png`: circular Android launcher-friendly icons.
+## Browser/tab assets
+- `favicon.ico` in the project root: multi-size transparent favicon.
+- `icons/favicon-16x16.png`, `icons/favicon-32x32.png`, `icons/favicon-48x48.png`: transparent PNG favicons.
+
+## PWA/app assets
+- `icons/icon-*.png`: standard square app icons.
+- `icons/circle-*.png`: round Android launcher variants.
 - `icons/maskable-*.png`: Android maskable icons with safe padding.
-- `manifest.webmanifest`: production PWA manifest.
-- `head-snippet.html`: exact head tags for favicon/manifest loading.
+- `icons/apple-touch-icon.png`: iOS home-screen icon.
+- `icons/logo-mark.svg`: SVG UI logo mark used in the app brand area.
+- `icons/symbol-transparent-*.png`: transparent symbol-only exports for future use.
+
+## Setup
+Use the included `manifest.webmanifest` and the links from `head-snippet.html` in your HTML head.

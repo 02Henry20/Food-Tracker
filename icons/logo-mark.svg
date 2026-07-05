@@ -25,7 +25,6 @@
   <g filter="url(#softShadow)">
     <path d="M512 168 A344 344 0 1 0 796 706" fill="none" stroke="url(#ring)" stroke-width="72" stroke-linecap="round"/>
     <path d="M787 259 A344 344 0 0 1 836 624" fill="none" stroke="url(#orange)" stroke-width="72" stroke-linecap="round"/>
-    <circle cx="813" cy="246" r="42" fill="#f97316" stroke="#fff" stroke-width="18"/>
     <path d="M372 656 C247 516 308 356 338 300 C455 363 536 466 512 587 C499 655 457 717 406 763 C421 698 409 662 372 656Z" fill="url(#leaf)"/>
     <path d="M412 742 C397 639 350 551 318 493 C393 574 429 646 412 742Z" fill="#ffffff" opacity=".96"/>
     <path d="M537 754 C586 694 603 642 590 582 C576 517 592 438 648 396 C697 359 771 365 801 417 C840 482 790 560 719 586 C672 603 645 642 628 690 C612 736 582 772 537 754Z" fill="url(#spoon)"/>

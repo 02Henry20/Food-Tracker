@@ -1580,3 +1580,145 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
 .daily-kcal-stack .hero-kcal-pill {
   justify-self: center;
 }
+
+/* Login brand refinement: keep the login screen text-only, no corner/icon mark. */
+.auth-login-brand.auth-login-brand-text-only {
+  justify-content: center;
+  text-align: center;
+}
+.auth-login-brand.auth-login-brand-text-only .brand-mark {
+  display: none !important;
+}
+@media (max-width: 560px) {
+  .auth-login-brand.auth-login-brand-text-only {
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* NutriPilot v17 polish: dot-free icon, desktop kcal marker, mobile report layout */
+.ring-marker-group {
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ring-marker-halo,
+.ring-marker {
+  vector-effect: non-scaling-stroke;
+}
+.report-period-card .report-period-head {
+  align-items: flex-start;
+}
+.report-title-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.report-title-block h3 {
+  margin-bottom: 0;
+}
+.report-range-label {
+  color: var(--muted);
+  font-weight: 850;
+  white-space: nowrap;
+}
+.report-period-tabs {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.report-period-tabs .tiny-btn {
+  text-transform: capitalize;
+}
+
+@media (max-width: 560px) {
+  .dashboard-hero .macro-circle strong {
+    font-size: .68rem !important;
+    letter-spacing: -.055em;
+    line-height: .9;
+  }
+  .dashboard-hero .macro-circle span {
+    font-size: .52rem !important;
+    line-height: .85;
+  }
+  .report-period-card {
+    padding: 15px;
+  }
+  .report-period-card .report-period-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .report-title-block {
+    text-align: center;
+    justify-items: center;
+  }
+  .report-title-block h3 {
+    font-size: 1.18rem;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+  .report-range-label {
+    max-width: 100%;
+    font-size: .78rem;
+    line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .report-period-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .report-period-tabs .tiny-btn {
+    min-width: 0;
+    min-height: 34px;
+    padding: 7px 6px;
+    justify-content: center;
+    font-size: .78rem;
+  }
+  .report-period-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px !important;
+  }
+  .report-period-actions .ghost-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 36px;
+    padding-inline: 8px;
+  }
+  #reportOutput > .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  #reportOutput > .grid-4 .metric-card {
+    padding: 12px 8px;
+    text-align: center;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    min-height: 112px;
+  }
+  #reportOutput > .grid-4 .metric-card span {
+    font-size: .72rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  #reportOutput > .grid-4 .metric-card strong,
+  #reportOutput > .grid-4 .metric-card .metric-value {
+    font-size: 1.02rem;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+  #reportOutput > .grid-4 .metric-card small {
+    max-width: 100%;
+    font-size: .64rem;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

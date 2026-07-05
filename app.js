@@ -947,8 +947,10 @@ function renderToday() {
               <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
               <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 100 100)" />
               ${kcalOverPct > 0 ? `<circle class="ring-over-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${overOffset}" transform="rotate(-90 100 100)" />` : ""}
-              <circle class="ring-marker-halo" cx="${markerX}" cy="${markerY}" r="10" />
-              <circle class="ring-marker ${kcalOverPct > 0 ? "is-over" : ""}" cx="${markerX}" cy="${markerY}" r="6.5" />
+              <g class="ring-marker-group" transform="translate(${markerX} ${markerY})" aria-hidden="true">
+                <circle class="ring-marker-halo" cx="0" cy="0" r="10" fill="var(--surface-solid)" stroke="rgba(255,255,255,.88)" stroke-width="3" />
+                <circle class="ring-marker ${kcalOverPct > 0 ? "is-over" : ""}" cx="0" cy="0" r="6.5" fill="${kcalOverPct > 0 ? "#f97316" : "#14b8a6"}" stroke="rgba(255,255,255,.75)" stroke-width="1.5" />
+              </g>
             </svg>
             <div class="ring-center">
               <strong>${round(total.kcal, 0)}</strong>
@@ -2576,23 +2578,41 @@ function openLogMealsetModal(mealset) {
   });
 }
 
+function formatReportRangeLabel(startISO, endISO, mode = state.reportMode) {
+  const startDate = new Date(`${startISO}T12:00:00`);
+  const endDate = new Date(`${endISO}T12:00:00`);
+  const month = date => date.toLocaleString(undefined, { month: "short" });
+  const day = date => String(date.getDate()).padStart(2, "0");
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
+  if (mode === "year") return String(startYear);
+  if (startYear === endYear && startDate.getMonth() === endDate.getMonth()) {
+    return `${month(startDate)} ${day(startDate)}–${day(endDate)}, ${endYear}`;
+  }
+  if (startYear === endYear) {
+    return `${month(startDate)} ${day(startDate)} – ${month(endDate)} ${day(endDate)}, ${endYear}`;
+  }
+  return `${month(startDate)} ${day(startDate)}, ${startYear} – ${month(endDate)} ${day(endDate)}, ${endYear}`;
+}
+
 function renderReportsShell() {
   state.reportRange = state.reportRange || periodRange();
   const [start, end] = state.reportRange;
   const label = `${state.reportMode[0].toUpperCase()}${state.reportMode.slice(1)} report`;
+  const rangeLabel = formatReportRangeLabel(start, end, state.reportMode);
   els.pages.reports.innerHTML = `
     <div class="stack">
-      <div class="card">
-        <div class="meal-head">
-          <div>
+      <div class="card report-period-card">
+        <div class="meal-head report-period-head">
+          <div class="report-title-block">
             <h3>${safeText(label)}</h3>
-            <span>${safeText(start)} to ${safeText(end)}</span>
+            <span class="report-range-label">${safeText(rangeLabel)}</span>
           </div>
-          <div class="segmented" aria-label="Report period">
+          <div class="segmented report-period-tabs" aria-label="Report period">
             ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
           </div>
         </div>
-        <div class="form-actions" style="margin-top:12px;">
+        <div class="form-actions report-period-actions" style="margin-top:12px;">
           <button class="ghost-btn" data-action="report-prev-period">Previous</button>
           <button class="ghost-btn" data-action="report-next-period">Next</button>
         </div>
