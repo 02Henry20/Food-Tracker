@@ -1,166 +1,22 @@
-# NutriPilot
+# Ascend App Icon Pack
 
-NutriPilot is a plain HTML/CSS/JavaScript nutrition tracker PWA using Firebase Auth, Cloud Firestore, and Open Food Facts.
+Production-ready icon assets generated from the selected design 1 emblem.
 
-## Included features
+## Folders
 
-- Email/password authentication through Firebase Auth
-- Firestore user data under `users/{uid}`
-- Today dashboard with calorie ring and macro progress
-- Meal split: breakfast, lunch, dinner, snack/other
-- Add, edit, move, duplicate, and delete daily entries
-- Search Open Food Facts directly from the browser
-- Barcode lookup through Open Food Facts
-- Native browser barcode scanner when supported
-- Custom foods saved in Firestore
-- Recipes with portions and per-portion nutrition
-- Mealsets as reusable full meals
-- Reports for a chosen date range
-- Weekly calories, macros, micronutrients, and food frequency
-- Full CSV export
-- Separate calories-only CSV export
-- Separate calories-only JSON export
-- PWA manifest, service worker, and icons
-- Dark/light/system theme
+- `icons/icon-*x*.png` — standard square app icons with a dark navy/charcoal background.
+- `icons/android-circle-*x*.png` — round/circle Android launcher variants, visually optimized rather than simply clipped.
+- `icons/maskable-*x*.png` — Android PWA maskable icons with extra safe padding.
+- `icons/apple-touch-icon.png` — 180x180 Apple touch icon.
+- `favicons/favicon.ico` — browser favicon bundle containing 16x16, 32x32 and 48x48 sizes.
+- `favicons/favicon-16x16.png`, `favicon-32x32.png`, `favicon-48x48.png` — transparent-background browser favicon PNGs.
+- `manifest.webmanifest` — PWA manifest configured for Ascend.
+- `head-snippet.html` — copyable `<head>` tags for the manifest, favicon files and Apple touch icon.
+- `source-emblem-transparent.png` — transparent isolated emblem used to build the pack.
 
-## Important limitation
+## Notes
 
-This version intentionally avoids Firebase Cloud Functions to keep cost and setup lower. Because of that:
-
-- Open Food Facts is queried directly from the browser.
-- USDA FoodData Central is not included because it needs a private API key and should be proxied server-side.
-- API response caching is only browser-level, not global Firestore cache.
-
-## File structure
-
-```txt
-nutripilot/
-  index.html
-  styles.css
-  app.js
-  manifest.webmanifest
-  sw.js
-  firestore.rules
-  firebase.json
-  icons/
-    icon-192.png
-    icon-512.png
-    maskable-192.png
-    maskable-512.png
-    apple-touch-icon.png
-```
-
-## Firebase setup
-
-1. Go to Firebase Console.
-2. Enable Authentication.
-3. Enable Email/Password provider.
-4. Enable Cloud Firestore.
-5. Deploy or paste the rules from `firestore.rules`.
-
-Firestore rules:
-
-```js
-rules_version = '2';
-
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
-    }
-
-    match /users/{uid}/{document=**} {
-      allow read, write: if isOwner(uid);
-    }
-  }
-}
-```
-
-## Local test
-
-Because this app uses JavaScript modules and service workers, do not open `index.html` via `file://`. Use a local web server:
-
-```bash
-cd nutripilot
-python -m http.server 5173
-```
-
-Then open:
-
-```txt
-http://localhost:5173
-```
-
-## Firebase Hosting deploy
-
-Install Firebase CLI if needed:
-
-```bash
-npm install -g firebase-tools
-```
-
-Login:
-
-```bash
-firebase login
-```
-
-From inside the `nutripilot` folder:
-
-```bash
-firebase init hosting firestore
-```
-
-Use this when asked:
-
-```txt
-public directory: .
-single-page app rewrite: yes
-```
-
-Then deploy:
-
-```bash
-firebase deploy
-```
-
-## Export files
-
-Full export:
-
-```csv
-date,meal,item_name,brand,amount,unit,grams,kcal,protein,carbs,sugar,fat,saturated_fat,fiber,salt,sodium,source
-```
-
-Calories-only CSV:
-
-```csv
-date,total_kcal
-2026-07-04,2340
-2026-07-05,2185
-```
-
-Calories-only JSON:
-
-```json
-[
-  {
-    "date": "2026-07-04",
-    "totalKcal": 2340
-  }
-]
-```
-
-## Notes for future upgrades
-
-Best next upgrades:
-
-1. Add Cloud Functions when you are okay with server-side API proxying.
-2. Add USDA FoodData Central fallback for generic raw ingredients.
-3. Add Firestore API cache for repeated Open Food Facts searches.
-4. Add offline log queue.
-5. Add weight-app integration that reads the calories-only export.
+- Normal app icons use a dark navy/charcoal background to match a dark, game-like UI.
+- Browser favicon PNGs and ICO use a transparent background.
+- Maskable icons intentionally keep the emblem smaller so Android launchers do not crop it.
+- The manifest lists Android circle icons first, then maskable icons, then standard icons, so launchers have strong options available.
