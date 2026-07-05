@@ -2174,3 +2174,14 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   .target-detail-actions .target-action-log { order: 3; }
   .target-detail-actions .target-action-delete { order: 4; }
 }
+
+/* v13 kcal current-state dot fix */
+.ring-current-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ring-over-dot.ring-current-dot {
+  stroke: #fb6f4a;
+  fill: #fff7ed;
+  filter: drop-shadow(0 4px 9px rgba(249, 115, 22, .28));
+}

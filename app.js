@@ -944,8 +944,12 @@ function renderToday() {
   const total = addNutrients(state.logs);
   const goals = effectiveGoalsForDate(state.currentDate);
   const macroGoals = effectiveMacroGoals(goals);
-  const kcalPct = Math.min(100, goals.calorieGoal ? total.kcal / goals.calorieGoal * 100 : 0);
-  const kcalOverPct = Math.min(100, goals.calorieGoal && total.kcal > goals.calorieGoal ? (total.kcal - goals.calorieGoal) / goals.calorieGoal * 100 : 0);
+  const kcalPctRaw = goals.calorieGoal ? total.kcal / goals.calorieGoal * 100 : 0;
+  const kcalPct = Math.min(100, kcalPctRaw);
+  const kcalOverPctRaw = goals.calorieGoal && total.kcal > goals.calorieGoal ? (total.kcal - goals.calorieGoal) / goals.calorieGoal * 100 : 0;
+  const kcalOverPct = Math.min(100, kcalOverPctRaw);
+  const kcalDotPct = Math.max(0.5, kcalPctRaw % 100 || (kcalPctRaw > 0 ? 100 : 0));
+  const kcalOverDotPct = Math.max(0.5, kcalOverPctRaw % 100 || (kcalOverPctRaw > 0 ? 100 : 0));
   const remaining = goals.calorieGoal - total.kcal;
   const overCalories = remaining < 0;
   const circumference = 2 * Math.PI * 82;
@@ -982,8 +986,8 @@ function renderToday() {
               </defs>
               <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
               <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
-              ${ringDotHTML(82, kcalPct, "ring-dot")}
-              ${kcalOverPct ? `<circle class="ring-over" cx="100" cy="100" r="68" fill="none" stroke-width="8" stroke-dasharray="${overCircumference}" stroke-dashoffset="${overOffset}" />${ringDotHTML(68, kcalOverPct, "ring-dot ring-over-dot")}` : ""}
+              ${overCalories ? "" : ringDotHTML(82, kcalDotPct, "ring-dot ring-current-dot")}
+              ${kcalOverPct ? `<circle class="ring-over" cx="100" cy="100" r="68" fill="none" stroke-width="8" stroke-dasharray="${overCircumference}" stroke-dashoffset="${overOffset}" />${ringDotHTML(68, kcalOverDotPct, "ring-dot ring-over-dot ring-current-dot")}` : ""}
             </svg>
             <div class="ring-center">
               <strong>${round(total.kcal, 0)}</strong>
