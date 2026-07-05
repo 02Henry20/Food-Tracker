@@ -1029,8 +1029,8 @@ function macroRow(label, value, goal, fillClass) {
   `;
 }
 
-function metricCard(label, value, caption, status = "neutral") {
-  return `<div class="metric-card ${safeText(status)}"><span>${safeText(label)}</span><strong class="metric-value">${safeText(value)}</strong><small>${safeText(caption)}</small></div>`;
+function metricCard(label, value, caption, status = "neutral", mobileCaption = "") {
+  return `<div class="metric-card ${safeText(status)}"><span>${safeText(label)}</span><strong class="metric-value">${safeText(value)}</strong><small><span class="desktop-caption">${safeText(caption)}</span><span class="mobile-caption">${safeText(mobileCaption || caption)}</span></small></div>`;
 }
 
 function renderMealCard(mealId, label) {
@@ -2341,6 +2341,54 @@ function targetItemKcalLabel(kind) {
   return kind === "recipe" ? "kcal / portion" : "kcal";
 }
 
+function targetTotalDisplayNutrients(kind, target, itemsOverride = null) {
+  if (!target) return emptyNutrients();
+  if (itemsOverride) {
+    const total = addNutrients(itemsOverride);
+    return kind === "recipe" ? scaleNutrients(total, 1 / targetPortionDivisor(kind, target)) : total;
+  }
+  return kind === "recipe"
+    ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(target.totalNutrients, 1 / targetPortionDivisor(kind, target)))
+    : normalizeNutrients(target.totalNutrients);
+}
+
+function contributionPercent(value, total) {
+  return total ? round(number(value) / number(total) * 100, 0) : 0;
+}
+
+function targetItemContributionHTML(nutrients, total) {
+  const n = normalizeNutrients(nutrients);
+  const t = normalizeNutrients(total);
+  return `
+    <div class="item-contribution-row" aria-label="Contribution to total">
+      <span class="kcal">kcal ${contributionPercent(n.kcal, t.kcal)}%</span>
+      <span class="protein">P ${contributionPercent(n.protein, t.protein)}%</span>
+      <span class="carbs">C ${contributionPercent(n.carbs, t.carbs)}%</span>
+      <span class="fat">F ${contributionPercent(n.fat, t.fat)}%</span>
+    </div>
+  `;
+}
+
+function targetItemStatsHTML(kind, target, item, displayNutrients = null, totalOverride = null) {
+  const n = normalizeNutrients(displayNutrients || targetItemDisplayNutrients(kind, target, item));
+  const total = normalizeNutrients(totalOverride || targetTotalDisplayNutrients(kind, target));
+  return `${nutrientSummaryHTML(n)}${targetItemContributionHTML(n, total)}`;
+}
+
+function targetDetailSummaryHTML(total, label) {
+  return `
+    <div class="target-detail-summary-panel">
+      <div class="target-kcal-card">
+        <span>Calories</span>
+        <strong>${round(total.kcal, 0)}</strong>
+        <small>${safeText(label)}</small>
+      </div>
+      ${macroSplitSummaryHTML(total)}
+    </div>
+  `;
+}
+
+
 function updateLocalTarget(kind, id, patch) {
   const key = kind === "recipe" ? "recipes" : "mealsets";
   state[key] = (state[key] || []).map(item => item.id === id ? { ...item, ...patch } : item);
@@ -2365,7 +2413,7 @@ function renderTargetCurrentItems(kind, id) {
               <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
               <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
             </div>
-            ${nutrientSummaryHTML(displayNutrients)}
+            ${targetItemEditPreviewHTML(kind, target, items, number(index), displayNutrients)}
             <div class="inline-actions">
               <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Amount</button>
               <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
@@ -2392,7 +2440,6 @@ function openIngredientModal(kind, id, options = {}) {
     <div class="modal">
       <div class="modal-head"><h3>${kind === "recipe" ? "Ingredients" : "Items"} for ${safeText(target.name)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <div class="modal-body">
-        ${renderTargetCurrentItems(kind, id)}
         <div class="search-bar">
           <input id="ingredientSearchInput" type="search" placeholder="Name of the food" value="${safeText(flow.query)}" aria-label="Search ingredients" />
           <button class="primary-btn" data-action="ingredient-search" data-kind="${kind}" data-id="${id}">Search</button>
@@ -2459,6 +2506,13 @@ function ingredientAmountPreviewNutrients(food, amount, kind, id) {
   return scaleNutrients(nutrients, 1 / targetPortionDivisor(kind, target));
 }
 
+function targetItemContributionPreviewHTML(food, amount, kind, id) {
+  const target = targetForKind(kind, id);
+  const displayNutrients = ingredientAmountPreviewNutrients(food, amount, kind, id);
+  const total = targetTotalDisplayNutrients(kind, target);
+  return `${nutrientSummaryHTML(displayNutrients)}${targetItemContributionHTML(displayNutrients, total)}`;
+}
+
 function openIngredientAmountModal(food, kind, id) {
   const isRecipePortion = food?.source === "recipe";
   const defaultAmount = isRecipePortion ? 1 : 100;
@@ -2471,7 +2525,7 @@ function openIngredientAmountModal(food, kind, id) {
       <form id="ingredientAmountForm" class="modal-body">
         <label>${isRecipePortion ? "Portions" : "Amount in grams"}<input name="amount" type="number" step="0.1" min="0" value="${defaultAmount}" required /></label>
         <div id="ingredientAmountPreview" class="amount-preview">
-          ${nutrientSummaryHTML(ingredientAmountPreviewNutrients(food, defaultAmount, kind, id))}
+          ${targetItemContributionPreviewHTML(food, defaultAmount, kind, id)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
       </form>
@@ -2480,7 +2534,7 @@ function openIngredientAmountModal(food, kind, id) {
   const form = document.getElementById("ingredientAmountForm");
   const preview = document.getElementById("ingredientAmountPreview");
   form?.elements.amount?.addEventListener("input", event => {
-    preview.innerHTML = nutrientSummaryHTML(ingredientAmountPreviewNutrients(food, number(event.currentTarget.value), kind, id));
+    preview.innerHTML = targetItemContributionPreviewHTML(food, number(event.currentTarget.value), kind, id);
   });
   form.addEventListener("submit", async event => {
     event.preventDefault();
@@ -2559,8 +2613,7 @@ function openTargetDetail(kind, id) {
       </div>
       <div class="modal-body">
         <p class="kicker">${isRecipe ? `${target.portions || 1} portions` : "Mealset"}${target.notes ? ` - ${safeText(target.notes)}` : ""}</p>
-        ${nutrientSummaryHTML(total)}
-        ${macroSplitSummaryHTML(total)}
+        ${targetDetailSummaryHTML(total, isRecipe ? "per portion" : "per mealset")}
         <div class="target-detail-actions">
           <button class="primary-btn" data-action="log-${kind}-from-detail" data-id="${id}">Log</button>
           <button class="tiny-btn" data-action="add-ingredient" data-kind="${kind}" data-id="${id}">${isRecipe ? "Ingredient" : "Item"}</button>
@@ -2576,7 +2629,7 @@ function openTargetDetail(kind, id) {
                 <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
                 <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
               </div>
-              ${nutrientSummaryHTML(displayNutrients)}
+              ${targetItemStatsHTML(kind, target, item, displayNutrients)}
               <div class="inline-actions">
                 <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Edit amount</button>
                 <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
@@ -2633,6 +2686,18 @@ async function duplicateTarget(kind, id) {
   showToast(`${isRecipe ? "Recipe" : "Mealset"} duplicated.`);
 }
 
+function targetItemEditPreviewHTML(kind, target, items, index, nextDisplayNutrients) {
+  const oldItem = items[number(index)];
+  const oldDisplay = targetItemDisplayNutrients(kind, target, oldItem);
+  const currentTotal = targetTotalDisplayNutrients(kind, target, items);
+  const adjustedTotal = addNutrients([
+    { nutrientsSnapshot: currentTotal },
+    { nutrientsSnapshot: scaleNutrients(oldDisplay, -1) },
+    { nutrientsSnapshot: nextDisplayNutrients }
+  ]);
+  return `${nutrientSummaryHTML(nextDisplayNutrients)}${targetItemContributionHTML(nextDisplayNutrients, adjustedTotal)}`;
+}
+
 function openTargetItemAmountEditor(kind, id, index) {
   const isRecipe = kind === "recipe";
   const target = targetForKind(kind, id);
@@ -2648,7 +2713,7 @@ function openTargetItemAmountEditor(kind, id, index) {
       <form id="targetItemEditForm" class="modal-body">
         <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" step="0.1" min="0" value="${currentAmount}" /></label>
         <div id="targetItemAmountPreview" class="amount-preview">
-          ${nutrientSummaryHTML(displayNutrients)}
+          ${targetItemStatsHTML(kind, target, item, displayNutrients)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save amount</button></div>
       </form>
@@ -2658,7 +2723,7 @@ function openTargetItemAmountEditor(kind, id, index) {
   const preview = document.getElementById("targetItemAmountPreview");
   form?.elements.amount?.addEventListener("input", event => {
     const factor = number(event.currentTarget.value) / oldAmount;
-    preview.innerHTML = nutrientSummaryHTML(scaleNutrients(displayNutrients, factor));
+    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), scaleNutrients(displayNutrients, factor));
   });
   form.addEventListener("submit", async event => {
     event.preventDefault();
@@ -2722,8 +2787,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
-        ${nutrientSummaryHTML(perPortion)}
-        ${macroSplitSummaryHTML(perPortion)}
+        ${targetDetailSummaryHTML(perPortion, "per portion")}
         <div class="form-actions"><button class="primary-btn" type="submit">Log recipe</button></div>
       </form>
     </div>
@@ -2768,8 +2832,7 @@ function openLogMealsetModal(mealset, returnTarget = null) {
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
-        ${nutrientSummaryHTML(total)}
-        ${macroSplitSummaryHTML(total)}
+        ${targetDetailSummaryHTML(total, "per mealset")}
         <div class="form-actions"><button class="primary-btn" type="submit">Log mealset</button></div>
       </form>
     </div>
@@ -2954,11 +3017,11 @@ function renderReportOutput(start, end, entries) {
   const loggedDayLabel = `${activeDates.length} logged day${activeDates.length === 1 ? "" : "s"}`;
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
-    <div class="grid-4">
-      ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"))}
-      ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"))}
-      ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, macroGoalStatus(avg, avgGoals))}
-      ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target over logged days`, goalStatus(total.kcal, targetCaloriesTotal, "max"))}
+    <div class="grid-4 report-metrics-grid">
+      ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"), `target ${round(avgGoals.calorieGoal, 0)}`)}
+      ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
+      ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, macroGoalStatus(avg, avgGoals), `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
+      ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target over logged days`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `vs ${round(targetCaloriesTotal, 0)}`)}
     </div>
 
     <div class="grid-2">
@@ -3244,7 +3307,7 @@ function renderCharts(byDate) {
           { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0 }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: item => !String(item.text || "").toLowerCase().includes("target") } } } }
     });
   }
   if (macroCtx) {
@@ -3261,7 +3324,7 @@ function renderCharts(byDate) {
           { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0 }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: item => !String(item.text || "").toLowerCase().includes("target") } } } }
     });
   }
 }
