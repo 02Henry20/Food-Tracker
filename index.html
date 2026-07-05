@@ -6,12 +6,9 @@
   <meta name="theme-color" content="#0f172a" />
   <meta name="description" content="NutriPilot - modern nutrition, macro and meal tracking." />
   <title>NutriPilot</title>
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="icon" href="./favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16x16.png" />
-  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="48x48" href="./icons/favicon-48x48.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
@@ -20,7 +17,7 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand">
-        <div class="brand-mark app-logo-mark" aria-hidden="true"><img src="./icons/logo-mark.svg" alt="" /></div>
+        <div class="brand-mark">NP</div>
         <div>
           <h1>NutriPilot</h1>
           <p>Fuel with direction</p>
@@ -48,7 +45,8 @@
       </header>
 
       <section id="authView" class="auth-card auth-card-compact">
-        <div class="auth-login-brand auth-login-brand-text-only">
+        <div class="auth-login-brand">
+          <div class="brand-mark">NP</div>
           <div>
             <h1>NutriPilot</h1>
             <p>Fuel with direction</p>
