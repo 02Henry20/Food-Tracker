@@ -2631,3 +2631,135 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     font-size: .6rem;
   }
 }
+
+
+/* NutriPilot refinement pass v19 */
+.macro-circle-inner-text {
+  align-content: center;
+  justify-items: center;
+  place-items: center;
+  gap: 0;
+  line-height: 1;
+  padding: 0 6px;
+}
+.macro-circle-inner-text .macro-circle-number {
+  line-height: .95;
+  margin: 0;
+}
+.macro-circle-inner-text .macro-circle-status {
+  line-height: .95;
+  margin: 1px 0 0;
+}
+
+/* Stronger but still subtle per-meal ombre, including mobile */
+.meals-grid .meal-card.meal-card-breakfast {
+  background:
+    linear-gradient(180deg, rgba(20, 184, 166, .095), rgba(20, 184, 166, .026)),
+    var(--surface);
+}
+.meals-grid .meal-card.meal-card-lunch {
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, .095), rgba(59, 130, 246, .026)),
+    var(--surface);
+}
+.meals-grid .meal-card.meal-card-dinner {
+  background:
+    linear-gradient(180deg, rgba(249, 115, 22, .095), rgba(249, 115, 22, .026)),
+    var(--surface);
+}
+.meals-grid .meal-card.meal-card-snack {
+  background:
+    linear-gradient(180deg, rgba(148, 163, 184, .075), rgba(148, 163, 184, .022)),
+    var(--surface);
+}
+
+@media (max-width: 980px) {
+  .meals-grid .meal-card.meal-card-breakfast {
+    background:
+      linear-gradient(135deg, rgba(20, 184, 166, .12), rgba(20, 184, 166, .03)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-lunch {
+    background:
+      linear-gradient(135deg, rgba(59, 130, 246, .12), rgba(59, 130, 246, .03)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-dinner {
+    background:
+      linear-gradient(135deg, rgba(249, 115, 22, .12), rgba(249, 115, 22, .03)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-snack {
+    background:
+      linear-gradient(135deg, rgba(148, 163, 184, .09), rgba(148, 163, 184, .026)),
+      var(--surface);
+  }
+}
+
+@media (max-width: 560px) {
+  .macro-circle-inner-text {
+    gap: 0;
+  }
+  .macro-circle-inner-text .macro-circle-status {
+    margin-top: 1px;
+  }
+
+  .meals-grid .meal-card.meal-card-breakfast {
+    background:
+      linear-gradient(135deg, rgba(20, 184, 166, .14), rgba(20, 184, 166, .035)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-lunch {
+    background:
+      linear-gradient(135deg, rgba(59, 130, 246, .14), rgba(59, 130, 246, .035)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-dinner {
+    background:
+      linear-gradient(135deg, rgba(249, 115, 22, .14), rgba(249, 115, 22, .035)),
+      var(--surface);
+  }
+  .meals-grid .meal-card.meal-card-snack {
+    background:
+      linear-gradient(135deg, rgba(148, 163, 184, .105), rgba(148, 163, 184, .03)),
+      var(--surface);
+  }
+}
+
+
+/* NutriPilot refinement pass v20 */
+.macro-circle-inner-text {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  gap: 1px;
+  padding: 0;
+  line-height: .9;
+}
+.macro-circle-inner-text .macro-circle-number {
+  display: block;
+  line-height: .9;
+  margin: 0;
+}
+.macro-circle-inner-text .macro-circle-status {
+  display: block;
+  line-height: .9;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .daily-kcal-stack {
+    align-self: center;
+    justify-self: center;
+    transform: translateY(7px);
+  }
+  .dashboard-hero {
+    align-items: center;
+  }
+  .macro-circle-inner-text {
+    gap: 1px;
+  }
+}

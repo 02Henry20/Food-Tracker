@@ -1045,7 +1045,6 @@ function macroCircleCard(label, value, goal, color) {
       <div>
         <h3>${safeText(label)}</h3>
         <p><span class="macro-current-value">${round(value)}</span> <span class="macro-divider">/</span> <span class="macro-target-value">${round(goal)}</span> g</p>
-        <small>${remaining >= 0 ? `${round(remaining)} g left` : `${round(Math.abs(remaining))} g over`}</small>
       </div>
     </article>
   `;
