@@ -254,6 +254,10 @@ const state = {
     frequency: { key: "kcal", dir: "desc" },
     micros: { key: "name", dir: "asc" }
   },
+  reportPages: {
+    topSources: 1,
+    frequency: 1
+  },
   tempFoods: new Map(),
   charts: {},
   unsubs: [],
@@ -927,10 +931,13 @@ function renderToday() {
   const goals = effectiveGoalsForDate(state.currentDate);
   const macroGoals = effectiveMacroGoals(goals);
   const kcalPct = Math.min(100, goals.calorieGoal ? total.kcal / goals.calorieGoal * 100 : 0);
+  const kcalOverPct = Math.min(100, goals.calorieGoal && total.kcal > goals.calorieGoal ? (total.kcal - goals.calorieGoal) / goals.calorieGoal * 100 : 0);
   const remaining = goals.calorieGoal - total.kcal;
   const overCalories = remaining < 0;
   const circumference = 2 * Math.PI * 82;
   const offset = circumference - (kcalPct / 100) * circumference;
+  const overCircumference = 2 * Math.PI * 68;
+  const overOffset = overCircumference - (kcalOverPct / 100) * overCircumference;
   const macroRings = [
     macroCircleCard("Protein", total.protein, macroGoals.proteinGoal, "var(--protein)"),
     macroCircleCard("Carbs", total.carbs, macroGoals.carbsGoal, "var(--carbs)"),
@@ -961,6 +968,7 @@ function renderToday() {
               </defs>
               <circle class="ring-bg" cx="100" cy="100" r="82" fill="none" stroke-width="18" />
               <circle class="ring-progress" cx="100" cy="100" r="82" fill="none" stroke-width="18" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" />
+              ${kcalOverPct ? `<circle class="ring-over" cx="100" cy="100" r="68" fill="none" stroke-width="8" stroke-dasharray="${overCircumference}" stroke-dashoffset="${overOffset}" />` : ""}
             </svg>
             <div class="ring-center">
               <strong>${round(total.kcal, 0)}</strong>
@@ -991,9 +999,10 @@ function renderToday() {
 
 function macroCircleCard(label, value, goal, color) {
   const pct = Math.max(0, Math.min(100, goal ? value / goal * 100 : 0));
+  const overPct = Math.max(0, Math.min(100, goal && value > goal ? (value - goal) / goal * 100 : 0));
   const remaining = goal - value;
   return `
-    <article class="macro-circle-card" style="--pct:${pct}%; --ring-color:${color};">
+    <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
         <div>
           <strong>${round(value)}</strong>
@@ -2311,34 +2320,58 @@ async function syncRecipeReferencesInMealsets(recipeId, recipeOverride = null) {
   }
 }
 
+function targetForKind(kind, id) {
+  return kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
+}
+
 function targetItemsForKind(kind, id) {
-  const target = kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
+  const target = targetForKind(kind, id);
   return target ? (kind === "recipe" ? target.ingredients || [] : target.items || []) : [];
 }
 
+function targetPortionDivisor(kind, target) {
+  return kind === "recipe" ? Math.max(1, number(target?.portions, 1)) : 1;
+}
+
+function targetItemDisplayNutrients(kind, target, item) {
+  return scaleNutrients(item?.nutrientsSnapshot, 1 / targetPortionDivisor(kind, target));
+}
+
+function targetItemKcalLabel(kind) {
+  return kind === "recipe" ? "kcal / portion" : "kcal";
+}
+
+function updateLocalTarget(kind, id, patch) {
+  const key = kind === "recipe" ? "recipes" : "mealsets";
+  state[key] = (state[key] || []).map(item => item.id === id ? { ...item, ...patch } : item);
+}
+
 function renderTargetCurrentItems(kind, id) {
-  const items = targetItemsForKind(kind, id);
+  const target = targetForKind(kind, id);
+  const items = target ? (kind === "recipe" ? target.ingredients || [] : target.items || []) : [];
   const label = kind === "recipe" ? "Ingredients" : "Items";
   return `
-    <details class="current-target-items">
+    <details class="current-target-items" open>
       <summary class="current-target-summary">
         <span>${label}</span>
         <span class="kicker">${items.length} saved</span>
       </summary>
       <div class="result-grid compact-results">
-        ${items.length ? items.map((item, index) => `
+        ${items.length ? items.map((item, index) => {
+          const displayNutrients = targetItemDisplayNutrients(kind, target, item);
+          return `
           <div class="food-entry target-item-entry">
             <div class="food-entry-head">
               <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
-              <strong>${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong>
+              <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
             </div>
-            ${nutrientSummaryHTML(normalizeNutrients(item.nutrientsSnapshot))}
+            ${nutrientSummaryHTML(displayNutrients)}
             <div class="inline-actions">
               <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Amount</button>
               <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
             </div>
-          </div>
-        `).join("") : `<div class="empty-state">No ${kind === "recipe" ? "ingredients" : "items"} yet.</div>`}
+          </div>`;
+        }).join("") : `<div class="empty-state">No ${kind === "recipe" ? "ingredients" : "items"} yet.</div>`}
       </div>
     </details>
   `;
@@ -2357,7 +2390,7 @@ function openIngredientModal(kind, id, options = {}) {
     : `<div class="empty-state">Search for a food${kind === "mealset" ? " or add a saved recipe." : "."}</div>`;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>${kind === "recipe" ? "Ingredients" : "Items"} for ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>${kind === "recipe" ? "Ingredients" : "Items"} for ${safeText(target.name)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <div class="modal-body">
         ${renderTargetCurrentItems(kind, id)}
         <div class="search-bar">
@@ -2420,20 +2453,25 @@ function nutrientsForIngredientAmount(food, amount) {
   return scaleNutrients(food?.nutrientsPer100g, amount / 100);
 }
 
+function ingredientAmountPreviewNutrients(food, amount, kind, id) {
+  const nutrients = nutrientsForIngredientAmount(food, amount);
+  const target = targetForKind(kind, id);
+  return scaleNutrients(nutrients, 1 / targetPortionDivisor(kind, target));
+}
+
 function openIngredientAmountModal(food, kind, id) {
   const isRecipePortion = food?.source === "recipe";
   const defaultAmount = isRecipePortion ? 1 : 100;
   openModal(`
     <div class="modal">
       <div class="modal-head">
-        <button class="ghost-btn modal-back-btn" type="button" data-action="back-to-ingredient-search" data-kind="${kind}" data-id="${id}">Back</button>
         <h3>Add ${safeText(displayFoodName(food))}</h3>
-        <button class="close-btn" type="button" data-action="close-modal">x</button>
+        <button class="close-btn" type="button" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button>
       </div>
       <form id="ingredientAmountForm" class="modal-body">
         <label>${isRecipePortion ? "Portions" : "Amount in grams"}<input name="amount" type="number" step="0.1" min="0" value="${defaultAmount}" required /></label>
         <div id="ingredientAmountPreview" class="amount-preview">
-          ${nutrientSummaryHTML(nutrientsForIngredientAmount(food, defaultAmount))}
+          ${nutrientSummaryHTML(ingredientAmountPreviewNutrients(food, defaultAmount, kind, id))}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
       </form>
@@ -2442,13 +2480,13 @@ function openIngredientAmountModal(food, kind, id) {
   const form = document.getElementById("ingredientAmountForm");
   const preview = document.getElementById("ingredientAmountPreview");
   form?.elements.amount?.addEventListener("input", event => {
-    preview.innerHTML = nutrientSummaryHTML(nutrientsForIngredientAmount(food, number(event.currentTarget.value)));
+    preview.innerHTML = nutrientSummaryHTML(ingredientAmountPreviewNutrients(food, number(event.currentTarget.value), kind, id));
   });
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const amount = number(new FormData(event.currentTarget).get("amount"));
     await addIngredientToTarget(food, amount, kind, id);
-    closeModal();
+    openTargetDetail(kind, id);
   });
 }
 
@@ -2480,13 +2518,16 @@ async function addIngredientToTarget(food, amount, kind, id) {
     const totalNutrients = addNutrients(ingredients);
     const nutrientsPerPortion = scaleNutrients(totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)));
     const updatedRecipe = { ...recipe, ingredients, totalNutrients, nutrientsPerPortion, updatedAt: Date.now() };
+    updateLocalTarget("recipe", id, updatedRecipe);
     await updateDoc(userDoc("recipes", id), cleanForFirestore({ ingredients, totalNutrients, nutrientsPerPortion, updatedAt: updatedRecipe.updatedAt }));
     await syncRecipeReferencesInMealsets(id, updatedRecipe);
   } else {
     const mealset = state.mealsets.find(m => m.id === id);
     const items = [...(mealset.items || []), ingredient];
     const totalNutrients = addNutrients(items);
-    await updateDoc(userDoc("mealsets", id), cleanForFirestore({ items, totalNutrients, updatedAt: Date.now() }));
+    const updatedAt = Date.now();
+    updateLocalTarget("mealset", id, { items, totalNutrients, updatedAt });
+    await updateDoc(userDoc("mealsets", id), cleanForFirestore({ items, totalNutrients, updatedAt }));
   }
   showToast("Ingredient added.");
 }
@@ -2506,41 +2547,42 @@ function recalculateTarget(kind, target, items) {
 
 function openTargetDetail(kind, id) {
   const isRecipe = kind === "recipe";
-  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  const target = targetForKind(kind, id);
   if (!target) return;
   const items = isRecipe ? target.ingredients || [] : target.items || [];
   const total = isRecipe ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(target.totalNutrients, 1 / Math.max(1, target.portions || 1))) : normalizeNutrients(target.totalNutrients);
   openModal(`
-    <div class="modal">
+    <div class="modal target-detail-modal">
       <div class="modal-head">
-        <button class="ghost-btn modal-back-btn" type="button" data-action="close-modal">Back</button>
         <h3>${safeText(target.name)}</h3>
         <button class="close-btn" data-action="close-modal">x</button>
       </div>
       <div class="modal-body">
         <p class="kicker">${isRecipe ? `${target.portions || 1} portions` : "Mealset"}${target.notes ? ` - ${safeText(target.notes)}` : ""}</p>
         ${nutrientSummaryHTML(total)}
+        ${macroSplitSummaryHTML(total)}
         <div class="target-detail-actions">
-          <button class="primary-btn" data-action="log-${kind}" data-id="${id}">Log</button>
+          <button class="primary-btn" data-action="log-${kind}-from-detail" data-id="${id}">Log</button>
           <button class="tiny-btn" data-action="add-ingredient" data-kind="${kind}" data-id="${id}">${isRecipe ? "Ingredient" : "Item"}</button>
           <button class="tiny-btn" data-action="edit-${kind}" data-id="${id}">Edit</button>
-          <button class="tiny-btn" data-action="duplicate-${kind}" data-id="${id}">Duplicate</button>
           <button class="danger-btn" data-action="delete-${kind}" data-id="${id}">Delete</button>
         </div>
         <div class="result-grid">
-          ${items.length ? items.map((item, index) => `
+          ${items.length ? items.map((item, index) => {
+            const displayNutrients = targetItemDisplayNutrients(kind, target, item);
+            return `
             <div class="food-entry">
               <div class="food-entry-head">
                 <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
-                <strong>${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong>
+                <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
               </div>
-              ${nutrientSummaryHTML(normalizeNutrients(item.nutrientsSnapshot))}
+              ${nutrientSummaryHTML(displayNutrients)}
               <div class="inline-actions">
                 <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Edit amount</button>
                 <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
               </div>
-            </div>
-          `).join("") : `<div class="empty-state">No ${isRecipe ? "ingredients" : "items"} yet.</div>`}
+            </div>`;
+          }).join("") : `<div class="empty-state">No ${isRecipe ? "ingredients" : "items"} yet.</div>`}
         </div>
       </div>
     </div>
@@ -2549,11 +2591,11 @@ function openTargetDetail(kind, id) {
 
 function openTargetEditor(kind, id) {
   const isRecipe = kind === "recipe";
-  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  const target = targetForKind(kind, id);
   if (!target) return;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Edit ${isRecipe ? "recipe" : "mealset"}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Edit ${isRecipe ? "recipe" : "mealset"}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetEditForm" class="modal-body">
         <label>Name<input name="name" required value="${safeText(target.name)}" /></label>
         ${isRecipe ? `<label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="${target.portions || 1}" /></label>` : ""}
@@ -2574,9 +2616,10 @@ function openTargetEditor(kind, id) {
       patch.portions = number(data.get("portions"), target.portions || 1);
       patch.nutrientsPerPortion = scaleNutrients(target.totalNutrients, 1 / Math.max(1, patch.portions));
     }
+    updateLocalTarget(kind, id, patch);
     await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
     if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
-    closeModal();
+    openTargetDetail(kind, id);
   });
 }
 
@@ -2592,19 +2635,20 @@ async function duplicateTarget(kind, id) {
 
 function openTargetItemAmountEditor(kind, id, index) {
   const isRecipe = kind === "recipe";
-  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  const target = targetForKind(kind, id);
   const items = [...(isRecipe ? target?.ingredients || [] : target?.items || [])];
   const item = items[number(index)];
   if (!target || !item) return;
   const currentAmount = round(item.amount ?? item.grams, 2);
   const oldAmount = number(item.amount ?? item.grams, 1) || 1;
+  const displayNutrients = targetItemDisplayNutrients(kind, target, item);
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetItemEditForm" class="modal-body">
         <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" step="0.1" min="0" value="${currentAmount}" /></label>
         <div id="targetItemAmountPreview" class="amount-preview">
-          ${nutrientSummaryHTML(normalizeNutrients(item.nutrientsSnapshot))}
+          ${nutrientSummaryHTML(displayNutrients)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save amount</button></div>
       </form>
@@ -2614,7 +2658,7 @@ function openTargetItemAmountEditor(kind, id, index) {
   const preview = document.getElementById("targetItemAmountPreview");
   form?.elements.amount?.addEventListener("input", event => {
     const factor = number(event.currentTarget.value) / oldAmount;
-    preview.innerHTML = nutrientSummaryHTML(scaleNutrients(item.nutrientsSnapshot, factor));
+    preview.innerHTML = nutrientSummaryHTML(scaleNutrients(displayNutrients, factor));
   });
   form.addEventListener("submit", async event => {
     event.preventDefault();
@@ -2628,24 +2672,26 @@ function openTargetItemAmountEditor(kind, id, index) {
       updatedAt: Date.now()
     };
     const patch = recalculateTarget(kind, target, items);
+    updateLocalTarget(kind, id, patch);
     await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
     if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
-    closeModal();
     showToast("Amount updated.");
+    openTargetDetail(kind, id);
   });
 }
 
 async function removeTargetItem(kind, id, index) {
   const isRecipe = kind === "recipe";
-  const target = isRecipe ? state.recipes.find(item => item.id === id) : state.mealsets.find(item => item.id === id);
+  const target = targetForKind(kind, id);
   if (!target) return;
   const items = [...(isRecipe ? target.ingredients || [] : target.items || [])];
   items.splice(number(index), 1);
   const patch = recalculateTarget(kind, target, items);
+  updateLocalTarget(kind, id, patch);
   await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
   if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
-  closeModal();
   showToast("Item removed.");
+  openTargetDetail(kind, id);
 }
 
 async function incrementFoodUsageForTargetItems(items = []) {
@@ -2664,11 +2710,12 @@ async function incrementFoodUsageForTargetItems(items = []) {
   }
 }
 
-function openLogRecipeModal(recipe) {
+function openLogRecipeModal(recipe, returnTarget = null) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion);
+  const closeAction = returnTarget ? `data-action="return-target-detail" data-kind="${returnTarget.kind}" data-id="${returnTarget.id}"` : `data-action="close-modal"`;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Log ${safeText(recipe.name)}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Log ${safeText(recipe.name)}</h3><button class="close-btn" type="button" ${closeAction}>x</button></div>
       <form id="logRecipeForm" class="modal-body">
         <div class="form-grid two">
           <label>Portions<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
@@ -2676,6 +2723,7 @@ function openLogRecipeModal(recipe) {
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
         ${nutrientSummaryHTML(perPortion)}
+        ${macroSplitSummaryHTML(perPortion)}
         <div class="form-actions"><button class="primary-btn" type="submit">Log recipe</button></div>
       </form>
     </div>
@@ -2703,15 +2751,17 @@ function openLogRecipeModal(recipe) {
     await incrementFoodUsageForTargetItems(recipe.ingredients || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
+    if (returnTarget) renderRecipes();
     showToast("Recipe logged.");
   });
 }
 
-function openLogMealsetModal(mealset) {
+function openLogMealsetModal(mealset, returnTarget = null) {
   const total = normalizeNutrients(mealset.totalNutrients);
+  const closeAction = returnTarget ? `data-action="return-target-detail" data-kind="${returnTarget.kind}" data-id="${returnTarget.id}"` : `data-action="close-modal"`;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" type="button" ${closeAction}>x</button></div>
       <form id="logMealsetForm" class="modal-body">
         <div class="form-grid two">
           <label>Quantity<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
@@ -2719,6 +2769,7 @@ function openLogMealsetModal(mealset) {
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
         ${nutrientSummaryHTML(total)}
+        ${macroSplitSummaryHTML(total)}
         <div class="form-actions"><button class="primary-btn" type="submit">Log mealset</button></div>
       </form>
     </div>
@@ -2746,6 +2797,7 @@ function openLogMealsetModal(mealset) {
     await incrementFoodUsageForTargetItems(mealset.items || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
+    if (returnTarget) renderRecipes();
     showToast("Mealset logged.");
   });
 }
@@ -2861,6 +2913,27 @@ function sortReportRows(rows, table) {
   return [...rows].sort((a, b) => compareReportValue(a, b, key) * dir);
 }
 
+function paginatedReportRows(rows, table) {
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const current = Math.min(Math.max(1, number(state.reportPages?.[table], 1)), totalPages);
+  state.reportPages[table] = current;
+  const start = (current - 1) * pageSize;
+  return { rows: rows.slice(start, start + pageSize), page: current, totalPages, total: rows.length, start };
+}
+
+function renderReportPagination(table, pageData) {
+  if (!pageData || pageData.total <= 10) return "";
+  return `
+    <div class="pagination report-pagination">
+      <button class="ghost-btn" data-action="report-page" data-table="${table}" data-dir="-1" ${pageData.page <= 1 ? "disabled" : ""}>Previous</button>
+      <span class="kicker">${pageData.start + 1}-${Math.min(pageData.start + 10, pageData.total)} of ${pageData.total}</span>
+      <button class="ghost-btn" data-action="report-page" data-table="${table}" data-dir="1" ${pageData.page >= pageData.totalPages ? "disabled" : ""}>Next</button>
+    </div>
+  `;
+}
+
+
 function renderReportOutput(start, end, entries) {
   const dates = dateRange(start, end);
   const activeDates = reportActiveDates(entries, dates);
@@ -2872,8 +2945,10 @@ function renderReportOutput(start, end, entries) {
   for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
   const filteredEntries = applyReportEntryFilters(entries);
   const foodRows = foodFrequencyRows(filteredEntries);
-  const topSources = sortReportRows(foodRows, "topSources").slice(0, 10);
+  const topRows = sortReportRows(foodRows, "topSources");
   const frequencyRows = sortReportRows(foodRows, "frequency");
+  const topPage = paginatedReportRows(topRows, "topSources");
+  const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
   const avgGoals = reportGoalAverages(start, end, activeDates);
   const targetCaloriesTotal = avgGoals.calorieGoal * activeDays;
   const loggedDayLabel = `${activeDates.length} logged day${activeDates.length === 1 ? "" : "s"}`;
@@ -2899,7 +2974,8 @@ function renderReportOutput(start, end, entries) {
 
     <div class="card">
       <h3>Top sources</h3>
-      <div class="table-wrap"><table class="report-table"><thead><tr><th>${reportSortButton("topSources", "name", "Food")}</th><th>${reportSortButton("topSources", "kcal", "kcal")}</th><th>${reportSortButton("topSources", "protein", "Protein")}</th><th>${reportSortButton("topSources", "carbs", "Carbs")}</th><th>${reportSortButton("topSources", "fat", "Fat")}</th></tr></thead><tbody>${topSources.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.kcal, 0)}</td><td>${round(row.protein)} g</td><td>${round(row.carbs)} g</td><td>${round(row.fat)} g</td></tr>`).join("") || `<tr><td colspan="5">No entries.</td></tr>`}</tbody></table></div>
+      <div class="table-wrap"><table class="report-table"><thead><tr><th>${reportSortButton("topSources", "name", "Food")}</th><th>${reportSortButton("topSources", "kcal", "kcal")}</th><th>${reportSortButton("topSources", "protein", "Protein")}</th><th>${reportSortButton("topSources", "carbs", "Carbs")}</th><th>${reportSortButton("topSources", "fat", "Fat")}</th></tr></thead><tbody>${topPage.rows.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.kcal, 0)}</td><td>${round(row.protein)} g</td><td>${round(row.carbs)} g</td><td>${round(row.fat)} g</td></tr>`).join("") || `<tr><td colspan="5">No entries.</td></tr>`}</tbody></table></div>
+      ${renderReportPagination("topSources", topPage)}
     </div>
 
     <div class="card">
@@ -2913,12 +2989,13 @@ function renderReportOutput(start, end, entries) {
       <div class="table-wrap">
         <table class="report-table">
           <thead><tr><th>${reportSortButton("frequency", "name", "Food")}</th><th>${reportSortButton("frequency", "count", state.reportFrequencyMode === "avg" ? "Times/day" : "Times")}</th><th>${reportSortButton("frequency", "grams", state.reportFrequencyMode === "avg" ? "Amount/day" : "Total amount")}</th><th>${reportSortButton("frequency", "kcal", state.reportFrequencyMode === "avg" ? "kcal/day" : "Total kcal")}</th></tr></thead>
-          <tbody>${frequencyRows.length ? frequencyRows.map(row => {
+          <tbody>${frequencyPage.rows.length ? frequencyPage.rows.map(row => {
             const factor = state.reportFrequencyMode === "avg" ? 1 / activeDays : 1;
             return `<tr><td>${safeText(row.name)}</td><td>${round(row.count * factor, state.reportFrequencyMode === "avg" ? 2 : 0)}</td><td>${round(row.grams * factor, 0)} g</td><td>${round(row.kcal * factor, 0)}</td></tr>`;
           }).join("") : `<tr><td colspan="4">No entries in this range.</td></tr>`}</tbody>
         </table>
       </div>
+      ${renderReportPagination("frequency", frequencyPage)}
     </div>
 
     <div class="card">
@@ -3111,18 +3188,35 @@ function reportChartData(byDate) {
   if (state.reportMode === "year") {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const buckets = monthNames.map(() => emptyNutrients());
+    const targetBuckets = monthNames.map(() => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 }));
     for (const date of dates) {
       const month = new Date(`${date}T12:00:00`).getMonth();
+      const goals = effectiveGoalsForDate(date);
+      const macros = effectiveMacroGoals(goals);
       buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, byDate[date]]);
+      targetBuckets[month].kcal += number(goals.calorieGoal);
+      targetBuckets[month].protein += number(macros.proteinGoal);
+      targetBuckets[month].carbs += number(macros.carbsGoal);
+      targetBuckets[month].fat += number(macros.fatGoal);
     }
-    return { labels: monthNames, values: buckets };
+    return { labels: monthNames, values: buckets, targets: targetBuckets };
   }
   const labels = dates.map(date => {
     const d = new Date(`${date}T12:00:00`);
     if (state.reportMode === "month") return String(d.getDate()).padStart(2, "0");
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   });
-  return { labels, values: dates.map(date => byDate[date]) };
+  const targets = dates.map(date => {
+    const goals = effectiveGoalsForDate(date);
+    const macros = effectiveMacroGoals(goals);
+    return {
+      kcal: number(goals.calorieGoal),
+      protein: number(macros.proteinGoal),
+      carbs: number(macros.carbsGoal),
+      fat: number(macros.fatGoal)
+    };
+  });
+  return { labels, values: dates.map(date => byDate[date]), targets };
 }
 
 function renderCharts(byDate) {
@@ -3134,12 +3228,22 @@ function renderCharts(byDate) {
   const protein = chartData.values.map(n => round(n.protein, 1));
   const carbs = chartData.values.map(n => round(n.carbs, 1));
   const fat = chartData.values.map(n => round(n.fat, 1));
+  const kcalTarget = chartData.targets.map(n => round(n.kcal, 0));
+  const proteinTarget = chartData.targets.map(n => round(n.protein, 1));
+  const carbsTarget = chartData.targets.map(n => round(n.carbs, 1));
+  const fatTarget = chartData.targets.map(n => round(n.fat, 1));
   const calorieCtx = document.getElementById("calorieChart");
   const macroCtx = document.getElementById("macroChart");
   if (calorieCtx) {
     state.charts.calorie = new Chart(calorieCtx, {
       type: "line",
-      data: { labels, datasets: [{ label: "kcal", data: kcal, tension: .35 }] },
+      data: {
+        labels,
+        datasets: [
+          { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .35 },
+          { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0 }
+        ]
+      },
       options: { responsive: true, maintainAspectRatio: false }
     });
   }
@@ -3150,8 +3254,11 @@ function renderCharts(byDate) {
         labels,
         datasets: [
           { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .35 },
+          { label: "Protein target", data: proteinTarget, borderColor: "#2563eb", borderDash: [6, 6], pointRadius: 0, tension: 0 },
           { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .35 },
-          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .35 }
+          { label: "Carbs target", data: carbsTarget, borderColor: "#7c3aed", borderDash: [6, 6], pointRadius: 0, tension: 0 },
+          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .35 },
+          { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0 }
         ]
       },
       options: { responsive: true, maintainAspectRatio: false }
@@ -4029,6 +4136,7 @@ async function handleClick(event) {
     }
     if (action === "detail-recipe") openTargetDetail("recipe", btn.dataset.id);
     if (action === "detail-mealset") openTargetDetail("mealset", btn.dataset.id);
+    if (action === "return-target-detail") openTargetDetail(btn.dataset.kind, btn.dataset.id);
     if (action === "edit-recipe") openTargetEditor("recipe", btn.dataset.id);
     if (action === "edit-mealset") openTargetEditor("mealset", btn.dataset.id);
     if (action === "duplicate-recipe") await duplicateTarget("recipe", btn.dataset.id);
@@ -4084,18 +4192,29 @@ async function handleClick(event) {
     if (action === "remove-target-item") await removeTargetItem(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
     if (action === "log-recipe") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id));
     if (action === "log-mealset") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id));
+    if (action === "log-recipe-from-detail") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id), { kind: "recipe", id: btn.dataset.id });
+    if (action === "log-mealset-from-detail") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id), { kind: "mealset", id: btn.dataset.id });
     if (action === "set-report-mode") {
       state.reportMode = btn.dataset.mode || "week";
       state.reportRange = periodRange();
+      state.reportPages = { topSources: 1, frequency: 1 };
       renderReportsShell();
     }
     if (action === "report-prev-period" || action === "report-next-period") {
       shiftReportPeriod(action === "report-prev-period" ? -1 : 1);
+      state.reportPages = { topSources: 1, frequency: 1 };
       renderReportsShell();
     }
     if (action === "load-report") await loadReport();
     if (action === "report-sort") {
       setReportSort(btn.dataset.table, btn.dataset.key);
+      if (state.reportPages?.[btn.dataset.table]) state.reportPages[btn.dataset.table] = 1;
+      const [start, end] = state.reportRange || periodRange();
+      renderReportOutput(start, end, state.reportEntries || []);
+    }
+    if (action === "report-page") {
+      const table = btn.dataset.table;
+      state.reportPages[table] = Math.max(1, number(state.reportPages?.[table], 1) + number(btn.dataset.dir, 0));
       const [start, end] = state.reportRange || periodRange();
       renderReportOutput(start, end, state.reportEntries || []);
     }
@@ -4106,6 +4225,7 @@ async function handleClick(event) {
     }
     if (action === "set-report-frequency-mode") {
       state.reportFrequencyMode = btn.dataset.mode === "avg" ? "avg" : "abs";
+      state.reportPages.frequency = 1;
       const [start, end] = state.reportRange || periodRange();
       renderReportOutput(start, end, state.reportEntries || []);
     }

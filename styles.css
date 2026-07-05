@@ -1840,3 +1840,85 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     font-size: .58rem;
   }
 }
+
+
+/* NutriPilot requested refinements */
+.ring-over {
+  stroke: var(--danger);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, .45));
+}
+.hero-kcal-pill.is-over {
+  background: rgba(239,68,68,.13);
+  color: var(--danger);
+}
+.macro-circle-card.is-over {
+  border-color: rgba(239, 68, 68, .36);
+}
+.macro-circle-card.is-over .macro-circle {
+  background:
+    conic-gradient(var(--danger) 0 var(--over-pct), transparent var(--over-pct) 100%),
+    conic-gradient(var(--ring-color) var(--pct), rgba(148,163,184,.18) 0);
+  box-shadow: 0 0 0 4px rgba(239,68,68,.08);
+}
+.macro-split-values {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.macro-amounts,
+.macro-percent-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  gap: 6px;
+  align-items: center;
+}
+.macro-percent-row span {
+  min-width: 46px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .10);
+  font-size: .74rem;
+  font-weight: 950;
+  text-align: center;
+}
+.macro-percent-row .protein { color: var(--protein); }
+.macro-percent-row .carbs { color: var(--carbs); }
+.macro-percent-row .fat { color: var(--warning); }
+.target-detail-modal .macro-split-summary {
+  margin-top: -4px;
+}
+.report-pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+@media (max-width: 560px) {
+  .dashboard-hero .macro-circle strong {
+    font-size: .9rem;
+  }
+  .dashboard-hero .macro-circle span {
+    font-size: .58rem;
+  }
+  .macro-amounts,
+  .macro-percent-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .macro-chip,
+  .macro-percent-row span {
+    min-width: 0;
+    text-align: center;
+  }
+}
+
+/* Alignment tightening for macro gram/percentage rows */
+.macro-amounts,
+.macro-percent-row {
+  grid-template-columns: repeat(3, minmax(54px, 1fr));
+  width: fit-content;
+}
+.macro-chip,
+.macro-percent-row span {
+  min-width: 54px;
+  text-align: center;
+}
