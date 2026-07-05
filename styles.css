@@ -2389,3 +2389,70 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     grid-template-rows: auto minmax(38px, 1fr) auto;
   }
 }
+
+/* NutriPilot refinement pass v15 */
+.macro-current-value,
+.macro-target-value,
+.macro-divider {
+  color: var(--text);
+}
+.macro-circle-card.is-over .macro-current-value {
+  color: var(--danger);
+}
+
+.dashboard-hero.is-over-calories .ring-center strong {
+  color: var(--danger);
+}
+.dashboard-hero.is-over-calories .ring-center span {
+  color: var(--muted);
+}
+
+.macro-percent-row span,
+.macro-percent-row .protein,
+.macro-percent-row .carbs,
+.macro-percent-row .fat {
+  color: var(--muted);
+}
+
+@media (min-width: 981px) {
+  .report-period-card {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 16px;
+  }
+  .report-period-card .report-period-head {
+    display: block;
+    min-width: 0;
+  }
+  .report-period-card .report-period-title {
+    gap: 4px;
+  }
+  .report-period-card .report-period-tabs {
+    justify-self: end;
+    align-self: center;
+  }
+  .report-period-actions {
+    justify-self: end;
+    align-self: center;
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .report-metrics-grid .metric-card {
+    min-height: 126px;
+    padding: 14px 12px;
+  }
+  .report-metrics-grid .metric-card > span {
+    font-size: 1.02rem;
+    line-height: 1.2;
+    font-weight: 900;
+  }
+  .report-metrics-grid .metric-card .metric-value {
+    font-size: 1.5rem;
+  }
+  .report-metrics-grid .metric-card small {
+    font-size: .88rem;
+    line-height: 1.25;
+  }
+}

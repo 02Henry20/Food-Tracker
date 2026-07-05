@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v14";
+const CACHE_NAME = "nutripilot-v15";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,8 @@ const STATIC_ASSETS = [
   "./favicons/favicon-48x48.png",
   "./icons/icon-48x48.png",
   "./icons/icon-96x96.png",
+  "./icons/icon-light-48x48.png",
+  "./icons/icon-light-96x96.png",
   "./icons/icon-192x192.png",
   "./icons/icon-512x512.png",
   "./icons/maskable-192x192.png",

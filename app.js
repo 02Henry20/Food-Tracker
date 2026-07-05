@@ -745,6 +745,18 @@ function setTheme() {
   document.documentElement.dataset.theme = resolved;
   document.body.dataset.density = "comfortable";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#07111f" : "#f5f7fb");
+  updateInAppIcons(resolved);
+}
+
+function updateInAppIcons(theme = document.documentElement.dataset.theme || "light") {
+  const brandSrc = theme === "light" ? "icons/icon-light-96x96.png" : "icons/icon-96x96.png";
+  const titleSrc = theme === "light" ? "icons/icon-light-48x48.png" : "icons/icon-48x48.png";
+  document.querySelectorAll('.app-brand-icon').forEach(img => {
+    img.src = brandSrc;
+  });
+  document.querySelectorAll('.page-title-icon').forEach(img => {
+    img.src = titleSrc;
+  });
 }
 
 function setRoute(route) {
@@ -754,6 +766,7 @@ function setRoute(route) {
   const title = { today: "Diary", search: "Search", recipes: "Recipes & Mealsets", reports: "Reports", settings: "Settings" }[route] || "NutriPilot";
   if (els.pageTitle) {
     els.pageTitle.innerHTML = `<img class="page-title-icon" src="icons/icon-48x48.png" alt="" aria-hidden="true" /><span class="page-title-text">${safeText(title)}</span>`;
+    updateInAppIcons(document.documentElement.dataset.theme || "light");
   }
   renderCurrentRoute();
 }
@@ -1032,7 +1045,7 @@ function macroCircleCard(label, value, goal, color) {
       </div>
       <div>
         <h3>${safeText(label)}</h3>
-        <p>${round(value)} / ${round(goal)} g</p>
+        <p><span class="macro-current-value">${round(value)}</span> <span class="macro-divider">/</span> <span class="macro-target-value">${round(goal)}</span> g</p>
         <small>${remaining >= 0 ? `${round(remaining)} g left` : `${round(Math.abs(remaining))} g over`}</small>
       </div>
     </article>
