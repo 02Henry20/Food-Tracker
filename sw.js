@@ -1,14 +1,20 @@
-const CACHE_NAME = "nutripilot-v13";
+const CACHE_NAME = "nutripilot-v14";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/maskable-192.png",
-  "./icons/maskable-512.png",
+  "./favicons/favicon.ico",
+  "./favicons/favicon-16x16.png",
+  "./favicons/favicon-32x32.png",
+  "./favicons/favicon-48x48.png",
+  "./icons/icon-48x48.png",
+  "./icons/icon-96x96.png",
+  "./icons/icon-192x192.png",
+  "./icons/icon-512x512.png",
+  "./icons/maskable-192x192.png",
+  "./icons/maskable-512x512.png",
   "./icons/apple-touch-icon.png"
 ];
 

@@ -752,7 +752,9 @@ function setRoute(route) {
   Object.entries(els.pages).forEach(([key, page]) => page.classList.toggle("active", key === route));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.route === route));
   const title = { today: "Diary", search: "Search", recipes: "Recipes & Mealsets", reports: "Reports", settings: "Settings" }[route] || "NutriPilot";
-  els.pageTitle.textContent = title;
+  if (els.pageTitle) {
+    els.pageTitle.innerHTML = `<img class="page-title-icon" src="icons/icon-48x48.png" alt="" aria-hidden="true" /><span class="page-title-text">${safeText(title)}</span>`;
+  }
   renderCurrentRoute();
 }
 
@@ -2890,17 +2892,17 @@ function renderReportsShell() {
   const label = `${state.reportMode[0].toUpperCase()}${state.reportMode.slice(1)} report`;
   els.pages.reports.innerHTML = `
     <div class="stack">
-      <div class="card">
-        <div class="meal-head report-period-head">
+      <div class="card report-period-card">
+        <div class="report-period-head">
           <div class="report-period-title">
             <h3>${safeText(label)}</h3>
             <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
-          <div class="segmented report-period-tabs" aria-label="Report period">
-            ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
-          </div>
         </div>
-        <div class="form-actions" style="margin-top:12px;">
+        <div class="segmented report-period-tabs" aria-label="Report period">
+          ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
+        </div>
+        <div class="report-period-actions">
           <button class="ghost-btn" data-action="report-prev-period">Previous</button>
           <button class="ghost-btn" data-action="report-next-period">Next</button>
         </div>
@@ -3592,7 +3594,7 @@ function renderSettingsV2() {
           <span class="status-chip ${state.sync.status}">${safeText(els.syncStatus?.textContent || "Offline")}</span>
         </div>
         <div class="inline-actions">
-          <button class="secondary-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
+          <button class="secondary-btn sync-diff-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
           <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
           <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
           <button class="ghost-btn" type="button" data-action="settings-sign-out">Sign out</button>

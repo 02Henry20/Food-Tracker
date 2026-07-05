@@ -2185,3 +2185,207 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   fill: #fff7ed;
   filter: drop-shadow(0 4px 9px rgba(249, 115, 22, .28));
 }
+
+
+/* NutriPilot requested change pass v14 */
+.brand-mark.app-brand-icon {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  padding: 0;
+  border-radius: 14px;
+  object-fit: contain;
+  background: transparent;
+  box-shadow: 0 14px 34px rgba(20, 184, 166, 0.22);
+}
+.auth-login-brand .brand-mark.app-brand-icon {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  border-radius: 16px;
+}
+#pageTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.page-title-icon {
+  display: none;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 8px 18px rgba(15, 23, 42, .14));
+}
+
+.ring-wrap {
+  isolation: isolate;
+}
+.ring-wrap svg {
+  position: relative;
+  z-index: 5;
+  overflow: visible;
+}
+.ring-center {
+  z-index: 2;
+}
+.ring-current-dot {
+  vector-effect: non-scaling-stroke;
+  paint-order: stroke fill;
+  stroke-width: 4.5;
+  filter: drop-shadow(0 5px 10px rgba(15, 23, 42, .22));
+}
+.dashboard-hero.is-over-calories .ring-progress,
+.dashboard-hero.is-over-calories .ring-current-dot {
+  stroke: var(--danger);
+}
+.dashboard-hero.is-over-calories .ring-current-dot,
+.dashboard-hero.is-over-calories .ring-over-dot {
+  fill: #fef2f2;
+}
+.dashboard-hero.is-over-calories .ring-over {
+  stroke: var(--danger);
+}
+.dashboard-hero.is-over-calories .hero-kcal-pill {
+  background: rgba(239,68,68,.13);
+  color: var(--danger);
+}
+
+@media (min-width: 981px) {
+  #recipesPage > .grid-2 {
+    align-items: start;
+  }
+  #recipesPage .target-section {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    align-content: start;
+  }
+  #recipesPage .target-section > .meal-head {
+    min-height: 56px;
+    align-items: start;
+  }
+  #recipesPage .target-section > .result-grid {
+    align-self: start;
+  }
+}
+
+.report-period-card {
+  display: grid;
+  gap: 12px;
+}
+.report-period-card .report-period-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.report-period-card .report-period-title {
+  display: grid;
+  gap: 4px;
+}
+.report-period-card .report-period-title h3 {
+  margin-bottom: 0;
+}
+.report-period-card .report-period-tabs {
+  width: fit-content;
+}
+.report-period-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.report-period-actions .ghost-btn {
+  min-width: 116px;
+}
+.report-metrics-grid .metric-card {
+  display: grid;
+  grid-template-rows: auto minmax(42px, 1fr) auto;
+  justify-items: center;
+  align-items: center;
+  text-align: center;
+  min-height: 132px;
+}
+.report-metrics-grid .metric-card > span {
+  align-self: end;
+}
+.report-metrics-grid .metric-card strong,
+.report-metrics-grid .metric-card .metric-value {
+  align-self: center;
+  margin: 0;
+  line-height: 1;
+}
+.report-metrics-grid .metric-card small {
+  align-self: start;
+  text-align: center;
+  line-height: 1.25;
+}
+.sync-diff-btn {
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed, #2563eb);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, .22);
+}
+.sync-diff-btn:hover {
+  box-shadow: 0 16px 34px rgba(37, 99, 235, .28);
+}
+
+@media (max-width: 980px) {
+  .page-title-icon {
+    display: block;
+  }
+}
+
+@media (max-width: 560px) {
+  .report-period-card {
+    gap: 10px;
+    padding: 16px;
+  }
+  .report-period-card .report-period-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .report-period-card .report-period-title {
+    gap: 5px;
+  }
+  .report-date-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: normal;
+    font-size: .84rem;
+    line-height: 1.2;
+  }
+  .report-date-range .range-separator {
+    display: inline;
+    color: var(--muted);
+  }
+  .report-date-range span:last-child::before {
+    content: "";
+  }
+  .report-period-card .report-period-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    justify-self: stretch;
+  }
+  .report-period-card .report-period-tabs .tiny-btn {
+    justify-content: center;
+    min-height: 38px;
+    text-transform: capitalize;
+  }
+  .report-period-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .report-period-actions .ghost-btn {
+    min-width: 0;
+    width: 100%;
+    justify-content: center;
+  }
+  .report-metrics-grid .metric-card {
+    min-height: 118px;
+    grid-template-rows: auto minmax(38px, 1fr) auto;
+  }
+}
