@@ -1,35 +1,15 @@
-const CACHE_NAME = "nutripilot-v15";
+const CACHE_NAME = "nutripilot-v13";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./favicon.ico",
-  "./icons/logo-mark.svg",
-  "./icons/favicon-16x16.png",
-  "./icons/favicon-32x32.png",
-  "./icons/favicon-48x48.png",
-  "./icons/apple-touch-icon.png",
-  "./icons/icon-16.png",
-  "./icons/icon-32.png",
-  "./icons/icon-48.png",
-  "./icons/icon-64.png",
-  "./icons/icon-72.png",
-  "./icons/icon-96.png",
-  "./icons/icon-128.png",
-  "./icons/icon-180.png",
   "./icons/icon-192.png",
-  "./icons/icon-256.png",
-  "./icons/icon-384.png",
   "./icons/icon-512.png",
-  "./icons/icon-1024.png",
-  "./icons/circle-192.png",
-  "./icons/circle-512.png",
-  "./icons/circle-1024.png",
   "./icons/maskable-192.png",
   "./icons/maskable-512.png",
-  "./icons/maskable-1024.png"
+  "./icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", event => {
