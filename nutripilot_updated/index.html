@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="NutriPilot - modern nutrition, macro and meal tracking." />
+  <title>NutriPilot</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+</head>
+<body class="auth-active">
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <div class="brand-mark">NP</div>
+        <div>
+          <h1>NutriPilot</h1>
+          <p>Fuel with direction</p>
+        </div>
+      </div>
+      <nav class="side-nav">
+        <button class="nav-btn active" data-route="today">Diary</button>
+        <button class="nav-btn" data-route="search">Search</button>
+        <button class="nav-btn" data-route="recipes">Recipes</button>
+        <button class="nav-btn" data-route="reports">Reports</button>
+        <button class="nav-btn" data-route="settings">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Nutrition dashboard</p>
+          <h2 id="pageTitle">Diary</h2>
+        </div>
+        <div class="top-actions">
+          <span id="syncStatus" class="status-chip" aria-live="polite">Offline</span>
+          <button id="signOutBtn" class="ghost-btn hidden" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <section id="authView" class="auth-card auth-card-compact">
+        <div class="auth-login-brand">
+          <div class="brand-mark">NP</div>
+          <div>
+            <h1>NutriPilot</h1>
+            <p>Fuel with direction</p>
+          </div>
+        </div>
+        <form id="authForm" class="auth-form">
+          <label>Email
+            <input id="emailInput" type="email" autocomplete="email" required placeholder="you@example.com" />
+          </label>
+          <label>Password
+            <input id="passwordInput" type="password" autocomplete="current-password" required minlength="6" placeholder="At least 6 characters" />
+          </label>
+          <div class="auth-buttons">
+            <button id="loginBtn" class="primary-btn" type="submit">Log in</button>
+          </div>
+          <p id="authMessage" class="form-message"></p>
+        </form>
+      </section>
+
+      <section id="appView" class="hidden">
+        <section id="todayPage" class="page active"></section>
+        <section id="searchPage" class="page"></section>
+        <section id="recipesPage" class="page"></section>
+        <section id="reportsPage" class="page"></section>
+        <section id="settingsPage" class="page"></section>
+      </section>
+    </main>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="nav-btn active" data-route="today">Diary</button>
+    <button class="nav-btn" data-route="search">Search</button>
+    <button class="nav-btn" data-route="recipes">Recipes</button>
+    <button class="nav-btn" data-route="reports">Reports</button>
+    <button class="nav-btn" data-route="settings">Settings</button>
+  </nav>
+
+  <div id="modalRoot" class="modal-root hidden"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
