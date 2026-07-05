@@ -902,9 +902,9 @@ function macroSplitSummaryHTML(n) {
           <span class="macro-chip fat">F ${round(n.fat)}g</span>
         </div>
         <div class="macro-percent-row">
-          <span class="protein">${proteinPct}%</span>
-          <span class="carbs">${carbsPct}%</span>
-          <span class="fat">${fatPct}%</span>
+          <span class="protein">P ${proteinPct}%</span>
+          <span class="carbs">C ${carbsPct}%</span>
+          <span class="fat">F ${fatPct}%</span>
         </div>
       </div>
     </div>
@@ -1035,11 +1035,12 @@ function macroCircleCard(label, value, goal, color) {
   const pct = Math.max(0, Math.min(100, goal ? value / goal * 100 : 0));
   const overPct = Math.max(0, Math.min(100, goal && value > goal ? (value - goal) / goal * 100 : 0));
   const remaining = goal - value;
-  const circleText = remaining >= 0 ? `${round(remaining)} left` : `${round(Math.abs(remaining))} over`;
+  const circleNumber = remaining >= 0 ? round(remaining) : round(Math.abs(remaining));
+  const circleStatus = remaining >= 0 ? "left" : "over";
   return `
     <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
-        <div class="macro-circle-inner-text"><span>${safeText(circleText)}</span></div>
+        <div class="macro-circle-inner-text"><span class="macro-circle-number">${safeText(circleNumber)}</span><span class="macro-circle-status">${safeText(circleStatus)}</span></div>
       </div>
       <div>
         <h3>${safeText(label)}</h3>
