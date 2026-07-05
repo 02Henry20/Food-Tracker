@@ -2763,3 +2763,42 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     gap: 1px;
   }
 }
+
+
+/* NutriPilot deletion progress pass v22 */
+.delete-progress {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(239, 68, 68, .22);
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, .08);
+}
+.delete-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+}
+.delete-progress-head strong {
+  font-size: .92rem;
+}
+.delete-progress-head span,
+.delete-progress small {
+  color: var(--muted);
+  font-weight: 850;
+}
+.delete-progress-track {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .2);
+}
+.delete-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--danger), var(--secondary));
+  transition: width .22s var(--ease);
+}

@@ -3832,8 +3832,18 @@ function openDeleteAllDataModal() {
     <div class="modal">
       <div class="modal-head"><h3>Delete all data</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="deleteAllDataForm" class="modal-body">
-        <p>This deletes settings, custom foods, recipes, mealsets, local offline data, and known logged days. Type <strong>DELETE</strong> to confirm.</p>
+        <p>This deletes settings, custom foods, recipes, mealsets, local offline data, and all logged diary days that can be found from Firebase summaries, goals, and local cache. Type <strong>DELETE</strong> to confirm.</p>
         <label>Confirmation<input name="confirmation" autocomplete="off" placeholder="DELETE" /></label>
+        <div id="deleteProgress" class="delete-progress hidden" aria-live="polite">
+          <div class="delete-progress-head">
+            <strong id="deleteProgressText">Preparing deletion...</strong>
+            <span id="deleteProgressCount">0%</span>
+          </div>
+          <div class="delete-progress-track">
+            <div id="deleteProgressBar" class="delete-progress-bar" style="width:0%;"></div>
+          </div>
+          <small id="deleteProgressDetail">This can take a moment for imported diary histories.</small>
+        </div>
         <div class="form-actions"><button class="danger-btn" type="submit">Delete all data</button></div>
       </form>
     </div>
@@ -3847,21 +3857,60 @@ function openDeleteAllDataModal() {
       showToast("Type DELETE to confirm.");
       return;
     }
+    const progressBox = document.getElementById("deleteProgress");
+    progressBox?.classList.remove("hidden");
     if (button) {
       button.disabled = true;
       button.textContent = "Deleting...";
     }
-    await deleteAllAccountData();
-    closeModal();
-    showToast("All account data deleted successfully.");
+    try {
+      await deleteAllAccountData(updateDeleteProgress);
+      updateDeleteProgress({ current: 1, total: 1, label: "Deletion complete", detail: "Refreshing the app state now." });
+      closeModal();
+      showToast("All account data deleted successfully.");
+    } catch (error) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Delete all data";
+      }
+      updateDeleteProgress({ current: 0, total: 1, label: "Deletion failed", detail: error?.message || "Something went wrong." });
+      showError(error, "Delete all data failed.");
+    }
   });
 }
 
-async function deleteCollectionDocs(collectionName) {
+function updateDeleteProgress({ current = 0, total = 1, label = "Deleting data...", detail = "" } = {}) {
+  const safeTotal = Math.max(1, number(total, 1));
+  const safeCurrent = Math.max(0, Math.min(safeTotal, number(current, 0)));
+  const pct = Math.max(0, Math.min(100, Math.round(safeCurrent / safeTotal * 100)));
+  const bar = document.getElementById("deleteProgressBar");
+  const text = document.getElementById("deleteProgressText");
+  const count = document.getElementById("deleteProgressCount");
+  const detailEl = document.getElementById("deleteProgressDetail");
+  if (bar) bar.style.width = `${pct}%`;
+  if (text) text.textContent = label;
+  if (count) count.textContent = `${pct}%`;
+  if (detailEl) detailEl.textContent = detail || `${safeCurrent} of ${safeTotal} delete steps finished.`;
+}
+
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+async function deleteCollectionDocs(collectionName, progress = () => {}, counter = { current: 0, total: 1 }) {
+  progress({ current: counter.current, total: counter.total, label: `Scanning ${collectionName}...`, detail: "Finding saved documents." });
+  await nextPaint();
   const snap = await getDocs(userCollection(collectionName));
-  for (const docSnap of snap.docs) await deleteDoc(userDoc(collectionName, docSnap.id));
+  const deletedIds = [];
+  for (const docSnap of snap.docs) {
+    await deleteDoc(userDoc(collectionName, docSnap.id));
+    deletedIds.push(docSnap.id);
+    counter.current += 1;
+    progress({ current: counter.current, total: counter.total, label: `Deleting ${collectionName}...`, detail: `${deletedIds.length} ${collectionName} document${deletedIds.length === 1 ? "" : "s"} deleted.` });
+    if (counter.current % 10 === 0) await nextPaint();
+  }
   writeLocal(collectionName, []);
-  return snap.docs.map(docSnap => docSnap.id);
+  return deletedIds;
 }
 
 function removeAllLocalUserData() {
@@ -3872,7 +3921,10 @@ function removeAllLocalUserData() {
   }
 }
 
-async function discoverLoggedDatesForDelete() {
+async function discoverLoggedDatesForDelete(progress = () => {}) {
+  progress({ current: 0, total: 1, label: "Scanning diary dates...", detail: "Checking local cache and Firebase summaries." });
+  await nextPaint();
+
   const knownDates = new Set([
     state.currentDate,
     ...state.logs.map(entry => entry.date).filter(Boolean),
@@ -3890,6 +3942,8 @@ async function discoverLoggedDatesForDelete() {
 
   for (const collectionName of ["dailyCalories", "dailyGoals", "dailyLogs"]) {
     try {
+      progress({ current: 0, total: 1, label: `Scanning ${collectionName}...`, detail: `${knownDates.size} possible diary day${knownDates.size === 1 ? "" : "s"} found so far.` });
+      await nextPaint();
       const snap = await getDocs(userCollection(collectionName));
       snap.docs.forEach(docSnap => knownDates.add(docSnap.id));
     } catch (error) {
@@ -3900,15 +3954,62 @@ async function discoverLoggedDatesForDelete() {
   return [...knownDates].filter(Boolean);
 }
 
-async function deleteAllAccountData() {
-  if (!state.user) throw new Error("You need to be signed in to delete account data.");
+async function estimateDeleteWork(datesToDelete) {
+  let total = 1; // settings reset
+  const topLevelCollections = ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals"];
+  const collectionCounts = {};
 
-  const datesToDelete = await discoverLoggedDatesForDelete();
+  for (const collectionName of topLevelCollections) {
+    try {
+      const snap = await getDocs(userCollection(collectionName));
+      collectionCounts[collectionName] = snap.size;
+      total += snap.size;
+    } catch (error) {
+      collectionCounts[collectionName] = 0;
+      console.warn(`Could not count ${collectionName} before deletion.`, error);
+    }
+  }
 
+  const entryCounts = {};
   for (const dateISO of datesToDelete) {
     try {
+      const snap = await getDocs(entryCollection(dateISO));
+      entryCounts[dateISO] = snap.size;
+      total += snap.size + 2; // dailyCalories + dailyGoals doc attempts
+    } catch (error) {
+      entryCounts[dateISO] = 0;
+      total += 2;
+      console.warn(`Could not count diary entries for ${dateISO}.`, error);
+    }
+  }
+
+  return { total: Math.max(1, total), collectionCounts, entryCounts };
+}
+
+async function deleteAllAccountData(progress = () => {}) {
+  if (!state.user) throw new Error("You need to be signed in to delete account data.");
+
+  const datesToDelete = await discoverLoggedDatesForDelete(progress);
+  progress({ current: 0, total: 1, label: "Counting data...", detail: `${datesToDelete.length} diary day${datesToDelete.length === 1 ? "" : "s"} found.` });
+  await nextPaint();
+
+  const work = await estimateDeleteWork(datesToDelete);
+  const counter = { current: 0, total: work.total };
+
+  for (const dateISO of datesToDelete) {
+    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Removing diary entries and daily summaries." });
+    await nextPaint();
+
+    try {
       const entriesSnap = await getDocs(entryCollection(dateISO));
-      for (const docSnap of entriesSnap.docs) await deleteDoc(entryDoc(docSnap.id, dateISO));
+      let deletedEntries = 0;
+      for (const docSnap of entriesSnap.docs) {
+        await deleteDoc(entryDoc(docSnap.id, dateISO));
+        deletedEntries += 1;
+        counter.current += 1;
+        progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: `${deletedEntries} entr${deletedEntries === 1 ? "y" : "ies"} deleted for this day.` });
+        if (counter.current % 10 === 0) await nextPaint();
+      }
     } catch (error) {
       console.warn(`Could not delete entries for ${dateISO}.`, error);
     }
@@ -3918,19 +4019,26 @@ async function deleteAllAccountData() {
     } catch (error) {
       console.warn(`Could not delete calorie summary for ${dateISO}.`, error);
     }
+    counter.current += 1;
+    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily calorie summary cleared." });
 
     try {
       await deleteDoc(dailyGoalDoc(dateISO));
     } catch (error) {
       console.warn(`Could not delete daily goal for ${dateISO}.`, error);
     }
+    counter.current += 1;
+    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily goal snapshot cleared." });
   }
 
   for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals"]) {
-    await deleteCollectionDocs(collectionName).catch(error => console.warn(`Could not fully clear ${collectionName}.`, error));
+    await deleteCollectionDocs(collectionName, progress, counter).catch(error => console.warn(`Could not fully clear ${collectionName}.`, error));
   }
 
+  progress({ current: counter.current, total: counter.total, label: "Resetting settings...", detail: "Restoring default settings." });
   await setDoc(userDoc("private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: false });
+  counter.current += 1;
+  progress({ current: counter.current, total: counter.total, label: "Clearing local cache...", detail: "Removing offline data from this browser." });
 
   removeAllLocalUserData();
   writeLocal("settings", DEFAULT_SETTINGS);
