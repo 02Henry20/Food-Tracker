@@ -1035,10 +1035,11 @@ function macroCircleCard(label, value, goal, color) {
   const pct = Math.max(0, Math.min(100, goal ? value / goal * 100 : 0));
   const overPct = Math.max(0, Math.min(100, goal && value > goal ? (value - goal) / goal * 100 : 0));
   const remaining = goal - value;
+  const circleText = remaining >= 0 ? `${round(remaining)} left` : `${round(Math.abs(remaining))} over`;
   return `
     <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
-        <div class="macro-circle-inner-empty" aria-hidden="true"></div>
+        <div class="macro-circle-inner-text"><span>${safeText(circleText)}</span></div>
       </div>
       <div>
         <h3>${safeText(label)}</h3>
@@ -1073,7 +1074,7 @@ function renderMealCard(mealId, label) {
   const total = addNutrients(entries);
   const collapsed = state.collapsedMeals[mealId] !== false;
   return `
-    <article class="meal-card">
+    <article class="meal-card meal-card-${safeText(mealId)}">
       <div class="meal-head">
         <div class="meal-title">
           <h3>${safeText(label)}</h3>

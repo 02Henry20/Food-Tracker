@@ -2477,3 +2477,92 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
 .macro-split-metric .split-segment.over {
   color: var(--warning);
 }
+
+/* NutriPilot refinement pass v17 */
+.macro-circle-inner-text {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  padding: 0 8px;
+}
+.macro-circle-inner-text span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -.01em;
+}
+.macro-circle-card.is-over .macro-circle-inner-text span {
+  color: var(--warning);
+}
+
+.recipe-card .macro-amounts,
+.recipe-card .macro-percent-row,
+.target-detail-modal .macro-amounts,
+.target-detail-modal .macro-percent-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  align-items: stretch;
+}
+.recipe-card .macro-chip,
+.recipe-card .macro-percent-row span,
+.target-detail-modal .macro-chip,
+.target-detail-modal .macro-percent-row span {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+.recipe-card .macro-percent-row .protein,
+.target-detail-modal .macro-percent-row .protein {
+  color: var(--protein);
+}
+.recipe-card .macro-percent-row .carbs,
+.target-detail-modal .macro-percent-row .carbs {
+  color: var(--carbs);
+}
+.recipe-card .macro-percent-row .fat,
+.target-detail-modal .macro-percent-row .fat {
+  color: var(--warning);
+}
+
+.report-metrics-grid .metric-card .metric-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+.macro-split-metric {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.meal-card-breakfast {
+  background:
+    linear-gradient(180deg, rgba(20, 184, 166, .05), rgba(20, 184, 166, .015)),
+    var(--surface);
+}
+.meal-card-lunch {
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, .05), rgba(59, 130, 246, .015)),
+    var(--surface);
+}
+.meal-card-dinner {
+  background:
+    linear-gradient(180deg, rgba(249, 115, 22, .05), rgba(249, 115, 22, .015)),
+    var(--surface);
+}
+.meal-card-snack {
+  background:
+    linear-gradient(180deg, rgba(148, 163, 184, .045), rgba(148, 163, 184, .012)),
+    var(--surface);
+}
+
+@media (max-width: 560px) {
+  .macro-circle-inner-text span {
+    font-size: .66rem;
+  }
+}
