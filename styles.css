@@ -1606,3 +1606,58 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     position: static;
   }
 }
+
+/* Report and recipe refinement pass */
+.metric-card.good .metric-value { color: var(--success); }
+.metric-card.bad .metric-value { color: var(--warning); }
+.metric-card.neutral .metric-value { color: var(--text); }
+.macro-split-values {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.macro-percent-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  font-size: .73rem;
+  font-weight: 950;
+}
+.macro-percent-row span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .12);
+}
+.macro-percent-row .protein { color: var(--protein); }
+.macro-percent-row .carbs { color: var(--carbs); }
+.macro-percent-row .fat { color: var(--warning); }
+.search-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.current-target-items {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: rgba(148, 163, 184, .08);
+}
+.compact-head { margin-bottom: 0; }
+.compact-head h4 { margin: 0; }
+.compact-results { gap: 8px; }
+.target-item-entry { background: var(--surface); }
+.ingredient-pagination { grid-column: 1 / -1; }
+
+@media (max-width: 560px) {
+  .dashboard-hero .macro-circle strong {
+    font-size: .74rem;
+    line-height: 1;
+  }
+  .dashboard-hero .macro-circle span {
+    font-size: .58rem;
+  }
+  .macro-percent-row {
+    font-size: .68rem;
+  }
+  .search-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

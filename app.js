@@ -853,15 +853,25 @@ function nutrientSummaryHTML(n) {
 
 function macroSplitSummaryHTML(n) {
   const macro = macroCalories(n);
+  const proteinPct = round(macro.proteinPct, 0);
+  const carbsPct = round(macro.carbsPct, 0);
+  const fatPct = round(macro.fatPct, 0);
   const proteinEnd = round(macro.proteinPct, 2);
   const carbsEnd = round(macro.proteinPct + macro.carbsPct, 2);
   return `
     <div class="macro-split-summary">
       <span class="macro-split-circle" style="--protein-end:${proteinEnd}%; --carbs-end:${carbsEnd}%;" aria-label="Macro split"></span>
-      <div class="macro-amounts">
-        <span class="macro-chip protein">P ${round(n.protein)}g</span>
-        <span class="macro-chip carbs">C ${round(n.carbs)}g</span>
-        <span class="macro-chip fat">F ${round(n.fat)}g</span>
+      <div class="macro-split-values">
+        <div class="macro-amounts">
+          <span class="macro-chip protein">P ${round(n.protein)}g</span>
+          <span class="macro-chip carbs">C ${round(n.carbs)}g</span>
+          <span class="macro-chip fat">F ${round(n.fat)}g</span>
+        </div>
+        <div class="macro-percent-row">
+          <span class="protein">${proteinPct}%</span>
+          <span class="carbs">${carbsPct}%</span>
+          <span class="fat">${fatPct}%</span>
+        </div>
       </div>
     </div>
   `;
@@ -994,8 +1004,8 @@ function macroRow(label, value, goal, fillClass) {
   `;
 }
 
-function metricCard(label, value, caption) {
-  return `<div class="metric-card"><span>${safeText(label)}</span><strong>${safeText(value)}</strong><small>${safeText(caption)}</small></div>`;
+function metricCard(label, value, caption, status = "neutral") {
+  return `<div class="metric-card ${safeText(status)}"><span>${safeText(label)}</span><strong class="metric-value">${safeText(value)}</strong><small>${safeText(caption)}</small></div>`;
 }
 
 function renderMealCard(mealId, label) {
@@ -1281,24 +1291,24 @@ function renderSearchV2() {
   const eatenResults = eatenFoodResults(state.searchQuery);
   const mealsetResults = searchLibraryItems(state.mealsets, state.searchQuery);
   const recipeResults = searchLibraryItems(state.recipes, state.searchQuery);
-  const pagedTabs = { foods: combined, eaten: eatenResults };
+  const pagedTabs = { foods: combined, eaten: eatenResults, mealsets: mealsetResults, recipes: recipeResults };
   const activePagedResults = pagedTabs[activeTab] || [];
-  const needsPagination = !!pagedTabs[activeTab];
-  const totalPages = needsPagination ? Math.max(1, Math.ceil(activePagedResults.length / SEARCH_PAGE_SIZE)) : 1;
-  state.searchPage = needsPagination ? Math.min(Math.max(1, state.searchPage || 1), totalPages) : 1;
+  const totalPages = Math.max(1, Math.ceil(activePagedResults.length / SEARCH_PAGE_SIZE));
+  state.searchPage = Math.min(Math.max(1, state.searchPage || 1), totalPages);
   const pageStart = (state.searchPage - 1) * SEARCH_PAGE_SIZE;
-  const pageResults = needsPagination ? activePagedResults.slice(pageStart, pageStart + SEARCH_PAGE_SIZE) : [];
+  const pageResults = activePagedResults.slice(pageStart, pageStart + SEARCH_PAGE_SIZE);
+  const pageInfo = activePagedResults.length ? `page ${state.searchPage} of ${totalPages}` : "";
   const activeMeta = {
-    foods: ["Foods", `${combined.length} result${combined.length === 1 ? "" : "s"}${combined.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
-    eaten: ["Eaten foods", `${eatenResults.length} food${eatenResults.length === 1 ? "" : "s"}${eatenResults.length ? ` - page ${state.searchPage} of ${totalPages}` : ""}`],
-    mealsets: ["Mealsets", `${mealsetResults.length} result${mealsetResults.length === 1 ? "" : "s"}`],
-    recipes: ["Recipes", `${recipeResults.length} result${recipeResults.length === 1 ? "" : "s"}`]
+    foods: ["Foods", pageInfo],
+    eaten: ["Eaten foods", pageInfo],
+    mealsets: ["Mealsets", pageInfo],
+    recipes: ["Recipes", pageInfo]
   }[activeTab];
   const activeCards = {
     foods: pageResults.length ? pageResults.map(food => renderFoodResultCard(food, registerTempFood(food))).join("") : `<div class="empty-state">Search, scan a barcode, or add a custom food.</div>`,
     eaten: pageResults.length ? pageResults.map(food => renderEatenFoodCard(food, registerTempFood(food))).join("") : `<div class="empty-state">No eaten foods yet. Log foods to build this list.</div>`,
-    mealsets: mealsetResults.length ? mealsetResults.map(renderMealsetSearchCard).join("") : `<div class="empty-state">No mealsets found.</div>`,
-    recipes: recipeResults.length ? recipeResults.map(renderRecipeSearchCard).join("") : `<div class="empty-state">No recipes found.</div>`
+    mealsets: pageResults.length ? pageResults.map(renderMealsetSearchCard).join("") : `<div class="empty-state">No mealsets found.</div>`,
+    recipes: pageResults.length ? pageResults.map(renderRecipeSearchCard).join("") : `<div class="empty-state">No recipes found.</div>`
   }[activeTab];
 
   els.pages.search.innerHTML = `
@@ -1331,12 +1341,12 @@ function renderSearchV2() {
         </div>
         <div class="meal-head">
           <h3>${activeMeta[0]}</h3>
-          <span class="kicker">${activeMeta[1]}</span>
+          ${activeMeta[1] ? `<span class="kicker">${activeMeta[1]}</span>` : ""}
         </div>
         <div id="searchResults" class="result-grid">
           ${activeCards}
         </div>
-        ${needsPagination && activePagedResults.length > SEARCH_PAGE_SIZE ? `
+        ${activePagedResults.length > SEARCH_PAGE_SIZE ? `
           <div class="pagination">
             <button class="ghost-btn" data-action="search-prev-page" ${state.searchPage <= 1 ? "disabled" : ""}>Previous</button>
             <span class="kicker">${pageStart + 1}-${Math.min(pageStart + SEARCH_PAGE_SIZE, activePagedResults.length)} of ${activePagedResults.length}</span>
@@ -1354,7 +1364,6 @@ function renderSearchV2() {
     }
   });
 }
-
 
 function updateSearchFiltersFromInputs() {
   state.searchFilters = {
@@ -1486,7 +1495,6 @@ function renderMealsetSearchCard(mealset) {
       <div class="inline-actions">
         ${itemFavoriteButton("mealset", mealset)}
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
-        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
       </div>
     </div>
   `;
@@ -2126,7 +2134,6 @@ function renderMealsetCard(mealset) {
         ${itemFavoriteButton("mealset", mealset)}
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
         <button class="tiny-btn" data-action="add-ingredient" data-kind="mealset" data-id="${mealset.id}">Item</button>
-        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Detail</button>
         <button class="tiny-btn" data-action="edit-mealset" data-id="${mealset.id}">Edit</button>
         <button class="tiny-btn" data-action="delete-mealset" data-id="${mealset.id}">Delete</button>
       </div>
@@ -2215,6 +2222,18 @@ async function saveMealsetFromForm(form) {
   showToast("Mealset created. Add items next.");
 }
 
+function recipeSnapshotForReference(recipe) {
+  return cloneSnapshot({
+    id: recipe.id || null,
+    name: recipe.name || "Recipe",
+    portions: number(recipe.portions, 1),
+    ingredients: recipe.ingredients || [],
+    totalNutrients: normalizeNutrients(recipe.totalNutrients),
+    nutrientsPerPortion: normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)))),
+    updatedAt: recipe.updatedAt || null
+  });
+}
+
 function recipePortionAsFood(recipe) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
   return {
@@ -2224,6 +2243,7 @@ function recipePortionAsFood(recipe) {
     brand: "Recipe",
     nutrientsPerPortion: perPortion,
     nutrientsPer100g: perPortion,
+    recipeSnapshot: recipeSnapshotForReference(recipe),
     defaultServing: { label: "portion", grams: 100 },
     servingOptions: [{ label: "portion", grams: 100 }]
   };
@@ -2242,6 +2262,7 @@ function recipeReferenceItem(recipe, amount = 1, existing = {}) {
     amount,
     unit: "portion",
     nutrientsSnapshot: scaleNutrients(perPortion, amount),
+    recipeSnapshot: recipeSnapshotForReference(recipe),
     sourceUpdatedAt: recipe.updatedAt || null,
     updatedAt: Date.now()
   };
@@ -2267,13 +2288,46 @@ async function syncRecipeReferencesInMealsets(recipeId, recipeOverride = null) {
   }
 }
 
+function targetItemsForKind(kind, id) {
+  const target = kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
+  return target ? (kind === "recipe" ? target.ingredients || [] : target.items || []) : [];
+}
+
+function renderTargetCurrentItems(kind, id) {
+  const items = targetItemsForKind(kind, id);
+  const label = kind === "recipe" ? "Ingredients" : "Items";
+  return `
+    <section class="current-target-items">
+      <div class="meal-head compact-head">
+        <h4>${label}</h4>
+        <span class="kicker">${items.length} saved</span>
+      </div>
+      <div class="result-grid compact-results">
+        ${items.length ? items.map((item, index) => `
+          <div class="food-entry target-item-entry">
+            <div class="food-entry-head">
+              <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
+              <strong>${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong>
+            </div>
+            <div class="inline-actions">
+              <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Amount</button>
+              <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
+            </div>
+          </div>
+        `).join("") : `<div class="empty-state">No ${kind === "recipe" ? "ingredients" : "items"} yet.</div>`}
+      </div>
+    </section>
+  `;
+}
+
 function openIngredientModal(kind, id) {
   const target = kind === "recipe" ? state.recipes.find(r => r.id === id) : state.mealsets.find(m => m.id === id);
   if (!target) return;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Add ${kind === "recipe" ? "ingredient" : "item"} to ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>${kind === "recipe" ? "Ingredients" : "Items"} for ${safeText(target.name)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
+        ${renderTargetCurrentItems(kind, id)}
         <div class="search-bar">
           <label>Search<input id="ingredientSearchInput" type="search" placeholder="Name of the food" /></label>
           <button class="primary-btn" data-action="ingredient-search" data-kind="${kind}" data-id="${id}">Search</button>
@@ -2285,6 +2339,23 @@ function openIngredientModal(kind, id) {
       </div>
     </div>
   `);
+}
+
+function renderIngredientResultPage(foods, kind, id, page = 1, mode = "food", query = "") {
+  const totalPages = Math.max(1, Math.ceil(foods.length / SEARCH_PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * SEARCH_PAGE_SIZE;
+  const pageItems = foods.slice(start, start + SEARCH_PAGE_SIZE);
+  return `
+    ${pageItems.map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || `<div class="empty-state">No results.</div>`}
+    ${foods.length > SEARCH_PAGE_SIZE ? `
+      <div class="pagination ingredient-pagination" data-kind="${kind}" data-id="${id}" data-mode="${mode}" data-query="${safeText(query)}" data-page="${safePage}">
+        <button class="ghost-btn" data-action="ingredient-prev-page" ${safePage <= 1 ? "disabled" : ""}>Previous</button>
+        <span class="kicker">${start + 1}-${Math.min(start + SEARCH_PAGE_SIZE, foods.length)} of ${foods.length}</span>
+        <button class="ghost-btn" data-action="ingredient-next-page" ${safePage >= totalPages ? "disabled" : ""}>Next</button>
+      </div>
+    ` : ""}
+  `;
 }
 
 function renderIngredientResult(food, key, kind, id) {
@@ -2619,7 +2690,7 @@ function renderReportsShell() {
         </div>
       </div>
       <div id="reportOutput" class="stack">
-        <div class="empty-state">Loading current week...</div>
+        <div class="empty-state">Loading current ${safeText(state.reportMode)}...</div>
       </div>
     </div>
   `;
@@ -2640,78 +2711,82 @@ async function loadReport() {
   renderReportOutput(start, end, entries);
 }
 
+function goalStatus(value, goal, mode = "min") {
+  if (!goal) return "neutral";
+  if (mode === "max") return value <= goal ? "good" : "bad";
+  return value >= goal ? "good" : "bad";
+}
+
+function reportGoalAverages(start, end) {
+  const dates = dateRange(start, end);
+  const totals = dates.reduce((acc, day) => {
+    const goals = effectiveGoalsForDate(day);
+    const macros = effectiveMacroGoals(goals);
+    acc.calorieGoal += number(goals.calorieGoal, state.settings.calorieGoal);
+    acc.proteinGoal += number(macros.proteinGoal);
+    acc.carbsGoal += number(macros.carbsGoal);
+    acc.fatGoal += number(macros.fatGoal);
+    return acc;
+  }, { calorieGoal: 0, proteinGoal: 0, carbsGoal: 0, fatGoal: 0 });
+  const divisor = Math.max(1, dates.length);
+  return {
+    calorieGoal: totals.calorieGoal / divisor,
+    proteinGoal: totals.proteinGoal / divisor,
+    carbsGoal: totals.carbsGoal / divisor,
+    fatGoal: totals.fatGoal / divisor
+  };
+}
+
+function macroGoalStatus(avg, goals) {
+  const proteinOk = avg.protein >= goals.proteinGoal;
+  const carbsOk = goals.carbsGoal ? avg.carbs <= goals.carbsGoal * 1.1 : true;
+  const fatOk = goals.fatGoal ? avg.fat <= goals.fatGoal * 1.1 : true;
+  return proteinOk && carbsOk && fatOk ? "good" : "bad";
+}
+
 function renderReportOutput(start, end, entries) {
-  const days = Math.max(1, dateRange(start, end).length);
+  const dates = dateRange(start, end);
+  const days = Math.max(1, dates.length);
   const total = addNutrients(entries);
   const avg = scaleNutrients(total, 1 / days);
   const macro = macroCalories(total);
-  const byDate = Object.fromEntries(dateRange(start, end).map(d => [d, emptyNutrients()]));
+  const byDate = Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
   const filteredEntries = applyReportEntryFilters(entries);
   const foodRows = foodFrequencyRows(filteredEntries);
-  const rolling = rollingCalorieAverage(byDate);
-  const mealSplit = caloriesByMeal(entries);
-  const weekday = weekdayWeekendStats(entries);
-  const topCalories = topNutrientSources(entries, "kcal").slice(0, 5);
-  const topProtein = topNutrientSources(entries, "protein").slice(0, 5);
-  const goalKcalTotal = Object.keys(byDate).reduce((sum, day) => sum + number(effectiveGoalsForDate(day).calorieGoal, state.settings.calorieGoal), 0);
+  const topCalories = foodRows.slice(0, 5).map(row => ({ name: row.name, value: row.kcal }));
+  const avgGoals = reportGoalAverages(start, end);
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
     <div class="grid-4">
-      ${metricCard("Average kcal/day", `${round(avg.kcal, 0)}`, `${round(total.kcal, 0)} kcal total`)}
-      ${metricCard("Average protein", `${round(avg.protein)} g`, `${round(total.protein)} g total`)}
-      ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, "Protein / carbs / fat")}
-      ${metricCard("Target difference", `${round(total.kcal - goalKcalTotal, 0)} kcal`, `vs ${round(goalKcalTotal, 0)} kcal target`)}
-      ${metricCard("Rolling kcal", `${round(rolling.at(-1)?.average || 0, 0)}`, "3-day average")}
-      ${metricCard("Weekday avg", `${round(weekday.weekdayAvg, 0)} kcal`, "Monday-Friday")}
-      ${metricCard("Weekend avg", `${round(weekday.weekendAvg, 0)} kcal`, "Saturday-Sunday")}
-      ${metricCard("Top protein source", topProtein[0]?.name || "None", `${round(topProtein[0]?.value || 0)} g`)}
+      ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day · ${round(total.kcal, 0)} kcal total`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"))}
+      ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day · ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"))}
+      ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, macroGoalStatus(avg, avgGoals))}
+      ${metricCard("Target difference", `${round(total.kcal - avgGoals.calorieGoal * days, 0)} kcal`, `vs ${round(avgGoals.calorieGoal * days, 0)} kcal target`, goalStatus(total.kcal, avgGoals.calorieGoal * days, "max"))}
     </div>
 
     <div class="grid-2">
       <div class="card chart-card">
-        <h3>Daily calories</h3>
+        <h3>Calories</h3>
         <canvas id="calorieChart"></canvas>
       </div>
       <div class="card chart-card">
-        <h3>Macros per day</h3>
+        <h3>Macros</h3>
         <canvas id="macroChart"></canvas>
       </div>
     </div>
 
-    <div class="grid-2">
-      <div class="card chart-card">
-        <h3>Rolling average</h3>
-        <canvas id="rollingChart"></canvas>
-      </div>
-      <div class="card chart-card">
-        <h3>Calories by meal</h3>
-        <canvas id="mealChart"></canvas>
-      </div>
-    </div>
-
-    <div class="card chart-card">
-      <h3>Nutrient trends</h3>
-      <canvas id="nutrientTrendChart"></canvas>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <h3>Top calorie sources</h3>
-        <div class="table-wrap"><table><thead><tr><th>Food</th><th>kcal</th></tr></thead><tbody>${topCalories.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.value, 0)}</td></tr>`).join("") || `<tr><td colspan="2">No entries.</td></tr>`}</tbody></table></div>
-      </div>
-      <div class="card">
-        <h3>Top protein sources</h3>
-        <div class="table-wrap"><table><thead><tr><th>Food</th><th>Protein</th></tr></thead><tbody>${topProtein.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.value)} g</td></tr>`).join("") || `<tr><td colspan="2">No entries.</td></tr>`}</tbody></table></div>
-      </div>
+    <div class="card">
+      <h3>Top calorie sources</h3>
+      <div class="table-wrap"><table><thead><tr><th>Food</th><th>kcal</th></tr></thead><tbody>${topCalories.map(row => `<tr><td>${safeText(row.name)}</td><td>${round(row.value, 0)}</td></tr>`).join("") || `<tr><td colspan="2">No entries.</td></tr>`}</tbody></table></div>
     </div>
 
     <div class="card">
       <h3>Food frequency</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Food</th><th>Times</th><th>Units/servings</th><th>Brand</th><th>Source</th><th>Total kcal</th><th>Avg kcal/day</th></tr></thead>
-          <tbody>${foodRows.length ? foodRows.map(row => `<tr><td>${safeText(row.name)}</td><td>${row.count}</td><td>${safeText(row.units)}</td><td>${safeText(row.brand || "")}</td><td>${safeText(row.source || "")}</td><td>${round(row.kcal, 0)}</td><td>${round(row.kcal / days, 0)}</td></tr>`).join("") : `<tr><td colspan="7">No entries in this range.</td></tr>`}</tbody>
+          <thead><tr><th>Food</th><th>Times</th><th>Total amount</th><th>Brand</th><th>Total kcal</th></tr></thead>
+          <tbody>${foodRows.length ? foodRows.map(row => `<tr><td>${safeText(row.name)}</td><td>${row.count}</td><td>${round(row.grams, 0)} g</td><td>${safeText(row.brand || "")}</td><td>${round(row.kcal, 0)}</td></tr>`).join("") : `<tr><td colspan="5">No entries in this range.</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -2729,22 +2804,73 @@ function renderReportOutput(start, end, entries) {
   renderCharts(byDate);
 }
 
+function foodNameFromReportItem(item) {
+  return item?.nameSnapshot || item?.displayName || item?.name || "Unnamed";
+}
+
+function gramsFromReportItem(item, factor = 1) {
+  return number(item?.gramsEquivalent ?? item?.grams ?? (item?.unit === "g" ? item?.amount : 0)) * factor;
+}
+
+function recipeSnapshotFromItem(item) {
+  if (item?.recipeSnapshot) return item.recipeSnapshot;
+  if (item?.itemSnapshot?.ingredients) return item.itemSnapshot;
+  if (item?.itemId) return state.recipes.find(recipe => recipe.id === item.itemId) || null;
+  return null;
+}
+
+function flattenReportItem(item, factor = 1) {
+  if (!item) return [];
+  if (item.itemType === "recipe") {
+    const snapshot = recipeSnapshotFromItem(item);
+    const ingredients = snapshot?.ingredients || [];
+    if (ingredients.length) {
+      const portionFactor = factor * number(item.amount, 1) / Math.max(1, number(snapshot.portions, 1));
+      return ingredients.flatMap(ingredient => flattenReportItem(ingredient, portionFactor));
+    }
+  }
+  if (item.itemType === "mealset") {
+    const snapshot = item.itemSnapshot || item;
+    const items = snapshot.items || [];
+    if (items.length) return items.flatMap(child => flattenReportItem(child, factor * number(item.amount, 1)));
+  }
+  return [{
+    name: foodNameFromReportItem(item),
+    brand: item.brandSnapshot || item.brand || "",
+    grams: gramsFromReportItem(item, factor),
+    kcal: number(item.nutrientsSnapshot?.kcal) * factor
+  }];
+}
+
+function flattenReportEntry(entry) {
+  if (entry.itemType === "recipe") {
+    const snapshot = entry.itemSnapshot || recipeSnapshotFromItem(entry);
+    const ingredients = snapshot?.ingredients || [];
+    if (ingredients.length) {
+      const factor = number(entry.amount, 1) / Math.max(1, number(snapshot.portions, 1));
+      return ingredients.flatMap(item => flattenReportItem(item, factor));
+    }
+  }
+  if (entry.itemType === "mealset") {
+    const items = entry.itemSnapshot?.items || [];
+    if (items.length) return items.flatMap(item => flattenReportItem(item, number(entry.amount, 1)));
+  }
+  return flattenReportItem(entry, 1);
+}
+
 function foodFrequencyRows(entries) {
   const map = new Map();
   for (const entry of entries) {
-    const key = entry.nameSnapshot || "Unnamed";
-    const current = map.get(key) || { name: key, count: 0, grams: 0, kcal: 0, unitsMap: new Map(), brand: entry.brandSnapshot || "", source: entry.source || entry.itemType || "" };
-    current.count += 1;
-    current.grams += number(entry.gramsEquivalent || (entry.unit === "g" ? entry.amount : 0));
-    current.kcal += number(entry.nutrientsSnapshot?.kcal);
-    const unitLabel = `${round(entry.amount)} ${entry.unit || ""}`.trim();
-    current.unitsMap.set(unitLabel, (current.unitsMap.get(unitLabel) || 0) + 1);
-    map.set(key, current);
+    for (const item of flattenReportEntry(entry)) {
+      const key = normalizeSearchText(`${item.name}|${item.brand}`);
+      const current = map.get(key) || { name: item.name, count: 0, grams: 0, kcal: 0, brand: item.brand || "" };
+      current.count += 1;
+      current.grams += number(item.grams);
+      current.kcal += number(item.kcal);
+      map.set(key, current);
+    }
   }
-  return [...map.values()].map(row => ({
-    ...row,
-    units: [...row.unitsMap.entries()].map(([unit, count]) => `${count}x ${unit}`).join(", ")
-  })).sort((a, b) => b.kcal - a.kcal);
+  return [...map.values()].sort((a, b) => b.kcal - a.kcal);
 }
 
 function applyReportEntryFilters(entries) {
@@ -2820,22 +2946,36 @@ function renderMicroRows(total, days) {
   }).join("");
 }
 
+function reportChartData(byDate) {
+  const dates = Object.keys(byDate);
+  if (state.reportMode === "year") {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const buckets = monthNames.map(() => emptyNutrients());
+    for (const date of dates) {
+      const month = new Date(`${date}T12:00:00`).getMonth();
+      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, byDate[date]]);
+    }
+    return { labels: monthNames, values: buckets };
+  }
+  const labels = dates.map(date => {
+    const d = new Date(`${date}T12:00:00`);
+    if (state.reportMode === "month") return String(d.getDate()).padStart(2, "0");
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  });
+  return { labels, values: dates.map(date => byDate[date]) };
+}
+
 function renderCharts(byDate) {
   if (!window.Chart) return;
   Object.values(state.charts).forEach(chart => chart?.destroy?.());
-  const labels = Object.keys(byDate);
-  const kcal = labels.map(d => round(byDate[d].kcal, 0));
-  const protein = labels.map(d => round(byDate[d].protein, 1));
-  const carbs = labels.map(d => round(byDate[d].carbs, 1));
-  const fat = labels.map(d => round(byDate[d].fat, 1));
-  const rolling = rollingCalorieAverage(byDate).map(row => round(row.average, 0));
-  const fiber = labels.map(d => round(byDate[d].fiber, 1));
-  const sugar = labels.map(d => round(byDate[d].sugar, 1));
+  const chartData = reportChartData(byDate);
+  const labels = chartData.labels;
+  const kcal = chartData.values.map(n => round(n.kcal, 0));
+  const protein = chartData.values.map(n => round(n.protein, 1));
+  const carbs = chartData.values.map(n => round(n.carbs, 1));
+  const fat = chartData.values.map(n => round(n.fat, 1));
   const calorieCtx = document.getElementById("calorieChart");
   const macroCtx = document.getElementById("macroChart");
-  const rollingCtx = document.getElementById("rollingChart");
-  const mealCtx = document.getElementById("mealChart");
-  const trendCtx = document.getElementById("nutrientTrendChart");
   if (calorieCtx) {
     state.charts.calorie = new Chart(calorieCtx, {
       type: "line",
@@ -2847,28 +2987,6 @@ function renderCharts(byDate) {
     state.charts.macro = new Chart(macroCtx, {
       type: "bar",
       data: { labels, datasets: [{ label: "Protein", data: protein }, { label: "Carbs", data: carbs }, { label: "Fat", data: fat }] },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-  if (rollingCtx) {
-    state.charts.rolling = new Chart(rollingCtx, {
-      type: "line",
-      data: { labels, datasets: [{ label: "3-day kcal average", data: rolling, tension: .35 }] },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-  if (mealCtx) {
-    const meals = caloriesByMeal(state.reportEntries);
-    state.charts.meal = new Chart(mealCtx, {
-      type: "doughnut",
-      data: { labels: Object.keys(meals), datasets: [{ label: "kcal", data: Object.values(meals).map(value => round(value, 0)) }] },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-  if (trendCtx) {
-    state.charts.trend = new Chart(trendCtx, {
-      type: "line",
-      data: { labels, datasets: [{ label: "Fiber", data: fiber, tension: .35 }, { label: "Sugar", data: sugar, tension: .35 }] },
       options: { responsive: true, maintainAspectRatio: false }
     });
   }
@@ -3769,13 +3887,25 @@ async function handleClick(event) {
         root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
       } else {
         const results = await runFoodSearch(query, { updateState: false });
-        root.innerHTML = results.map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No results.</div>`;
+        root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
       }
     }
     if (action === "show-recipe-ingredients") {
       const recipePortions = state.recipes.filter(recipe => recipe.id !== btn.dataset.id).map(recipePortionAsFood);
-      document.getElementById("ingredientResults").innerHTML = recipePortions
-        .map(food => renderIngredientResult(food, registerTempFood(food), btn.dataset.kind, btn.dataset.id)).join("") || `<div class="empty-state">No recipes yet.</div>`;
+      document.getElementById("ingredientResults").innerHTML = renderIngredientResultPage(recipePortions, btn.dataset.kind, btn.dataset.id, 1, "recipes", "");
+    }
+    if (action === "ingredient-prev-page" || action === "ingredient-next-page") {
+      const pager = btn.closest(".ingredient-pagination");
+      const root = document.getElementById("ingredientResults");
+      const nextPage = number(pager?.dataset.page, 1) + (action === "ingredient-next-page" ? 1 : -1);
+      const kind = pager?.dataset.kind || btn.dataset.kind;
+      const id = pager?.dataset.id || btn.dataset.id;
+      const mode = pager?.dataset.mode || "food";
+      const query = pager?.dataset.query || "";
+      const results = mode === "recipes"
+        ? state.recipes.filter(recipe => recipe.id !== id).map(recipePortionAsFood)
+        : await runFoodSearch(query, { updateState: false });
+      root.innerHTML = renderIngredientResultPage(results, kind, id, nextPage, mode, query);
     }
     if (action === "select-ingredient") openIngredientAmountModal(getFoodByKey(btn.dataset.key), btn.dataset.kind, btn.dataset.id);
     if (action === "edit-target-item") openTargetItemAmountEditor(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
