@@ -3840,45 +3840,118 @@ function openDeleteAllDataModal() {
   `);
   document.getElementById("deleteAllDataForm")?.addEventListener("submit", async event => {
     event.preventDefault();
-    const confirmation = new FormData(event.currentTarget).get("confirmation");
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type=\"submit\"]");
+    const confirmation = new FormData(form).get("confirmation");
     if (confirmation !== "DELETE") {
       showToast("Type DELETE to confirm.");
       return;
     }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Deleting...";
+    }
     await deleteAllAccountData();
     closeModal();
+    showToast("All account data deleted successfully.");
   });
 }
 
-async function deleteAllAccountData() {
-  const collectionNames = ["customFoods", "recipes", "mealsets"];
-  for (const collectionName of collectionNames) {
-    const snap = await getDocs(userCollection(collectionName));
-    for (const docSnap of snap.docs) await deleteDoc(userDoc(collectionName, docSnap.id));
-    writeLocal(collectionName, []);
-  }
-  const knownDates = new Set([state.currentDate, ...state.logs.map(entry => entry.date).filter(Boolean), ...state.reportEntries.map(entry => entry.date).filter(Boolean)]);
+async function deleteCollectionDocs(collectionName) {
+  const snap = await getDocs(userCollection(collectionName));
+  for (const docSnap of snap.docs) await deleteDoc(userDoc(collectionName, docSnap.id));
+  writeLocal(collectionName, []);
+  return snap.docs.map(docSnap => docSnap.id);
+}
+
+function removeAllLocalUserData() {
+  const uid = state.user?.uid || "guest";
+  const prefix = `${APP_STORAGE_PREFIX}:${uid}:`;
   for (const key of Object.keys(localStorage)) {
-    if (key.startsWith(storageKey("logs:").replace("guest", state.user?.uid || "guest"))) {
-      knownDates.add(key.split("logs:")[1]);
+    if (key.startsWith(prefix)) localStorage.removeItem(key);
+  }
+}
+
+async function discoverLoggedDatesForDelete() {
+  const knownDates = new Set([
+    state.currentDate,
+    ...state.logs.map(entry => entry.date).filter(Boolean),
+    ...state.reportEntries.map(entry => entry.date).filter(Boolean),
+    ...Object.keys(state.dailyGoals || {})
+  ]);
+
+  const uid = state.user?.uid || "guest";
+  const logsPrefix = `${APP_STORAGE_PREFIX}:${uid}:logs:`;
+  const goalsPrefix = `${APP_STORAGE_PREFIX}:${uid}:dailyGoal:`;
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(logsPrefix)) knownDates.add(key.slice(logsPrefix.length));
+    if (key.startsWith(goalsPrefix)) knownDates.add(key.slice(goalsPrefix.length));
+  }
+
+  for (const collectionName of ["dailyCalories", "dailyGoals", "dailyLogs"]) {
+    try {
+      const snap = await getDocs(userCollection(collectionName));
+      snap.docs.forEach(docSnap => knownDates.add(docSnap.id));
+    } catch (error) {
+      console.warn(`Could not enumerate ${collectionName} while deleting account data.`, error);
     }
   }
-  for (const dateISO of knownDates) {
-    if (!dateISO) continue;
-    const snap = await getDocs(entryCollection(dateISO));
-    for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, dateISO));
-    writeLocal(`logs:${dateISO}`, []);
-    await updateDailyCalorieSummary(dateISO, []).catch(console.warn);
+
+  return [...knownDates].filter(Boolean);
+}
+
+async function deleteAllAccountData() {
+  if (!state.user) throw new Error("You need to be signed in to delete account data.");
+
+  const datesToDelete = await discoverLoggedDatesForDelete();
+
+  for (const dateISO of datesToDelete) {
+    try {
+      const entriesSnap = await getDocs(entryCollection(dateISO));
+      for (const docSnap of entriesSnap.docs) await deleteDoc(entryDoc(docSnap.id, dateISO));
+    } catch (error) {
+      console.warn(`Could not delete entries for ${dateISO}.`, error);
+    }
+
+    try {
+      await deleteDoc(dailyCaloriesDoc(dateISO));
+    } catch (error) {
+      console.warn(`Could not delete calorie summary for ${dateISO}.`, error);
+    }
+
+    try {
+      await deleteDoc(dailyGoalDoc(dateISO));
+    } catch (error) {
+      console.warn(`Could not delete daily goal for ${dateISO}.`, error);
+    }
   }
+
+  for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals"]) {
+    await deleteCollectionDocs(collectionName).catch(error => console.warn(`Could not fully clear ${collectionName}.`, error));
+  }
+
   await setDoc(userDoc("private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: false });
+
+  removeAllLocalUserData();
   writeLocal("settings", DEFAULT_SETTINGS);
+  writeLocal("customFoods", []);
+  writeLocal("recipes", []);
+  writeLocal("mealsets", []);
+  writeLocal(`logs:${state.currentDate}`, []);
+
+  state.settings = structuredClone(DEFAULT_SETTINGS);
   state.logs = [];
   state.customFoods = [];
   state.recipes = [];
   state.mealsets = [];
+  state.dailyGoals = {};
   state.searchResults = [];
   state.reportEntries = [];
-  showToast("All known account data was deleted.");
+  state.reportPages = { topSources: 1, frequency: 1 };
+  state.reportRange = periodRange();
+  setTheme();
+  if (state.route === "today") subscribeLogsForCurrentDate();
+  renderCurrentRoute();
 }
 
 function showInfoPopover(button) {
