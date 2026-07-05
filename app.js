@@ -748,9 +748,9 @@ function setTheme() {
   updateInAppIcons(resolved);
 }
 
-function updateInAppIcons(theme = document.documentElement.dataset.theme || "light") {
-  const brandSrc = theme === "light" ? "icons/icon-light-96x96.png" : "icons/icon-96x96.png";
-  const titleSrc = theme === "light" ? "icons/icon-light-48x48.png" : "icons/icon-48x48.png";
+function updateInAppIcons() {
+  const brandSrc = "icons/icon-96x96.png";
+  const titleSrc = "icons/icon-48x48.png";
   document.querySelectorAll('.app-brand-icon').forEach(img => {
     img.src = brandSrc;
   });
@@ -1038,10 +1038,7 @@ function macroCircleCard(label, value, goal, color) {
   return `
     <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
-        <div>
-          <strong>${round(value)}</strong>
-          <span>g</span>
-        </div>
+        <div class="macro-circle-inner-empty" aria-hidden="true"></div>
       </div>
       <div>
         <h3>${safeText(label)}</h3>
@@ -1065,6 +1062,10 @@ function macroRow(label, value, goal, fillClass) {
 
 function metricCard(label, value, caption, status = "neutral", mobileCaption = "") {
   return `<div class="metric-card ${safeText(status)}"><span>${safeText(label)}</span><strong class="metric-value">${safeText(value)}</strong><small><span class="desktop-caption">${safeText(caption)}</span><span class="mobile-caption">${safeText(mobileCaption || caption)}</span></small></div>`;
+}
+
+function metricCardHTML(label, valueHTML, caption, status = "neutral", mobileCaption = "") {
+  return `<div class="metric-card ${safeText(status)}"><span>${safeText(label)}</span><strong class="metric-value">${valueHTML}</strong><small><span class="desktop-caption">${safeText(caption)}</span><span class="mobile-caption">${safeText(mobileCaption || caption)}</span></small></div>`;
 }
 
 function renderMealCard(mealId, label) {
@@ -3055,7 +3056,7 @@ function renderReportOutput(start, end, entries) {
     <div class="grid-4 report-metrics-grid">
       ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"), `target ${round(avgGoals.calorieGoal, 0)}`)}
       ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
-      ${metricCard("Macro split", `${round(macro.proteinPct, 0)} / ${round(macro.carbsPct, 0)} / ${round(macro.fatPct, 0)}%`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, macroGoalStatus(avg, avgGoals), `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
+      ${metricCardHTML("Macro split", `<span class="macro-split-metric"><span class="split-segment ${avg.protein > avgGoals.proteinGoal ? "over" : ""}">${round(macro.proteinPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.carbs > avgGoals.carbsGoal ? "over" : ""}">${round(macro.carbsPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.fat > avgGoals.fatGoal ? "over" : ""}">${round(macro.fatPct, 0)}</span><span class="split-unit">%</span></span>`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, "neutral", `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
       ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target - ${loggedDayLabel}`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `vs ${round(targetCaloriesTotal, 0)}`)}
     </div>
 
