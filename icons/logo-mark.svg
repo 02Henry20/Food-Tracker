@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ring" x1="210" y1="150" x2="820" y2="870" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset=".62" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="690" y1="170" x2="865" y2="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="290" y1="320" x2="520" y2="735" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="spoon" x1="500" y1="375" x2="700" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset=".58" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#0f172a" flood-opacity=".16"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path d="M512 168 A344 344 0 1 0 796 706" fill="none" stroke="url(#ring)" stroke-width="72" stroke-linecap="round"/>
+    <path d="M787 259 A344 344 0 0 1 836 624" fill="none" stroke="url(#orange)" stroke-width="72" stroke-linecap="round"/>
+    <path d="M372 656 C247 516 308 356 338 300 C455 363 536 466 512 587 C499 655 457 717 406 763 C421 698 409 662 372 656Z" fill="url(#leaf)"/>
+    <path d="M412 742 C397 639 350 551 318 493 C393 574 429 646 412 742Z" fill="#ffffff" opacity=".96"/>
+    <path d="M537 754 C586 694 603 642 590 582 C576 517 592 438 648 396 C697 359 771 365 801 417 C840 482 790 560 719 586 C672 603 645 642 628 690 C612 736 582 772 537 754Z" fill="url(#spoon)"/>
+  </g>
+</svg>
