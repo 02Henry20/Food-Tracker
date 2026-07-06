@@ -2135,25 +2135,43 @@ function formNumberValue(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function isGramLikeServing(serving = {}) {
+  if (serving.mode === "grams") return true;
+  const unit = normalizeSearchText(serving.unit);
+  const label = normalizeSearchText(serving.label || servingDisplayName(serving));
+  if (["g", "gram", "grams"].includes(unit)) return true;
+  return /^\d+(?:[.,]\d+)?\s*(g|gram|grams)$/.test(label);
+}
+
+function plainGramServingIndex(servingOptions = []) {
+  const index = servingOptions.findIndex(option => option.mode === "grams");
+  return index >= 0 ? index : 0;
+}
+
 function preferredServingIndex(servingOptions = [], currentUnit = "", currentGrams = null, preferNonGram = true) {
   const options = servingOptions.length ? servingOptions : [{ label: "grams", grams: 1, mode: "grams", unit: "g" }];
+  const gramIndex = plainGramServingIndex(options);
   const unitText = normalizeSearchText(currentUnit);
+
   if (unitText) {
     const directIndex = options.findIndex(option => [servingDisplayName(option), servingUnitName(option), option.label, option.unit]
       .some(value => normalizeSearchText(value) === unitText));
-    if (directIndex >= 0) return directIndex;
+    if (directIndex >= 0) return isGramLikeServing(options[directIndex]) ? gramIndex : directIndex;
+    if (["g", "gram", "grams"].includes(unitText) || /^\d+(?:[.,]\d+)?\s*(g|gram|grams)$/.test(unitText)) return gramIndex;
   }
+
   const grams = number(currentGrams, NaN);
   if (Number.isFinite(grams) && grams > 0) {
-    const gramIndex = options.findIndex(option => option.mode !== "grams" && Math.abs(number(option.grams) - grams) < Math.max(0.5, grams * 0.01));
-    if (gramIndex >= 0) return gramIndex;
+    const matchingIndex = options.findIndex(option => option.mode !== "grams" && Math.abs(number(option.grams) - grams) < Math.max(0.5, grams * 0.01));
+    if (matchingIndex >= 0) return isGramLikeServing(options[matchingIndex]) ? gramIndex : matchingIndex;
+    return gramIndex;
   }
+
   if (preferNonGram) {
-    const nonGramIndex = options.findIndex(option => option.mode !== "grams" && normalizeSearchText(servingDisplayName(option)) !== "100 g");
+    const nonGramIndex = options.findIndex(option => option.mode !== "grams" && !isGramLikeServing(option));
     if (nonGramIndex >= 0) return nonGramIndex;
   }
-  const hundredGramIndex = options.findIndex(option => normalizeSearchText(servingDisplayName(option)) === "100 g");
-  return hundredGramIndex >= 0 ? hundredGramIndex : 0;
+  return gramIndex;
 }
 
 function defaultAmountForServing(serving = {}, fallbackGrams = 100) {
@@ -2249,7 +2267,7 @@ function openLogFoodModal(food) {
   const servingOptions = buildServingOptions(food);
   const selectedServingIndex = preferredServingIndex(servingOptions, "", food.defaultServing?.grams, true);
   const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
-  const defaultAmount = defaultAmountForServing(selectedServing);
+  const defaultAmount = defaultAmountForServing(selectedServing, food.defaultServing?.grams || 100);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2805,7 +2823,7 @@ function openIngredientAmountModal(food, kind, id) {
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
   const selectedServingIndex = isRecipePortion ? 0 : preferredServingIndex(servingOptions, "", food.defaultServing?.grams, true);
   const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
-  const defaultAmount = defaultAmountForServing(selectedServing);
+  const defaultAmount = defaultAmountForServing(selectedServing, food.defaultServing?.grams || 100);
   const defaultGrams = isRecipePortion ? null : gramsForServingAmount(selectedServing, defaultAmount);
   openModal(`
     <div class="modal amount-selector-modal">
@@ -3066,11 +3084,13 @@ function openTargetItemAmountEditor(kind, id, index) {
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
   const selectedServingIndex = isRecipePortion ? 0 : preferredServingIndex(servingOptions, item.unit, item.grams, true);
   const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
-  const currentAmount = item.amount !== undefined && item.amount !== null
-    ? round(item.amount, 2)
+  const currentAmount = isRecipePortion
+    ? round(item.amount ?? 1, 2)
     : selectedServing.mode === "grams"
-      ? round(item.grams || 100, 2)
-      : round(number(item.grams) / Math.max(0.0001, number(selectedServing.grams, 1)), 2);
+      ? round(item.grams || gramsForServingAmount(selectedServing, item.amount ?? 1) || 100, 2)
+      : item.amount !== undefined && item.amount !== null
+        ? round(item.amount, 2)
+        : round(number(item.grams) / Math.max(0.0001, number(selectedServing.grams, 1)), 2);
   const nutrientsForSelection = (amount, selected) => {
     if (isRecipePortion) return scaleNutrients(food.nutrientsPerPortion || item.nutrientsSnapshot, amount);
     const grams = gramsForServingAmount(selected, amount);
@@ -4791,11 +4811,13 @@ async function editEntry(id) {
   const servingOptions = isFoodEntry ? buildServingOptions(food) : [{ label: entry.unit || "serving", grams: 100, mode: "serving", unit: entry.unit || "serving" }];
   const selectedServingIndex = isFoodEntry ? preferredServingIndex(servingOptions, entry.unit, entry.gramsEquivalent, true) : 0;
   const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
-  const currentAmount = entry.amount !== undefined && entry.amount !== null
-    ? round(entry.amount, 2)
-    : isFoodEntry
-      ? (selectedServing.mode === "grams" ? round(entry.gramsEquivalent || 100, 2) : round(number(entry.gramsEquivalent) / Math.max(0.0001, number(selectedServing.grams, 1)), 2))
-      : round(entry.amount || 1, 2);
+  const currentAmount = isFoodEntry
+    ? selectedServing.mode === "grams"
+      ? round(entry.gramsEquivalent || gramsForServingAmount(selectedServing, entry.amount ?? 1) || 100, 2)
+      : entry.amount !== undefined && entry.amount !== null
+        ? round(entry.amount, 2)
+        : round(number(entry.gramsEquivalent) / Math.max(0.0001, number(selectedServing.grams, 1)), 2)
+    : round(entry.amount || 1, 2);
   const nutrientsForEntrySelection = (amount, selected) => {
     if (isFoodEntry) return nutrientsForIngredientAmount(food, amount, gramsForServingAmount(selected, amount));
     const oldAmount = number(entry.amount, 1) || 1;
