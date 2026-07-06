@@ -2822,3 +2822,144 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     line-height: 1.28;
   }
 }
+
+/* NutriPilot patch v26: ingredient flow, keyboard, mobile layout, dark-mode polish */
+.result-card.keyboard-active,
+#ingredientResults .result-card.keyboard-active {
+  outline: 3px solid rgba(20, 184, 166, .42);
+  outline-offset: 2px;
+  border-color: rgba(20, 184, 166, .72);
+  box-shadow: 0 18px 48px rgba(20, 184, 166, .16);
+}
+
+.target-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.target-item-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.target-item-actions {
+  align-self: center;
+  justify-self: end;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 106px;
+}
+.target-item-actions .tiny-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.brand-mark.app-brand-icon,
+.auth-login-brand .brand-mark.app-brand-icon,
+.page-title-icon {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  object-fit: contain;
+}
+
+.report-metrics-grid .metric-card::before {
+  display: none !important;
+}
+[data-theme="dark"] .report-metrics-grid .metric-card {
+  overflow: hidden;
+}
+
+[data-theme="dark"] .hero-kcal-pill {
+  background: rgba(20, 184, 166, .24);
+  color: #5eead4;
+  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, .18);
+}
+[data-theme="dark"] .dashboard-hero.is-over-calories .hero-kcal-pill,
+[data-theme="dark"] .hero-kcal-pill.is-over {
+  background: rgba(239, 68, 68, .24);
+  color: #fca5a5;
+  box-shadow: inset 0 0 0 1px rgba(252, 165, 165, .2);
+}
+
+.search-tabs {
+  margin-bottom: -4px;
+}
+.search-tabs + .meal-head {
+  margin-top: -4px;
+  margin-bottom: -4px;
+}
+#searchResults.result-grid {
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  #syncStatus {
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    right: 10px;
+    z-index: 120;
+    box-shadow: var(--shadow);
+  }
+}
+
+@media (max-width: 560px) {
+  .meal-card .meal-head {
+    display: flex;
+    flex-direction: column;
+  }
+  .meal-card .meal-actions {
+    order: -1;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: auto;
+  }
+  .meal-card .meal-actions .tiny-btn {
+    width: auto;
+    min-width: 72px;
+    justify-content: center;
+  }
+
+  #searchResults .result-card,
+  #ingredientResults .result-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #searchResults .result-card > .inline-actions,
+  #ingredientResults .result-card > .inline-actions,
+  #searchResults .result-card > button.primary-btn,
+  #ingredientResults .result-card > button.primary-btn {
+    order: -1;
+    align-self: flex-start;
+    justify-content: flex-start;
+    margin-bottom: 4px;
+  }
+  #searchResults .result-card > .inline-actions,
+  #ingredientResults .result-card > .inline-actions {
+    flex-wrap: wrap;
+  }
+
+  .target-item-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .target-item-actions {
+    justify-self: start;
+    flex-direction: row;
+    min-width: 0;
+  }
+  .target-item-actions .tiny-btn {
+    width: auto;
+  }
+
+  .search-tabs {
+    margin-bottom: -8px;
+  }
+  .search-tabs + .meal-head {
+    margin-top: -8px;
+    margin-bottom: -6px;
+  }
+}
