@@ -3219,3 +3219,60 @@ input[type="number"]::-webkit-inner-spin-button {
     font-size: .62rem;
   }
 }
+
+/* NutriPilot pass v29: food detail actions and macro badge alignment */
+.food-detail-actions {
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.food-detail-actions .tiny-btn,
+.food-detail-actions .danger-btn {
+  min-width: 86px;
+  justify-content: center;
+}
+
+.macro-badges .badge,
+.macro-chip,
+.macro-percent-row span,
+.item-contribution-row span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#searchResults .macro-badges,
+#ingredientResults .macro-badges {
+  align-items: stretch;
+}
+#searchResults .macro-badges .badge,
+#ingredientResults .macro-badges .badge {
+  line-height: 1.05;
+  transform: none;
+}
+
+.amount-preview .macro-badges {
+  margin-top: 0;
+  align-items: stretch;
+}
+.amount-preview .macro-badges .badge,
+.amount-preview .item-contribution-row span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+}
+.amount-preview .item-contribution-row {
+  align-items: stretch;
+}
+
+@media (max-width: 560px) {
+  .food-detail-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .food-detail-actions .tiny-btn,
+  .food-detail-actions .danger-btn {
+    width: 100%;
+    min-width: 0;
+  }
+}

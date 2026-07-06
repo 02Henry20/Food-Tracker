@@ -1679,7 +1679,6 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `<button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1701,12 +1700,6 @@ function renderFoodResultCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `
-          <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
-          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
-        ` : ""}
       </div>
     </div>
   `;
@@ -1715,6 +1708,7 @@ function renderFoodResultCard(food, key) {
 function openFoodDetailModal(food) {
   if (!food) return;
   const warnings = foodDataWarnings(food);
+  const canManageCustomFood = food.source === "custom" && !!food.id;
   openModal(`
     <div class="modal food-detail-modal">
       <div class="modal-head"><h3>${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
@@ -1737,6 +1731,12 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
+        ${canManageCustomFood ? `
+          <div class="food-detail-actions inline-actions">
+            <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+            <button class="danger-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
+          </div>
+        ` : ""}
       </div>
     </div>
   `);
@@ -1823,7 +1823,8 @@ function renderFoodResult(food, key) {
       </div>
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
-        ${food.source === "custom" ? `<button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>` : `<button class="tiny-btn" data-action="save-api-food" data-key="${safeText(key)}">Save</button>`}
+        <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? "" : `<button class="tiny-btn" data-action="save-api-food" data-key="${safeText(key)}">Save</button>`}
       </div>
     </div>
   `;
@@ -4832,7 +4833,11 @@ async function handleClick(event) {
     if (action === "toggle-favorite-food") await toggleFavoriteFood(btn.dataset.id);
     if (action === "edit-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id));
     if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
-    if (action === "delete-custom-food" && confirm("Delete this custom food?")) await deleteDoc(userDoc("customFoods", btn.dataset.id));
+    if (action === "delete-custom-food" && confirm("Delete this custom food?")) {
+      await deleteDoc(userDoc("customFoods", btn.dataset.id));
+      if (btn.closest(".food-detail-modal")) closeModal();
+      showToast("Custom food deleted.");
+    }
     if (action === "delete-entry") {
       await deleteDoc(entryDoc(btn.dataset.id));
       await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
@@ -4843,10 +4848,16 @@ async function handleClick(event) {
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
-      const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
       const nextCollapsed = state.collapsedMeals[meal] === false;
-      state.collapsedMeals[meal] = nextCollapsed;
-      if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
+      const mobileSingleMeal = window.matchMedia("(max-width: 980px)").matches;
+      if (mobileSingleMeal) {
+        for (const [mealId] of MEALS) state.collapsedMeals[mealId] = true;
+        state.collapsedMeals[meal] = nextCollapsed;
+      } else {
+        const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
+        state.collapsedMeals[meal] = nextCollapsed;
+        if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
+      }
       renderToday();
     }
     if (action === "create-recipe") await createRecipe();
