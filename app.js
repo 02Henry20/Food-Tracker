@@ -1708,7 +1708,6 @@ function renderFoodResultCard(food, key) {
 function openFoodDetailModal(food) {
   if (!food) return;
   const warnings = foodDataWarnings(food);
-  const canManageCustomFood = food.source === "custom" && !!food.id;
   openModal(`
     <div class="modal food-detail-modal">
       <div class="modal-head"><h3>${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
@@ -1731,10 +1730,10 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
-        ${canManageCustomFood ? `
-          <div class="food-detail-actions inline-actions">
-            <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-            <button class="danger-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
+        ${food.source === "custom" && food.id ? `
+          <div class="form-actions custom-food-detail-actions">
+            <button class="tiny-btn" type="button" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+            <button class="danger-btn" type="button" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
           </div>
         ` : ""}
       </div>
@@ -2123,12 +2122,55 @@ function servingDisplayName(serving = {}) {
   return String(serving.label || serving.unit || "serving").trim() || "serving";
 }
 
-function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex") {
+function servingUnitName(serving = {}) {
+  if (serving.mode === "grams") return "g";
+  const unit = String(serving.unit || "").trim();
+  return unit && normalizeSearchText(unit) !== "g" ? unit : servingDisplayName(serving);
+}
+
+function formNumberValue(value, fallback = 0) {
+  const raw = value && typeof value === "object" && "value" in value ? value.value : value;
+  if (raw === null || raw === undefined || raw === "") return fallback;
+  const parsed = Number(String(raw).trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function preferredServingIndex(servingOptions = [], currentUnit = "", currentGrams = null, preferNonGram = true) {
+  const options = servingOptions.length ? servingOptions : [{ label: "grams", grams: 1, mode: "grams", unit: "g" }];
+  const unitText = normalizeSearchText(currentUnit);
+  if (unitText) {
+    const directIndex = options.findIndex(option => [servingDisplayName(option), servingUnitName(option), option.label, option.unit]
+      .some(value => normalizeSearchText(value) === unitText));
+    if (directIndex >= 0) return directIndex;
+  }
+  const grams = number(currentGrams, NaN);
+  if (Number.isFinite(grams) && grams > 0) {
+    const gramIndex = options.findIndex(option => option.mode !== "grams" && Math.abs(number(option.grams) - grams) < Math.max(0.5, grams * 0.01));
+    if (gramIndex >= 0) return gramIndex;
+  }
+  if (preferNonGram) {
+    const nonGramIndex = options.findIndex(option => option.mode !== "grams" && normalizeSearchText(servingDisplayName(option)) !== "100 g");
+    if (nonGramIndex >= 0) return nonGramIndex;
+  }
+  const hundredGramIndex = options.findIndex(option => normalizeSearchText(servingDisplayName(option)) === "100 g");
+  return hundredGramIndex >= 0 ? hundredGramIndex : 0;
+}
+
+function defaultAmountForServing(serving = {}, fallbackGrams = 100) {
+  if (serving.mode === "grams") return fallbackGrams;
+  return 1;
+}
+
+function gramsForServingAmount(serving = {}, amount = 0) {
+  return serving.mode === "grams" ? number(amount) : number(amount) * number(serving.grams, 1);
+}
+
+function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex", fallbackAmount = 100) {
   const servingOptions = buildServingOptions(food);
-  const amount = number(data.get(amountName), 100);
-  const selected = servingOptions[number(data.get(unitName))] || servingOptions[0];
-  const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
-  const unit = selected.mode === "grams" ? "g" : servingDisplayName(selected);
+  const selected = servingOptions[formNumberValue(data.get(unitName), preferredServingIndex(servingOptions, "", null, true))] || servingOptions[0];
+  const amount = formNumberValue(data.get(amountName), defaultAmountForServing(selected, fallbackAmount));
+  const grams = gramsForServingAmount(selected, amount);
+  const unit = servingUnitName(selected);
   return { amount, selected, unit, grams };
 }
 
@@ -2137,11 +2179,67 @@ function bindServingAmountDefaults(form, food) {
   const amountInput = form.elements.amount;
   const select = form.elements.unitIndex;
   const applyDefault = () => {
-    const serving = buildServingOptions(food)[number(select?.value)] || buildServingOptions(food)[0];
+    const serving = buildServingOptions(food)[formNumberValue(select?.value, 0)] || buildServingOptions(food)[0];
     if (!amountInput || document.activeElement === amountInput) return;
-    amountInput.value = serving?.mode === "grams" ? 100 : 1;
+    amountInput.value = defaultAmountForServing(serving);
   };
   select?.addEventListener("change", applyDefault);
+}
+
+function findCustomFoodForReference(ref = {}) {
+  return state.customFoods.find(food => food.id && (food.id === ref.itemId || food.id === ref.sourceId || food.id === ref.id))
+    || state.customFoods.find(food => ref.barcode && food.barcode === ref.barcode)
+    || state.customFoods.find(food => normalizeSearchText(displayFoodName(food)) === normalizeSearchText(ref.nameSnapshot || ref.displayName || ref.name));
+}
+
+function foodLikeFromEntry(entry = {}) {
+  const snapshot = entry.itemSnapshot || {};
+  if ((entry.itemType && entry.itemType !== "food") || (snapshot.itemType && snapshot.itemType !== "food")) return null;
+  const libraryFood = findCustomFoodForReference({ ...snapshot, ...entry });
+  const grams = number(entry.gramsEquivalent || snapshot.gramsEquivalent);
+  const derivedPer100g = grams > 0 ? scaleNutrients(entry.nutrientsSnapshot || snapshot.nutrientsSnapshot, 100 / grams) : null;
+  const nutrientsPer100g = normalizeNutrients(snapshot.nutrientsPer100g || libraryFood?.nutrientsPer100g || derivedPer100g || {});
+  if (!number(nutrientsPer100g.kcal) && !number(nutrientsPer100g.protein) && !number(nutrientsPer100g.carbs) && !number(nutrientsPer100g.fat)) return null;
+  return {
+    id: snapshot.itemId || entry.itemId || libraryFood?.id || null,
+    source: snapshot.source || entry.source || libraryFood?.source || "custom",
+    sourceId: snapshot.sourceId || entry.sourceId || libraryFood?.sourceId || null,
+    barcode: snapshot.barcode || entry.barcode || libraryFood?.barcode || null,
+    name: snapshot.name || entry.nameSnapshot || libraryFood?.name || "Food",
+    brand: snapshot.brand || entry.brandSnapshot || libraryFood?.brand || null,
+    defaultServing: snapshot.defaultServing || libraryFood?.defaultServing || null,
+    servingOptions: snapshot.servingOptions || libraryFood?.servingOptions || [],
+    nutrientsPer100g
+  };
+}
+
+function foodLikeFromTargetItem(item = {}) {
+  if (item.itemType === "recipe" || item.source === "recipe") {
+    return {
+      id: item.itemId || item.recipeSnapshot?.id || null,
+      source: "recipe",
+      name: item.nameSnapshot || item.recipeSnapshot?.name || "Recipe",
+      brand: "Recipe",
+      nutrientsPerPortion: normalizeNutrients(item.recipeSnapshot?.nutrientsPerPortion || scaleNutrients(item.nutrientsSnapshot, 1 / Math.max(1, number(item.amount, 1)))),
+      defaultServing: { label: "portion", grams: 100, mode: "portion", unit: "portion" },
+      servingOptions: [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }]
+    };
+  }
+  const libraryFood = findCustomFoodForReference(item);
+  const grams = number(item.grams);
+  const derivedPer100g = grams > 0 ? scaleNutrients(item.nutrientsSnapshot, 100 / grams) : null;
+  const nutrientsPer100g = normalizeNutrients(item.nutrientsPer100g || item.itemSnapshot?.nutrientsPer100g || libraryFood?.nutrientsPer100g || derivedPer100g || {});
+  return {
+    id: item.itemId || libraryFood?.id || null,
+    source: item.source || libraryFood?.source || "custom",
+    sourceId: item.sourceId || libraryFood?.sourceId || null,
+    barcode: item.barcode || libraryFood?.barcode || null,
+    name: item.nameSnapshot || libraryFood?.name || "Food",
+    brand: item.brandSnapshot || libraryFood?.brand || null,
+    defaultServing: item.defaultServing || item.itemSnapshot?.defaultServing || libraryFood?.defaultServing || null,
+    servingOptions: item.servingOptions || item.itemSnapshot?.servingOptions || libraryFood?.servingOptions || [],
+    nutrientsPer100g
+  };
 }
 
 function openLogFoodModal(food) {
@@ -2149,6 +2247,9 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
+  const selectedServingIndex = preferredServingIndex(servingOptions, "", food.defaultServing?.grams, true);
+  const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
+  const defaultAmount = defaultAmountForServing(selectedServing);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2156,10 +2257,10 @@ function openLogFoodModal(food) {
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="100" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedServingIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -2702,8 +2803,10 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const defaultAmount = isRecipePortion ? 1 : (servingOptions[0]?.mode === "grams" ? 100 : 1);
-  const defaultGrams = isRecipePortion ? null : (servingOptions[0]?.mode === "grams" ? defaultAmount : defaultAmount * number(servingOptions[0]?.grams, 1));
+  const selectedServingIndex = isRecipePortion ? 0 : preferredServingIndex(servingOptions, "", food.defaultServing?.grams, true);
+  const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
+  const defaultAmount = defaultAmountForServing(selectedServing);
+  const defaultGrams = isRecipePortion ? null : gramsForServingAmount(selectedServing, defaultAmount);
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head">
@@ -2715,7 +2818,7 @@ function openIngredientAmountModal(food, kind, id) {
           <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
-              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedServingIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -2730,16 +2833,17 @@ function openIngredientAmountModal(food, kind, id) {
   const preview = document.getElementById("ingredientAmountPreview");
   const updatePreview = () => {
     const data = new FormData(form);
-    const amount = number(data.get("amount"), defaultAmount);
-    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
-    const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const amount = formNumberValue(data.get("amount"), defaultAmountForServing(selected));
+    const grams = isRecipePortion ? null : gramsForServingAmount(selected, amount);
     preview.innerHTML = targetItemContributionPreviewHTML(food, amount, kind, id, grams);
   };
   form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.amount?.addEventListener("change", updatePreview);
   form?.elements.unitIndex?.addEventListener("change", () => {
     if (!isRecipePortion && form.elements.amount && document.activeElement !== form.elements.amount) {
-      const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
-      form.elements.amount.value = selected.mode === "grams" ? 100 : 1;
+      const selected = servingOptions[formNumberValue(form.elements.unitIndex?.value, selectedServingIndex)] || selectedServing;
+      form.elements.amount.value = defaultAmountForServing(selected);
     }
     updatePreview();
   });
@@ -2751,12 +2855,12 @@ function openIngredientAmountModal(food, kind, id) {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
     form.dataset.submitting = "true";
-    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     const data = new FormData(event.currentTarget);
-    const amount = number(data.get("amount"), defaultAmount);
-    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
-    const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
-    const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const amount = formNumberValue(data.get("amount"), defaultAmountForServing(selected));
+    const unit = isRecipePortion ? "portion" : servingUnitName(selected);
+    const grams = isRecipePortion ? null : gramsForServingAmount(selected, amount);
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
     resetIngredientSearch(kind, id);
     openIngredientModal(kind, id, { restore: false });
@@ -2781,6 +2885,10 @@ async function addIngredientToTarget(food, amount, unit, grams, kind, id) {
       grams,
       amount,
       unit,
+      defaultServing: food.defaultServing || null,
+      servingOptions: food.servingOptions || [],
+      nutrientsPer100g: normalizeNutrients(food.nutrientsPer100g),
+      itemSnapshot: loggedFoodSnapshot(food, grams, amount, unit, nutrientsSnapshot, Date.now()),
       nutrientsSnapshot,
       createdAt: Date.now()
     };
@@ -2953,16 +3061,39 @@ function openTargetItemAmountEditor(kind, id, index) {
   const items = [...(isRecipe ? target?.ingredients || [] : target?.items || [])];
   const item = items[number(index)];
   if (!target || !item) return;
-  const currentAmount = round(item.amount ?? item.grams, 2);
-  const oldAmount = number(item.amount ?? item.grams, 1) || 1;
-  const displayNutrients = targetItemDisplayNutrients(kind, target, item);
+  const food = foodLikeFromTargetItem(item);
+  const isRecipePortion = food?.source === "recipe" || item.itemType === "recipe" || item.source === "recipe";
+  const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
+  const selectedServingIndex = isRecipePortion ? 0 : preferredServingIndex(servingOptions, item.unit, item.grams, true);
+  const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
+  const currentAmount = item.amount !== undefined && item.amount !== null
+    ? round(item.amount, 2)
+    : selectedServing.mode === "grams"
+      ? round(item.grams || 100, 2)
+      : round(number(item.grams) / Math.max(0.0001, number(selectedServing.grams, 1)), 2);
+  const nutrientsForSelection = (amount, selected) => {
+    if (isRecipePortion) return scaleNutrients(food.nutrientsPerPortion || item.nutrientsSnapshot, amount);
+    const grams = gramsForServingAmount(selected, amount);
+    return nutrientsForIngredientAmount(food, amount, grams);
+  };
+  const displayForSelection = (amount, selected) => {
+    const absolute = nutrientsForSelection(amount, selected);
+    return kind === "recipe" ? scaleNutrients(absolute, 1 / targetPortionDivisor(kind, target)) : absolute;
+  };
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetItemEditForm" class="modal-body">
-        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
+        <div class="form-grid two">
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
+          <label>Unit
+            <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedServingIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+            </select>
+          </label>
+        </div>
         <div id="targetItemAmountPreview" class="amount-preview">
-          ${targetItemStatsHTML(kind, target, item, displayNutrients)}
+          ${targetItemEditPreviewHTML(kind, target, items, number(index), displayForSelection(currentAmount, selectedServing))}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save amount</button></div>
       </form>
@@ -2970,9 +3101,20 @@ function openTargetItemAmountEditor(kind, id, index) {
   `);
   const form = document.getElementById("targetItemEditForm");
   const preview = document.getElementById("targetItemAmountPreview");
-  form?.elements.amount?.addEventListener("input", event => {
-    const factor = number(event.currentTarget.value) / oldAmount;
-    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), scaleNutrients(displayNutrients, factor));
+  const updatePreview = () => {
+    const data = new FormData(form);
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const amount = formNumberValue(data.get("amount"), defaultAmountForServing(selected));
+    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), displayForSelection(amount, selected));
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.amount?.addEventListener("change", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", () => {
+    const selected = servingOptions[formNumberValue(form.elements.unitIndex?.value, selectedServingIndex)] || selectedServing;
+    if (!isRecipePortion && form.elements.amount && document.activeElement !== form.elements.amount) {
+      form.elements.amount.value = defaultAmountForServing(selected);
+    }
+    updatePreview();
   });
   requestAnimationFrame(() => {
     form?.elements.amount?.focus();
@@ -2980,13 +3122,21 @@ function openTargetItemAmountEditor(kind, id, index) {
   });
   form.addEventListener("submit", event => {
     event.preventDefault();
-    const newAmount = number(new FormData(event.currentTarget).get("amount"), item.amount ?? item.grams);
-    const factor = newAmount / oldAmount;
+    const data = new FormData(event.currentTarget);
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const newAmount = formNumberValue(data.get("amount"), currentAmount);
+    const unit = isRecipePortion ? "portion" : servingUnitName(selected);
+    const grams = isRecipePortion ? null : gramsForServingAmount(selected, newAmount);
+    const nutrientsSnapshot = nutrientsForSelection(newAmount, selected);
     items[number(index)] = {
       ...item,
       amount: newAmount,
-      grams: item.grams ? number(item.grams) * factor : (item.unit === "g" ? newAmount : item.grams),
-      nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
+      unit,
+      grams,
+      defaultServing: isRecipePortion ? item.defaultServing || null : food.defaultServing || item.defaultServing || null,
+      servingOptions: isRecipePortion ? item.servingOptions || [] : food.servingOptions || item.servingOptions || [],
+      nutrientsPer100g: isRecipePortion ? item.nutrientsPer100g || null : normalizeNutrients(food.nutrientsPer100g),
+      nutrientsSnapshot,
       updatedAt: Date.now()
     };
     const patch = recalculateTarget(kind, target, items);
@@ -4636,33 +4786,82 @@ function openEntrySnapshotModal(id) {
 async function editEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
+  const food = foodLikeFromEntry(entry);
+  const isFoodEntry = !!food;
+  const servingOptions = isFoodEntry ? buildServingOptions(food) : [{ label: entry.unit || "serving", grams: 100, mode: "serving", unit: entry.unit || "serving" }];
+  const selectedServingIndex = isFoodEntry ? preferredServingIndex(servingOptions, entry.unit, entry.gramsEquivalent, true) : 0;
+  const selectedServing = servingOptions[selectedServingIndex] || servingOptions[0];
+  const currentAmount = entry.amount !== undefined && entry.amount !== null
+    ? round(entry.amount, 2)
+    : isFoodEntry
+      ? (selectedServing.mode === "grams" ? round(entry.gramsEquivalent || 100, 2) : round(number(entry.gramsEquivalent) / Math.max(0.0001, number(selectedServing.grams, 1)), 2))
+      : round(entry.amount || 1, 2);
+  const nutrientsForEntrySelection = (amount, selected) => {
+    if (isFoodEntry) return nutrientsForIngredientAmount(food, amount, gramsForServingAmount(selected, amount));
+    const oldAmount = number(entry.amount, 1) || 1;
+    return scaleNutrients(entry.nutrientsSnapshot, amount / oldAmount);
+  };
   openModal(`
-    <div class="modal">
+    <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Edit entry</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="editEntryForm" class="modal-body">
-        <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
-        <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <div class="form-grid two">
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${currentAmount}" required /></label>
+          <label>Unit
+            <select name="unitIndex" ${isFoodEntry ? "" : "disabled"}>
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedServingIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+            </select>
+          </label>
+          <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        </div>
+        <div id="editEntryPreview" class="amount-preview">
+          ${nutrientSummaryHTML(nutrientsForEntrySelection(currentAmount, selectedServing))}
+        </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
       </form>
     </div>
   `);
-  document.getElementById("editEntryForm").addEventListener("submit", async event => {
+  const form = document.getElementById("editEntryForm");
+  const preview = document.getElementById("editEntryPreview");
+  const updatePreview = () => {
+    const data = new FormData(form);
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const amount = formNumberValue(data.get("amount"), defaultAmountForServing(selected));
+    preview.innerHTML = nutrientSummaryHTML(nutrientsForEntrySelection(amount, selected));
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.amount?.addEventListener("change", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", () => {
+    const selected = servingOptions[formNumberValue(form.elements.unitIndex?.value, selectedServingIndex)] || selectedServing;
+    if (isFoodEntry && form.elements.amount && document.activeElement !== form.elements.amount) {
+      form.elements.amount.value = defaultAmountForServing(selected);
+    }
+    updatePreview();
+  });
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const newAmount = number(data.get("amount"), entry.amount);
-    const factor = entry.amount ? newAmount / entry.amount : 1;
+    const selected = servingOptions[formNumberValue(data.get("unitIndex"), selectedServingIndex)] || selectedServing;
+    const newAmount = formNumberValue(data.get("amount"), currentAmount);
+    const unit = isFoodEntry ? servingUnitName(selected) : (entry.unit || servingUnitName(selected));
+    const gramsEquivalent = isFoodEntry ? gramsForServingAmount(selected, newAmount) : (entry.gramsEquivalent ? entry.gramsEquivalent * (newAmount / (number(entry.amount, 1) || 1)) : entry.gramsEquivalent);
     const updatedAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(entry.nutrientsSnapshot, factor);
+    const nutrientsSnapshot = nutrientsForEntrySelection(newAmount, selected);
     const itemSnapshot = entry.itemSnapshot ? {
       ...entry.itemSnapshot,
       amount: newAmount,
-      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.itemSnapshot.gramsEquivalent,
+      unit,
+      gramsEquivalent,
+      defaultServing: isFoodEntry ? food.defaultServing || entry.itemSnapshot.defaultServing || null : entry.itemSnapshot.defaultServing,
+      servingOptions: isFoodEntry ? food.servingOptions || entry.itemSnapshot.servingOptions || [] : entry.itemSnapshot.servingOptions,
+      nutrientsPer100g: isFoodEntry ? normalizeNutrients(food.nutrientsPer100g) : entry.itemSnapshot.nutrientsPer100g,
       nutrientsSnapshot,
       updatedAt
     } : null;
     await updateDoc(entryDoc(id), cleanForFirestore({
       amount: newAmount,
-      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.gramsEquivalent,
+      unit,
+      gramsEquivalent,
       meal: data.get("meal"),
       nutrientsSnapshot,
       ...(itemSnapshot ? { itemSnapshot } : {}),
@@ -4835,8 +5034,7 @@ async function handleClick(event) {
     if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
     if (action === "delete-custom-food" && confirm("Delete this custom food?")) {
       await deleteDoc(userDoc("customFoods", btn.dataset.id));
-      if (btn.closest(".food-detail-modal")) closeModal();
-      showToast("Custom food deleted.");
+      if (btn.closest(".modal")) closeModal();
     }
     if (action === "delete-entry") {
       await deleteDoc(entryDoc(btn.dataset.id));
@@ -4849,9 +5047,9 @@ async function handleClick(event) {
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
       const nextCollapsed = state.collapsedMeals[meal] === false;
-      const mobileSingleMeal = window.matchMedia("(max-width: 980px)").matches;
-      if (mobileSingleMeal) {
-        for (const [mealId] of MEALS) state.collapsedMeals[mealId] = true;
+      const isMobileMeals = window.matchMedia("(max-width: 980px)").matches;
+      if (isMobileMeals) {
+        MEALS.forEach(([id]) => { state.collapsedMeals[id] = true; });
         state.collapsedMeals[meal] = nextCollapsed;
       } else {
         const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };

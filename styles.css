@@ -3220,59 +3220,51 @@ input[type="number"]::-webkit-inner-spin-button {
   }
 }
 
-/* NutriPilot pass v29: food detail actions and macro badge alignment */
-.food-detail-actions {
-  justify-content: flex-end;
-  padding-top: 4px;
-}
-.food-detail-actions .tiny-btn,
-.food-detail-actions .danger-btn {
-  min-width: 86px;
-  justify-content: center;
-}
-
-.macro-badges .badge,
-.macro-chip,
-.macro-percent-row span,
-.item-contribution-row span {
+/* NutriPilot mobile bugfix pass v30 */
+#searchResults .macro-badges .badge,
+#ingredientResults .macro-badges .badge,
+#searchResults .macro-chip,
+#searchResults .macro-percent-row span,
+.amount-preview .macro-badges .badge,
+.amount-preview .item-contribution-row span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+  vertical-align: middle;
 }
 
-#searchResults .macro-badges,
-#ingredientResults .macro-badges {
+.amount-preview .macro-badges,
+.amount-preview .item-contribution-row {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
-}
-#searchResults .macro-badges .badge,
-#ingredientResults .macro-badges .badge {
-  line-height: 1.05;
-  transform: none;
-}
-
-.amount-preview .macro-badges {
+  gap: 6px;
+  width: 100%;
   margin-top: 0;
-  align-items: stretch;
 }
+
 .amount-preview .macro-badges .badge,
 .amount-preview .item-contribution-row span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
+  min-height: 28px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 5px;
+  text-align: center;
 }
-.amount-preview .item-contribution-row {
-  align-items: stretch;
+
+.custom-food-detail-actions {
+  justify-content: flex-end;
 }
 
 @media (max-width: 560px) {
-  .food-detail-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .amount-preview .macro-badges,
+  .amount-preview .item-contribution-row {
+    gap: 4px;
   }
-  .food-detail-actions .tiny-btn,
-  .food-detail-actions .danger-btn {
-    width: 100%;
-    min-width: 0;
+  .amount-preview .macro-badges .badge,
+  .amount-preview .item-contribution-row span {
+    min-height: 24px;
+    padding: 4px 3px;
   }
 }
