@@ -41,7 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 3;
+const REPORT_CACHE_VERSION = 4;
+const REPORT_TABLE_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
@@ -265,8 +266,8 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
-  reportLoadToken: null,
   dailySummaryJobs: new Map(),
+  logSnapshotSignatures: {},
   targetDetailScroll: {},
   keyboardSelection: { search: -1, ingredient: -1 },
   unsubs: [],
@@ -629,7 +630,7 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     itemCount: summaryEntries?.length || 0,
     updatedAt: Date.now()
   }), { merge: true });
-  if (options.invalidateReports) scheduleReportRecalculationForDate(dateISO);
+  if (options.invalidateReports !== false) scheduleReportRecalculationForDate(dateISO);
 }
 
 function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
@@ -900,6 +901,13 @@ function subscribeUserData() {
   subscribeLogsForCurrentDate();
 }
 
+function logEntriesSignature(entries = []) {
+  return (entries || [])
+    .map(entry => `${entry.id || ""}:${number(entry.updatedAt) || number(entry.createdAt)}:${round(entry.nutrientsSnapshot?.kcal, 2)}:${entry.meal || ""}`)
+    .sort()
+    .join("|");
+}
+
 function subscribeLogsForCurrentDate() {
   if (state.unsubLogs) state.unsubLogs();
   if (state.unsubDailyGoal) state.unsubDailyGoal();
@@ -919,7 +927,11 @@ function subscribeLogsForCurrentDate() {
     if (state.currentDate !== dateISO) return;
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
     writeLocal(`logs:${dateISO}`, state.logs);
-    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs).catch(console.warn);
+    const signature = logEntriesSignature(state.logs);
+    const previousSignature = state.logSnapshotSignatures?.[dateISO] || "";
+    const shouldInvalidateReports = !!previousSignature && previousSignature !== signature;
+    state.logSnapshotSignatures[dateISO] = signature;
+    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: shouldInvalidateReports }).catch(console.warn);
     if (state.route === "today") renderToday();
   }, error => {
     console.warn("Log snapshot failed; local cache remains active.", error);
@@ -1704,6 +1716,9 @@ function renderFoodResultCard(food, key) {
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
         ${food.source === "custom" ? `
           <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
+          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
+          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
         ` : ""}
       </div>
     </div>
@@ -1735,13 +1750,6 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
-        ${food.source === "custom" && food.id ? `
-          <div class="form-actions food-detail-actions">
-            <button class="tiny-btn" type="button" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-            <button class="tiny-btn" type="button" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-            <button class="danger-btn" type="button" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
-          </div>
-        ` : ""}
       </div>
     </div>
   `);
@@ -2128,48 +2136,24 @@ function servingDisplayName(serving = {}) {
 }
 
 function isGramBasedServing(serving = {}) {
-  if (serving.mode === "grams") return true;
-  const unit = normalizeSearchText(serving.unit || "");
-  const label = normalizeSearchText(serving.label || "");
-  return ["g", "gram", "grams"].includes(unit) || /^\d+(?:[.,]\d+)?\s*g(?:ram|rams)?$/.test(label);
+  const label = normalizeSearchText(`${serving.label || ""} ${serving.unit || ""}`);
+  return serving.mode === "grams" || serving.unit === "g" || /^\d+(?:[.,]\d+)?\s*g(?:rams?)?$/.test(label) || label === "g" || label === "gram" || label === "grams";
 }
 
-function servingOptionDefaultAmount(food, serving) {
-  const preferred = preferredServingSelection(food);
-  if (serving?.mode === "grams") return preferred.unitIndex === 0 ? preferred.amount : 100;
-  return 1;
-}
-
-function preferredServingSelection(food) {
-  const servingOptions = buildServingOptions(food);
+function preferredServingSelection(food, servingOptions = buildServingOptions(food)) {
   const defaultServing = food?.defaultServing || food?.servingOptions?.[0] || null;
-  const defaultGrams = number(defaultServing?.grams, 0);
-
-  if (defaultServing && isGramBasedServing(defaultServing) && defaultGrams > 0) {
-    return { amount: defaultGrams, unitIndex: 0, selected: servingOptions[0], grams: defaultGrams, unit: "g" };
+  if (defaultServing && isGramBasedServing(defaultServing)) {
+    return { index: 0, amount: number(defaultServing.grams, 100) || 100 };
   }
-
-  if (defaultServing && defaultGrams > 0) {
-    const defaultName = normalizeSearchText(servingDisplayName(defaultServing));
-    const defaultIndex = servingOptions.findIndex((option, index) => index > 0 && normalizeSearchText(servingDisplayName(option)) === defaultName);
-    if (defaultIndex > 0 && !isGramBasedServing(servingOptions[defaultIndex])) {
-      return { amount: 1, unitIndex: defaultIndex, selected: servingOptions[defaultIndex], grams: number(servingOptions[defaultIndex].grams, defaultGrams), unit: servingDisplayName(servingOptions[defaultIndex]) };
-    }
-  }
-
-  const nonGramIndex = servingOptions.findIndex((option, index) => index > 0 && !isGramBasedServing(option));
-  if (nonGramIndex > 0) {
-    return { amount: 1, unitIndex: nonGramIndex, selected: servingOptions[nonGramIndex], grams: number(servingOptions[nonGramIndex].grams, 1), unit: servingDisplayName(servingOptions[nonGramIndex]) };
-  }
-
-  return { amount: 100, unitIndex: 0, selected: servingOptions[0], grams: 100, unit: "g" };
+  const nonGramIndex = servingOptions.findIndex(option => option.mode !== "grams" && !isGramBasedServing(option));
+  if (nonGramIndex >= 0) return { index: nonGramIndex, amount: 1 };
+  return { index: 0, amount: number(defaultServing?.grams, 100) || 100 };
 }
 
 function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex") {
   const servingOptions = buildServingOptions(food);
-  const preferred = preferredServingSelection(food);
-  const amount = number(data.get(amountName), preferred.amount);
-  const selected = servingOptions[number(data.get(unitName), preferred.unitIndex)] || servingOptions[preferred.unitIndex] || servingOptions[0];
+  const amount = number(data.get(amountName), 100);
+  const selected = servingOptions[number(data.get(unitName))] || servingOptions[0];
   const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
   const unit = selected.mode === "grams" ? "g" : servingDisplayName(selected);
   return { amount, selected, unit, grams };
@@ -2179,10 +2163,11 @@ function bindServingAmountDefaults(form, food) {
   if (!form || !food) return;
   const amountInput = form.elements.amount;
   const select = form.elements.unitIndex;
+  const servingOptions = buildServingOptions(food);
   const applyDefault = () => {
-    const serving = buildServingOptions(food)[number(select?.value)] || buildServingOptions(food)[0];
+    const serving = servingOptions[number(select?.value)] || servingOptions[0];
     if (!amountInput || document.activeElement === amountInput) return;
-    amountInput.value = servingOptionDefaultAmount(food, serving);
+    amountInput.value = serving?.mode === "grams" ? number(food.defaultServing?.grams, 100) || 100 : 1;
   };
   select?.addEventListener("change", applyDefault);
 }
@@ -2192,7 +2177,7 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
-  const preferredServing = preferredServingSelection(food);
+  const preferredServing = preferredServingSelection(food, servingOptions);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2200,10 +2185,10 @@ function openLogFoodModal(food) {
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${round(preferredServing.amount, 2)}" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${preferredServing.amount}" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.unitIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -2277,63 +2262,6 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
     sourceUpdatedAt: target.updatedAt || null,
     loggedAt: createdAt
   });
-}
-
-function foodFromLoggedEntry(entry) {
-  if (!entry || entry.itemType !== "food") return null;
-  const snapshot = entry.itemSnapshot || {};
-  const libraryFood = state.customFoods.find(food => food.id === entry.itemId || food.id === snapshot.itemId || food.sourceId === entry.sourceId || food.sourceId === snapshot.sourceId);
-  if (libraryFood) return libraryFood;
-  const grams = number(entry.gramsEquivalent ?? snapshot.gramsEquivalent ?? (entry.unit === "g" ? entry.amount : 100), 100) || 100;
-  const amount = number(entry.amount, 1) || 1;
-  const servingUnit = entry.unit && entry.unit !== "g" ? entry.unit : "g";
-  const servingGrams = servingUnit === "g" ? grams : grams / amount;
-  const nutrientsPer100g = snapshot.nutrientsPer100g
-    ? normalizeNutrients(snapshot.nutrientsPer100g)
-    : scaleNutrients(entry.nutrientsSnapshot, 100 / grams);
-  return {
-    id: entry.itemId || snapshot.itemId || null,
-    source: snapshot.source || entry.source || "custom",
-    sourceId: snapshot.sourceId || entry.sourceId || null,
-    barcode: snapshot.barcode || entry.barcode || null,
-    name: snapshot.name || entry.nameSnapshot || "Logged food",
-    brand: snapshot.brand || entry.brandSnapshot || null,
-    defaultServing: snapshot.defaultServing || { label: servingUnit === "g" ? `${round(grams, 2)} g` : servingUnit, grams: servingGrams, unit: servingUnit },
-    servingOptions: snapshot.servingOptions?.length ? snapshot.servingOptions : [{ label: servingUnit === "g" ? `${round(grams, 2)} g` : servingUnit, grams: servingGrams, unit: servingUnit }],
-    nutrientsPer100g
-  };
-}
-
-function foodFromTargetItem(item) {
-  if (!item || item.itemType === "recipe") return null;
-  const libraryFood = state.customFoods.find(food => food.id === item.itemId || food.id === item.sourceId || food.sourceId === item.sourceId);
-  if (libraryFood) return libraryFood;
-  const grams = number(item.grams ?? (item.unit === "g" ? item.amount : 100), 100) || 100;
-  const amount = number(item.amount, 1) || 1;
-  const servingUnit = item.unit && item.unit !== "g" ? item.unit : "g";
-  const servingGrams = servingUnit === "g" ? grams : grams / amount;
-  return {
-    id: item.itemId || item.sourceId || null,
-    source: item.source || "custom",
-    sourceId: item.sourceId || null,
-    barcode: item.barcode || null,
-    name: item.nameSnapshot || "Item",
-    brand: item.brandSnapshot || null,
-    defaultServing: { label: servingUnit === "g" ? `${round(grams, 2)} g` : servingUnit, grams: servingGrams, unit: servingUnit },
-    servingOptions: [{ label: servingUnit === "g" ? `${round(grams, 2)} g` : servingUnit, grams: servingGrams, unit: servingUnit }],
-    nutrientsPer100g: scaleNutrients(item.nutrientsSnapshot, 100 / grams)
-  };
-}
-
-function selectedServingIndexForAmount(food, unit, grams, amount) {
-  const options = buildServingOptions(food);
-  if (unit === "g" || !unit) return 0;
-  const normalizedUnit = normalizeSearchText(unit);
-  const match = options.findIndex((option, index) => index > 0 && normalizeSearchText(servingDisplayName(option)) === normalizedUnit);
-  if (match > 0) return match;
-  const gramsPerUnit = number(grams) / Math.max(1, number(amount, 1));
-  const gramMatch = options.findIndex((option, index) => index > 0 && Math.abs(number(option.grams) - gramsPerUnit) < 0.001);
-  return gramMatch > 0 ? gramMatch : preferredServingSelection(food).unitIndex;
 }
 
 async function logFood(food, amount, unit, grams, meal, dateISO) {
@@ -2803,11 +2731,10 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const preferredServing = isRecipePortion
-    ? { amount: 1, unitIndex: 0, selected: servingOptions[0], grams: null, unit: "portion" }
-    : preferredServingSelection(food);
+  const preferredServing = isRecipePortion ? { index: 0, amount: 1 } : preferredServingSelection(food, servingOptions);
   const defaultAmount = preferredServing.amount;
-  const defaultGrams = isRecipePortion ? null : preferredServing.grams;
+  const defaultSelected = servingOptions[preferredServing.index] || servingOptions[0];
+  const defaultGrams = isRecipePortion ? null : (defaultSelected?.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected?.grams, 1));
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head">
@@ -2819,7 +2746,7 @@ function openIngredientAmountModal(food, kind, id) {
           <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.unitIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -2843,7 +2770,7 @@ function openIngredientAmountModal(food, kind, id) {
   form?.elements.unitIndex?.addEventListener("change", () => {
     if (!isRecipePortion && form.elements.amount && document.activeElement !== form.elements.amount) {
       const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
-      form.elements.amount.value = servingOptionDefaultAmount(food, selected);
+      form.elements.amount.value = selected.mode === "grams" ? number(food.defaultServing?.grams, 100) || 100 : 1;
     }
     updatePreview();
   });
@@ -2854,13 +2781,13 @@ function openIngredientAmountModal(food, kind, id) {
   form.addEventListener("submit", event => {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
+    form.dataset.submitting = "true";
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), defaultAmount);
-    const selected = servingOptions[number(data.get("unitIndex"), preferredServing.unitIndex)] || preferredServing.selected || servingOptions[0];
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[preferredServing.index] || servingOptions[0];
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
     const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
-    form.dataset.submitting = "true";
-    form.querySelectorAll("button").forEach(el => el.disabled = true);
     addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
     resetIngredientSearch(kind, id);
     openIngredientModal(kind, id, { restore: false });
@@ -3057,23 +2984,14 @@ function openTargetItemAmountEditor(kind, id, index) {
   const items = [...(isRecipe ? target?.ingredients || [] : target?.items || [])];
   const item = items[number(index)];
   if (!target || !item) return;
-  const itemFood = foodFromTargetItem(item);
-  const servingOptions = itemFood ? buildServingOptions(itemFood) : [];
-  const selectedIndex = itemFood ? selectedServingIndexForAmount(itemFood, item.unit, item.grams, item.amount) : 0;
-  const selectedOption = servingOptions[selectedIndex] || servingOptions[0];
-  const currentAmount = itemFood
-    ? (selectedOption?.mode === "grams" ? round(item.grams ?? item.amount, 2) : round(item.amount ?? 1, 2))
-    : round(item.amount ?? item.grams, 2);
+  const currentAmount = round(item.amount ?? item.grams, 2);
   const oldAmount = number(item.amount ?? item.grams, 1) || 1;
   const displayNutrients = targetItemDisplayNutrients(kind, target, item);
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetItemEditForm" class="modal-body">
-        <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
-          ${itemFood ? `<label>Unit<select name="unitIndex">${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}</select></label>` : ""}
-        </div>
+        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
         <div id="targetItemAmountPreview" class="amount-preview">
           ${targetItemStatsHTML(kind, target, item, displayNutrients)}
         </div>
@@ -3083,27 +3001,9 @@ function openTargetItemAmountEditor(kind, id, index) {
   `);
   const form = document.getElementById("targetItemEditForm");
   const preview = document.getElementById("targetItemAmountPreview");
-  const previewNutrientsForForm = () => {
-    if (!itemFood) {
-      const factor = number(form.elements.amount?.value, currentAmount) / oldAmount;
-      return scaleNutrients(displayNutrients, factor);
-    }
-    const amount = number(form.elements.amount?.value, currentAmount);
-    const selected = servingOptions[number(form.elements.unitIndex?.value, selectedIndex)] || selectedOption;
-    const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
-    const absolute = scaleNutrients(itemFood.nutrientsPer100g, grams / 100);
-    return kind === "recipe" ? scaleNutrients(absolute, 1 / targetPortionDivisor(kind, target)) : absolute;
-  };
-  const updatePreview = () => {
-    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), previewNutrientsForForm());
-  };
-  form?.elements.amount?.addEventListener("input", updatePreview);
-  form?.elements.unitIndex?.addEventListener("change", () => {
-    const selected = servingOptions[number(form.elements.unitIndex.value)] || selectedOption;
-    if (form.elements.amount && document.activeElement !== form.elements.amount) {
-      form.elements.amount.value = servingOptionDefaultAmount(itemFood, selected);
-    }
-    updatePreview();
+  form?.elements.amount?.addEventListener("input", event => {
+    const factor = number(event.currentTarget.value) / oldAmount;
+    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), scaleNutrients(displayNutrients, factor));
   });
   requestAnimationFrame(() => {
     form?.elements.amount?.focus();
@@ -3111,33 +3011,15 @@ function openTargetItemAmountEditor(kind, id, index) {
   });
   form.addEventListener("submit", event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    let nextItem;
-    if (itemFood) {
-      const newAmount = number(data.get("amount"), currentAmount);
-      const selected = servingOptions[number(data.get("unitIndex"), selectedIndex)] || selectedOption;
-      const unit = selected.mode === "grams" ? "g" : servingDisplayName(selected);
-      const grams = selected.mode === "grams" ? newAmount : newAmount * number(selected.grams, 1);
-      nextItem = {
-        ...item,
-        amount: newAmount,
-        unit,
-        grams,
-        nutrientsSnapshot: scaleNutrients(itemFood.nutrientsPer100g, grams / 100),
-        updatedAt: Date.now()
-      };
-    } else {
-      const newAmount = number(data.get("amount"), item.amount ?? item.grams);
-      const factor = newAmount / oldAmount;
-      nextItem = {
-        ...item,
-        amount: newAmount,
-        grams: item.grams ? number(item.grams) * factor : (item.unit === "g" ? newAmount : item.grams),
-        nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
-        updatedAt: Date.now()
-      };
-    }
-    items[number(index)] = nextItem;
+    const newAmount = number(new FormData(event.currentTarget).get("amount"), item.amount ?? item.grams);
+    const factor = newAmount / oldAmount;
+    items[number(index)] = {
+      ...item,
+      amount: newAmount,
+      grams: item.grams ? number(item.grams) * factor : (item.unit === "g" ? newAmount : item.grams),
+      nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
+      updatedAt: Date.now()
+    };
     const patch = recalculateTarget(kind, target, items);
     updateLocalTarget(kind, id, patch);
     openTargetDetail(kind, id);
@@ -3217,7 +3099,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
     await incrementFoodUsageForTargetItems(recipe.ingredients || []);
-    await updateDailyCalorieSummary(data.get("date"), null, { invalidateReports: true }).catch(console.warn);
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     if (returnTarget) renderRecipes();
     showToast("Recipe logged.");
@@ -3262,7 +3144,7 @@ function openLogMealsetModal(mealset, returnTarget = null) {
     };
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
     await incrementFoodUsageForTargetItems(mealset.items || []);
-    await updateDailyCalorieSummary(data.get("date"), null, { invalidateReports: true }).catch(console.warn);
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
     closeModal();
     if (returnTarget) renderRecipes();
     showToast("Mealset logged.");
@@ -3298,28 +3180,50 @@ function renderReportsShell() {
   setTimeout(() => loadReport().catch(showError), 0);
 }
 
-function reportProgressHTML(meta, current = 0, total = 1, message = "") {
-  const pct = total ? Math.min(100, Math.max(0, current / total * 100)) : 0;
-  const period = meta?.mode ? `${meta.mode[0].toUpperCase()}${meta.mode.slice(1)} report` : "Report";
+function reportProgressHTML(mode, current = 0, total = 1, label = "Preparing report...", detail = "") {
+  const safeTotal = Math.max(1, number(total, 1));
+  const safeCurrent = Math.min(safeTotal, Math.max(0, number(current)));
+  const pct = Math.round(safeCurrent / safeTotal * 100);
   return `
     <div class="card report-progress-card">
-      <div class="report-progress-head">
-        <div>
-          <h3>${safeText(period)} calculation</h3>
-          <p>${safeText(message || "Loading report data...")}</p>
-        </div>
-        <strong>${round(pct, 0)}%</strong>
+      <h3>${safeText(label)}</h3>
+      <p>${safeText(detail || `${mode} report is being calculated and saved to Firebase.`)}</p>
+      <div class="report-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+        <span style="width:${pct}%"></span>
       </div>
-      <div class="report-progress-track"><div class="report-progress-fill" style="width:${pct}%"></div></div>
-      <span class="kicker">${safeText(current)} / ${safeText(total)} days loaded</span>
+      <span class="kicker">${pct}% · ${safeCurrent}/${safeTotal}</span>
     </div>
   `;
 }
 
-function renderReportProgress(meta, current = 0, total = 1, message = "") {
+function showReportProgress(progress = {}) {
   const output = document.getElementById("reportOutput");
   if (!output) return;
-  output.innerHTML = reportProgressHTML(meta, current, total, message);
+  output.innerHTML = reportProgressHTML(
+    progress.mode || state.reportMode || "report",
+    progress.current,
+    progress.total,
+    progress.label,
+    progress.detail
+  );
+}
+
+function compactGoalSnapshotForReport(settings = state.settings) {
+  const macros = effectiveMacroGoals(settings);
+  return {
+    calorieGoal: number(settings.calorieGoal, DEFAULT_SETTINGS.calorieGoal),
+    proteinGoal: number(macros.proteinGoal),
+    carbsGoal: number(macros.carbsGoal),
+    fatGoal: number(macros.fatGoal),
+    macroGoalMode: "manual"
+  };
+}
+
+function capReportRows(rows = [], key = "kcal", limit = REPORT_TABLE_LIMIT) {
+  const dir = key === "name" ? 1 : -1;
+  return [...(rows || [])]
+    .sort((a, b) => compareReportValue(a, b, key) * dir || compareReportValue(a, b, "kcal") * -1 || String(a.name || "").localeCompare(String(b.name || "")))
+    .slice(0, limit);
 }
 
 async function loadReport() {
@@ -3327,11 +3231,7 @@ async function loadReport() {
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
   state.reportRange = [start, end];
   const meta = { mode: state.reportMode || "week", start, end, key: reportCacheKey(state.reportMode || "week", start, end) };
-  const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-  state.reportLoadToken = token;
-
   const cached = await readReportCache(meta);
-  if (state.reportLoadToken !== token) return cached;
   if (cached) {
     applyReportGoalsFromData(cached);
     state.reportEntries = cached.entries || [];
@@ -3340,16 +3240,14 @@ async function loadReport() {
     return cached;
   }
 
-  const totalDays = dateRange(start, end).length;
-  renderReportProgress(meta, 0, totalDays, "No saved fresh report found. Loading daily entries before calculating...");
-  const data = await calculateAndStoreReportCache(meta, {
-    force: true,
-    onProgress: progress => {
-      if (state.reportLoadToken !== token) return;
-      renderReportProgress(meta, progress.current, progress.total, progress.message);
-    }
+  showReportProgress({
+    mode: meta.mode,
+    current: 0,
+    total: dateRange(start, end).length,
+    label: `Calculating ${meta.mode} report...`,
+    detail: "No valid Firebase cache found, or the cache was marked dirty after diary changes."
   });
-  if (state.reportLoadToken !== token) return data;
+  const data = await calculateAndStoreReportCache(meta, { force: true, onProgress: showReportProgress });
   applyReportGoalsFromData(data);
   state.reportEntries = data.entries || [];
   state.reportData = data;
@@ -3375,6 +3273,8 @@ async function readReportCache(meta) {
 function normalizeReportData(data = {}) {
   const dates = data.dates || dateRange(data.start, data.end);
   const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  const legacyFlatRows = data.flatRows || [];
+  const legacyFoodRows = legacyFlatRows.length ? foodFrequencyRowsFromFlatRows(legacyFlatRows) : [];
   return {
     ...data,
     dates,
@@ -3382,7 +3282,10 @@ function normalizeReportData(data = {}) {
     entries: data.entries || [],
     byDate,
     total: normalizeNutrients(data.total || {}),
-    flatRows: data.flatRows || [],
+    flatRows: [],
+    foodRows: (data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
+    topSourceRows: (data.topSourceRows || data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
+    frequencyRows: (data.frequencyRows || data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
     goalsByDate: data.goalsByDate || {}
   };
 }
@@ -3404,51 +3307,36 @@ function flatRowsFromReportEntries(entries = []) {
   })));
 }
 
-async function loadReportDayData(dateISO) {
-  const [goalSnap, entrySnap] = await Promise.all([
-    getDoc(dailyGoalDoc(dateISO)).catch(error => {
-      console.warn("Daily goal read failed for report day", dateISO, error);
-      return null;
-    }),
-    getDocs(entryCollection(dateISO))
-  ]);
-  const goal = goalSnap?.exists?.()
-    ? goalSnap.data()
-    : state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
-  state.dailyGoals[dateISO] = goal;
-  writeLocal(`dailyGoal:${dateISO}`, goal);
-  return {
-    dateISO,
-    goal,
-    entries: entrySnap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }))
-  };
-}
-
 async function buildReportData(meta, options = {}) {
   const dates = dateRange(meta.start, meta.end);
   const entries = [];
   const goalsByDate = {};
-  const batchSize = meta.mode === "year" ? 18 : 10;
-  options.onProgress?.({ current: 0, total: dates.length, message: "Preparing report range..." });
-  for (let i = 0; i < dates.length; i += batchSize) {
-    const batchDates = dates.slice(i, i + batchSize);
-    const batch = await Promise.all(batchDates.map(loadReportDayData));
-    for (const day of batch) {
-      goalsByDate[day.dateISO] = day.goal;
-      entries.push(...day.entries);
-    }
-    options.onProgress?.({
-      current: Math.min(i + batchDates.length, dates.length),
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
+  progress?.({ mode: meta.mode, current: 0, total: dates.length, label: `Calculating ${meta.mode} report...`, detail: "Loading diary days and goal snapshots." });
+
+  for (const [index, dateISO] of dates.entries()) {
+    await loadDailyGoalForDate(dateISO);
+    goalsByDate[dateISO] = compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
+    const snap = await getDocs(entryCollection(dateISO));
+    const dayEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+    entries.push(...dayEntries);
+    byDate[dateISO] = addNutrients(dayEntries);
+    progress?.({
+      mode: meta.mode,
+      current: index + 1,
       total: dates.length,
-      message: `Loaded ${Math.min(i + batchDates.length, dates.length)} of ${dates.length} days. Calculating totals after all days are loaded...`
+      label: `Calculating ${meta.mode} report...`,
+      detail: `Loaded ${dateISO}. ${entries.length} entries included.`
     });
   }
-  entries.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) || number(a.createdAt) - number(b.createdAt));
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+
   const total = addNutrients(entries);
   const flatRows = flatRowsFromReportEntries(entries);
-  options.onProgress?.({ current: dates.length, total: dates.length, message: "Saving calculated report to Firebase..." });
+  const allFoodRows = foodFrequencyRowsFromFlatRows(flatRows);
+  const topSourceRows = capReportRows(allFoodRows, "kcal");
+  const frequencyRows = capReportRows(allFoodRows, "count");
+  const foodRows = capReportRows(allFoodRows, "kcal");
   return cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
@@ -3457,14 +3345,17 @@ async function buildReportData(meta, options = {}) {
     end: meta.end,
     dates,
     activeDates: reportActiveDates(entries, dates),
-    entries,
+    entries: [],
     byDate,
     total,
-    flatRows,
+    foodRows,
+    topSourceRows,
+    frequencyRows,
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
-    sourceEntryCount: entries.length
+    sourceEntryCount: entries.length,
+    storedRowLimit: REPORT_TABLE_LIMIT
   });
 }
 
@@ -3475,6 +3366,7 @@ async function calculateAndStoreReportCache(meta, options = {}) {
     if (cached) return cached;
   }
   const data = await buildReportData(meta, options);
+  options.onProgress?.({ mode: meta.mode, current: dateRange(meta.start, meta.end).length, total: dateRange(meta.start, meta.end).length, label: `Saving ${meta.mode} report...`, detail: `Saving capped top ${REPORT_TABLE_LIMIT} source and frequency rows to Firebase.` });
   await setDoc(reportCacheDoc(meta.key), data, { merge: false });
   return normalizeReportData(data);
 }
@@ -3492,8 +3384,9 @@ function scheduleReportRecalculationForDate(dateISO) {
       end: meta.end,
       version: REPORT_CACHE_VERSION,
       dirty: true,
-      invalidatedAt: Date.now()
-    }, { merge: true }).catch(console.warn);
+      invalidatedAt: Date.now(),
+      invalidatedByDate: dateISO
+    }, { merge: false }).catch(console.warn);
   }
 }
 
@@ -3622,10 +3515,12 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const macro = macroCalories(total);
   const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
-  const foodRows = foodFrequencyRowsFromFlatRows(filteredFlatRows);
-  const topRows = sortReportRows(foodRows, "topSources");
-  const frequencyRows = sortReportRows(foodRows, "frequency");
+  const fallbackFlatRows = sourceData ? [] : applyReportFlatFilters(flatRowsFromReportEntries(entries));
+  const fallbackFoodRows = fallbackFlatRows.length ? foodFrequencyRowsFromFlatRows(fallbackFlatRows) : [];
+  const topRowsBase = sourceData?.topSourceRows?.length ? sourceData.topSourceRows : capReportRows(sourceData?.foodRows?.length ? sourceData.foodRows : fallbackFoodRows, "kcal");
+  const frequencyRowsBase = sourceData?.frequencyRows?.length ? sourceData.frequencyRows : capReportRows(sourceData?.foodRows?.length ? sourceData.foodRows : fallbackFoodRows, "count");
+  const topRows = sortReportRows(topRowsBase, "topSources").slice(0, REPORT_TABLE_LIMIT);
+  const frequencyRows = sortReportRows(frequencyRowsBase, "frequency").slice(0, REPORT_TABLE_LIMIT);
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
   const avgGoals = reportGoalAverages(start, end, activeDates);
@@ -3973,10 +3868,19 @@ function renderCharts(byDate) {
   }
 }
 
+async function fetchReportEntriesForRange(start, end) {
+  const entries = [];
+  for (const dateISO of dateRange(start, end)) {
+    const snap = await getDocs(entryCollection(dateISO));
+    snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
+  }
+  return entries;
+}
+
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
-  if (!state.reportEntries.length) await loadReport();
-  const entries = state.reportEntries;
+  if (!state.reportData) await loadReport();
+  const entries = state.reportEntries?.length ? state.reportEntries : await fetchReportEntriesForRange(start, end);
 
   if (caloriesOnly) {
     const rows = dateRange(start, end).map(dateISO => {
@@ -4406,7 +4310,7 @@ async function importBackupFile(event) {
     }
 
     for (const dateISO of importedDates) {
-      await updateDailyCalorieSummary(dateISO, null, { invalidateReports: true }).catch(console.warn);
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
     }
 
     showToast(`Backup imported. ${entriesByKey.size} log entries written.`);
@@ -4422,7 +4326,7 @@ async function clearCurrentLogs() {
   const snap = await getDocs(entryCollection(state.currentDate));
   for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, state.currentDate));
   writeLocal(`logs:${state.currentDate}`, []);
-  await updateDailyCalorieSummary(state.currentDate, [], { invalidateReports: true });
+  await updateDailyCalorieSummary(state.currentDate, []);
   showToast("Current day logs cleared.");
 }
 
@@ -4849,75 +4753,39 @@ function openEntrySnapshotModal(id) {
 async function editEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
-  const food = foodFromLoggedEntry(entry);
-  const servingOptions = food ? buildServingOptions(food) : [];
-  const selectedIndex = food ? selectedServingIndexForAmount(food, entry.unit, entry.gramsEquivalent, entry.amount) : 0;
-  const selectedOption = servingOptions[selectedIndex] || servingOptions[0];
-  const editAmount = food
-    ? (selectedOption?.mode === "grams" ? number(entry.gramsEquivalent ?? entry.amount, entry.amount) : number(entry.amount, 1))
-    : number(entry.amount, 1);
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>Edit entry</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="editEntryForm" class="modal-body">
-        <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${round(editAmount, 2)}" required /></label>
-          ${food ? `<label>Unit<select name="unitIndex">${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === selectedIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}</select></label>` : ""}
-          <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-        </div>
-        <div id="editEntryPreview" class="amount-preview">
-          ${nutrientSummaryHTML(food ? scaleNutrients(food.nutrientsPer100g, number(entry.gramsEquivalent, editAmount) / 100) : normalizeNutrients(entry.nutrientsSnapshot))}
-        </div>
+        <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
+        <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
       </form>
     </div>
   `);
-  const form = document.getElementById("editEntryForm");
-  const preview = document.getElementById("editEntryPreview");
-  const updatePreview = () => {
-    if (!food || !preview) return;
-    const data = new FormData(form);
-    const amount = number(data.get("amount"), editAmount);
-    const selected = servingOptions[number(data.get("unitIndex"), selectedIndex)] || selectedOption;
-    const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
-    preview.innerHTML = nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, grams / 100));
-  };
-  form?.elements.amount?.addEventListener("input", updatePreview);
-  form?.elements.unitIndex?.addEventListener("change", () => {
-    const selected = servingOptions[number(form.elements.unitIndex.value)] || selectedOption;
-    if (form.elements.amount && document.activeElement !== form.elements.amount) {
-      form.elements.amount.value = servingOptionDefaultAmount(food, selected);
-    }
-    updatePreview();
-  });
-  form.addEventListener("submit", async event => {
+  document.getElementById("editEntryForm").addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const newAmount = number(data.get("amount"), editAmount);
-    const selected = food ? servingOptions[number(data.get("unitIndex"), selectedIndex)] || selectedOption : null;
-    const grams = food ? (selected.mode === "grams" ? newAmount : newAmount * number(selected.grams, 1)) : (entry.gramsEquivalent ? entry.gramsEquivalent * (entry.amount ? newAmount / entry.amount : 1) : entry.gramsEquivalent);
-    const unit = food ? (selected.mode === "grams" ? "g" : servingDisplayName(selected)) : entry.unit;
+    const newAmount = number(data.get("amount"), entry.amount);
     const factor = entry.amount ? newAmount / entry.amount : 1;
     const updatedAt = Date.now();
-    const nutrientsSnapshot = food ? scaleNutrients(food.nutrientsPer100g, number(grams) / 100) : scaleNutrients(entry.nutrientsSnapshot, factor);
+    const nutrientsSnapshot = scaleNutrients(entry.nutrientsSnapshot, factor);
     const itemSnapshot = entry.itemSnapshot ? {
       ...entry.itemSnapshot,
       amount: newAmount,
-      unit,
-      gramsEquivalent: grams ?? entry.itemSnapshot.gramsEquivalent,
+      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.itemSnapshot.gramsEquivalent,
       nutrientsSnapshot,
       updatedAt
     } : null;
     await updateDoc(entryDoc(id), cleanForFirestore({
       amount: newAmount,
-      unit,
-      gramsEquivalent: grams ?? entry.gramsEquivalent,
+      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.gramsEquivalent,
       meal: data.get("meal"),
       nutrientsSnapshot,
       ...(itemSnapshot ? { itemSnapshot } : {}),
       updatedAt
     }));
-    await updateDailyCalorieSummary(state.currentDate, null, { invalidateReports: true }).catch(console.warn);
+    await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
     closeModal();
   });
 }
@@ -4928,7 +4796,7 @@ async function moveEntry(id) {
   const meal = prompt(`Move to meal: breakfast, lunch, dinner, snack`, entry.meal);
   if (!MEALS.some(([id]) => id === meal)) return;
   await updateDoc(entryDoc(id), { meal, updatedAt: Date.now() });
-  await updateDailyCalorieSummary(state.currentDate, null, { invalidateReports: true }).catch(console.warn);
+  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
 }
 
 async function duplicateEntry(id) {
@@ -4939,7 +4807,7 @@ async function duplicateEntry(id) {
   if (copy.itemSnapshot) copy.itemSnapshot = { ...copy.itemSnapshot, loggedAt: createdAt, duplicatedFrom: entry.createdAt || null };
   delete copy.id;
   await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
-  await updateDailyCalorieSummary(state.currentDate, null, { invalidateReports: true }).catch(console.warn);
+  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
 }
 
 function openModal(html) {
@@ -5082,13 +4950,10 @@ async function handleClick(event) {
     if (action === "toggle-favorite-food") await toggleFavoriteFood(btn.dataset.id);
     if (action === "edit-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id));
     if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
-    if (action === "delete-custom-food" && confirm("Delete this custom food?")) {
-      await deleteDoc(userDoc("customFoods", btn.dataset.id));
-      if (btn.closest(".food-detail-modal")) closeModal();
-    }
+    if (action === "delete-custom-food" && confirm("Delete this custom food?")) await deleteDoc(userDoc("customFoods", btn.dataset.id));
     if (action === "delete-entry") {
       await deleteDoc(entryDoc(btn.dataset.id));
-      await updateDailyCalorieSummary(state.currentDate, null, { invalidateReports: true }).catch(console.warn);
+      await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
     }
     if (action === "entry-snapshot") openEntrySnapshotModal(btn.dataset.id);
     if (action === "edit-entry") await editEntry(btn.dataset.id);
