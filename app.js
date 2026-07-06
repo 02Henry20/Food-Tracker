@@ -265,6 +265,7 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
+  dailySummaryJobs: new Map(),
   unsubs: [],
   sync: {
     online: navigator.onLine,
@@ -598,22 +599,15 @@ function addNutrients(items) {
   return total;
 }
 
-async function updateDailyCalorieSummary(dateISO, entries = null) {
-  if (!state.user || !dateISO) return;
-  let summaryEntries = entries;
-  if (!summaryEntries) {
-    const snap = await getDocs(entryCollection(dateISO));
-    summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
-  }
-  await ensureDailyGoalSnapshot(dateISO);
+function dailyCalorieSummaryPayload(dateISO, summaryEntries = []) {
   const total = addNutrients(summaryEntries || []);
   const goalsSnapshot = goalSnapshotFromSettings(effectiveGoalsForDate(dateISO));
   goalsSnapshot.savedForDate = dateISO;
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
   for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
-  await setDoc(dailyCaloriesDoc(dateISO), cleanForFirestore({
+  return cleanForFirestore({
     date: dateISO,
-    uid: state.user.uid,
+    uid: state.user?.uid || null,
     app: "NutriPilot",
     totalKcal: round(total.kcal, 0),
     protein: round(total.protein, 1),
@@ -624,8 +618,61 @@ async function updateDailyCalorieSummary(dateISO, entries = null) {
     goalsSnapshot,
     itemCount: summaryEntries?.length || 0,
     updatedAt: Date.now()
-  }), { merge: true });
+  });
+}
+
+async function updateDailyCalorieSummary(dateISO, entries = null) {
+  if (!state.user || !dateISO) return;
+  let summaryEntries = entries;
+  if (!summaryEntries) {
+    const snap = await getDocs(entryCollection(dateISO));
+    summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+  }
+  await ensureDailyGoalSnapshot(dateISO);
+  await setDoc(dailyCaloriesDoc(dateISO), dailyCalorieSummaryPayload(dateISO, summaryEntries || []), { merge: true });
   scheduleReportRecalculationForDate(dateISO);
+}
+
+function runBackgroundTask(task, label = "Background task") {
+  setTimeout(() => {
+    Promise.resolve()
+      .then(task)
+      .catch(error => console.warn(`${label} failed.`, error));
+  }, 0);
+}
+
+function scheduleDailySummaryRefresh(dateISO, entries = null) {
+  if (!state.user || !dateISO) return;
+  const existing = state.dailySummaryJobs.get(dateISO);
+  if (existing?.timeout) clearTimeout(existing.timeout);
+  const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  const timeout = setTimeout(() => rebuildDailySummaryInBackground(dateISO, token, entries), 180);
+  state.dailySummaryJobs.set(dateISO, { token, timeout });
+}
+
+async function rebuildDailySummaryInBackground(dateISO, token, entries = null) {
+  const current = state.dailySummaryJobs.get(dateISO);
+  if (!current || current.token !== token) return;
+  current.timeout = null;
+  try {
+    let summaryEntries = entries;
+    if (!summaryEntries) {
+      const snap = await getDocs(entryCollection(dateISO));
+      summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+    }
+    const latestBeforeWrite = state.dailySummaryJobs.get(dateISO);
+    if (!latestBeforeWrite || latestBeforeWrite.token !== token) return;
+    await ensureDailyGoalSnapshot(dateISO);
+    const latestAfterGoal = state.dailySummaryJobs.get(dateISO);
+    if (!latestAfterGoal || latestAfterGoal.token !== token) return;
+    await setDoc(dailyCaloriesDoc(dateISO), dailyCalorieSummaryPayload(dateISO, summaryEntries || []), { merge: true });
+    scheduleReportRecalculationForDate(dateISO);
+  } catch (error) {
+    console.warn("Daily calorie summary background refresh failed.", error);
+  } finally {
+    const latest = state.dailySummaryJobs.get(dateISO);
+    if (latest?.token === token) state.dailySummaryJobs.delete(dateISO);
+  }
 }
 
 function scaleNutrients(nutrients, factor) {
@@ -895,7 +942,7 @@ function subscribeLogsForCurrentDate() {
     if (state.currentDate !== dateISO) return;
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
     writeLocal(`logs:${dateISO}`, state.logs);
-    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs).catch(console.warn);
+    if (!snap.metadata.hasPendingWrites) scheduleDailySummaryRefresh(dateISO, state.logs);
     if (state.route === "today") renderToday();
   }, error => {
     console.warn("Log snapshot failed; local cache remains active.", error);
@@ -1656,7 +1703,6 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `<button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1671,7 +1717,6 @@ function renderFoodResultCard(food, key) {
         <p>${safeText(caloriesText(food))}</p>
         ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
         <div class="badges">
-          ${food.favorite ? `<span class="badge green">Favorite</span>` : ""}
           ${warnings.length ? `<span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
         </div>
       </div>
@@ -1679,9 +1724,7 @@ function renderFoodResultCard(food, key) {
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
         ${food.source === "custom" ? `
-          <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
           <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-          <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
           <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
         ` : ""}
       </div>
@@ -2181,10 +2224,10 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
 async function logFood(food, amount, unit, grams, meal, dateISO) {
   const createdAt = Date.now();
   const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
-  const libraryId = await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
+  const fallbackItemId = food.source === "custom" ? food.id : food.sourceId || food.id || null;
   const entry = {
     itemType: "food",
-    itemId: libraryId || food.id || food.sourceId || null,
+    itemId: fallbackItemId,
     source: food.source,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
@@ -2198,9 +2241,14 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     createdAt,
     updatedAt: createdAt
   };
-  await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
-  await updateDailyCalorieSummary(dateISO).catch(console.warn);
-  if (dateISO === state.currentDate) subscribeLogsForCurrentDate();
+  const ref = await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
+  scheduleDailySummaryRefresh(dateISO);
+  runBackgroundTask(async () => {
+    const libraryId = await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
+    if (libraryId && libraryId !== fallbackItemId) {
+      await updateDoc(entryDoc(ref.id, dateISO), { itemId: libraryId, updatedAt: Date.now() });
+    }
+  }, "Food library usage update");
   showToast("Food logged.");
 }
 
@@ -2658,7 +2706,7 @@ function openIngredientAmountModal(food, kind, id) {
     event.preventDefault();
     const amount = number(new FormData(event.currentTarget).get("amount"));
     await addIngredientToTarget(food, amount, kind, id);
-    openTargetDetail(kind, id);
+    openIngredientModal(kind, id, { restore: true });
   });
 }
 
@@ -2929,12 +2977,15 @@ function openLogRecipeModal(recipe, returnTarget = null) {
       createdAt,
       updatedAt: createdAt
     };
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(recipe.ingredients || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
+    const dateISO = String(data.get("date") || state.currentDate);
     closeModal();
-    if (returnTarget) renderRecipes();
-    showToast("Recipe logged.");
+    runBackgroundTask(async () => {
+      await addDoc(entryCollection(dateISO), cleanForFirestore({ ...entry, date: dateISO }));
+      scheduleDailySummaryRefresh(dateISO);
+      await incrementFoodUsageForTargetItems(recipe.ingredients || []);
+      if (returnTarget) renderRecipes();
+      showToast("Recipe logged.");
+    }, "Recipe log");
   });
 }
 
@@ -2974,12 +3025,15 @@ function openLogMealsetModal(mealset, returnTarget = null) {
       createdAt,
       updatedAt: createdAt
     };
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(mealset.items || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
+    const dateISO = String(data.get("date") || state.currentDate);
     closeModal();
-    if (returnTarget) renderRecipes();
-    showToast("Mealset logged.");
+    runBackgroundTask(async () => {
+      await addDoc(entryCollection(dateISO), cleanForFirestore({ ...entry, date: dateISO }));
+      scheduleDailySummaryRefresh(dateISO);
+      await incrementFoodUsageForTargetItems(mealset.items || []);
+      if (returnTarget) renderRecipes();
+      showToast("Mealset logged.");
+    }, "Mealset log");
   });
 }
 
@@ -4056,7 +4110,7 @@ async function importBackupFile(event) {
     }
 
     for (const dateISO of importedDates) {
-      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      scheduleDailySummaryRefresh(dateISO);
     }
 
     showToast(`Backup imported. ${entriesByKey.size} log entries written.`);
@@ -4072,7 +4126,7 @@ async function clearCurrentLogs() {
   const snap = await getDocs(entryCollection(state.currentDate));
   for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, state.currentDate));
   writeLocal(`logs:${state.currentDate}`, []);
-  await updateDailyCalorieSummary(state.currentDate, []);
+  scheduleDailySummaryRefresh(state.currentDate, []);
   showToast("Current day logs cleared.");
 }
 
@@ -4531,7 +4585,7 @@ async function editEntry(id) {
       ...(itemSnapshot ? { itemSnapshot } : {}),
       updatedAt
     }));
-    await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+    scheduleDailySummaryRefresh(state.currentDate);
     closeModal();
   });
 }
@@ -4542,7 +4596,7 @@ async function moveEntry(id) {
   const meal = prompt(`Move to meal: breakfast, lunch, dinner, snack`, entry.meal);
   if (!MEALS.some(([id]) => id === meal)) return;
   await updateDoc(entryDoc(id), { meal, updatedAt: Date.now() });
-  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+  scheduleDailySummaryRefresh(state.currentDate);
 }
 
 async function duplicateEntry(id) {
@@ -4553,7 +4607,7 @@ async function duplicateEntry(id) {
   if (copy.itemSnapshot) copy.itemSnapshot = { ...copy.itemSnapshot, loggedAt: createdAt, duplicatedFrom: entry.createdAt || null };
   delete copy.id;
   await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
-  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+  scheduleDailySummaryRefresh(state.currentDate);
 }
 
 function openModal(html) {
@@ -4584,8 +4638,10 @@ async function handleDynamicSubmit(event) {
       const amount = number(data.get("amount"), 100);
       const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
       const grams = selected.mode === "grams" ? amount : amount * number(selected.grams);
-      await logFood(food, amount, selected.mode === "grams" ? "g" : selected.label, grams, data.get("meal"), data.get("date"));
+      const meal = String(data.get("meal") || state.defaultLogMeal || "breakfast");
+      const dateISO = String(data.get("date") || state.currentDate);
       closeModal();
+      logFood(food, amount, selected.mode === "grams" ? "g" : selected.label, grams, meal, dateISO).catch(showError);
       return;
     }
   } catch (error) {
@@ -4649,13 +4705,11 @@ async function handleClick(event) {
     if (action === "log-food") openLogFoodModal(getFoodByKey(btn.dataset.key));
     if (action === "food-detail") openFoodDetailModal(getFoodByKey(btn.dataset.key));
     if (action === "save-api-food") await saveApiFoodAsCustom(btn.dataset.key);
-    if (action === "toggle-favorite-food") await toggleFavoriteFood(btn.dataset.id);
     if (action === "edit-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id));
-    if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
     if (action === "delete-custom-food" && confirm("Delete this custom food?")) await deleteDoc(userDoc("customFoods", btn.dataset.id));
     if (action === "delete-entry") {
       await deleteDoc(entryDoc(btn.dataset.id));
-      await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+      scheduleDailySummaryRefresh(state.currentDate);
     }
     if (action === "entry-snapshot") openEntrySnapshotModal(btn.dataset.id);
     if (action === "edit-entry") await editEntry(btn.dataset.id);

@@ -2802,3 +2802,23 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   background: linear-gradient(135deg, var(--danger), var(--secondary));
   transition: width .22s var(--ease);
 }
+
+
+/* NutriPilot patch v24: prevent mobile report metric descenders from being clipped */
+@media (max-width: 560px) {
+  .report-metrics-grid .metric-card {
+    min-height: 138px;
+    grid-template-rows: auto minmax(48px, auto) auto;
+    overflow: visible;
+  }
+  .report-metrics-grid .metric-card strong,
+  .report-metrics-grid .metric-card .metric-value {
+    line-height: 1.22;
+    padding-bottom: 3px;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .report-metrics-grid .metric-card small {
+    line-height: 1.28;
+  }
+}
