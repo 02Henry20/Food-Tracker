@@ -2823,45 +2823,130 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   }
 }
 
-/* NutriPilot patch v26: ingredient flow, keyboard, mobile layout, dark-mode polish */
-.result-card.keyboard-active,
-#ingredientResults .result-card.keyboard-active {
-  outline: 3px solid rgba(20, 184, 166, .42);
-  outline-offset: 2px;
-  border-color: rgba(20, 184, 166, .72);
-  box-shadow: 0 18px 48px rgba(20, 184, 166, .16);
+
+/* NutriPilot patch v27: ingredient modal flow, scrollbars, mobile alignment, icon cleanup */
+#recipesPage .grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.target-item-row {
+.modal {
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 184, 166, .58) rgba(148, 163, 184, .14);
+}
+
+.modal::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar,
+.result-grid::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.modal::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track,
+.result-grid::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .14);
+}
+
+.modal::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb,
+.result-grid::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, .86), rgba(59, 130, 246, .72))
+    border-box;
+}
+
+.modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  padding-bottom: 12px;
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-body {
+  min-height: 0;
+}
+
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.target-item-row,
+.current-target-items .target-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
 }
+
 .target-item-main {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
+
 .target-item-actions {
   align-self: center;
   justify-self: end;
+  display: flex;
   flex-direction: column;
   align-items: stretch;
-  min-width: 106px;
+  min-width: 112px;
 }
+
 .target-item-actions .tiny-btn {
   width: 100%;
   justify-content: center;
 }
 
+.target-item-row .food-entry-head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .brand-mark.app-brand-icon,
 .auth-login-brand .brand-mark.app-brand-icon,
-.page-title-icon {
+.page-title-icon,
+.app-brand-icon {
   background: transparent !important;
   box-shadow: none !important;
+  border: 0 !important;
   border-radius: 0 !important;
   object-fit: contain;
+}
+
+.search-tabs {
+  margin-bottom: 0;
+}
+.search-tabs + .meal-head {
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+#searchResults.result-grid,
+#ingredientResults.result-grid {
+  gap: 8px;
+  min-width: 0;
+}
+
+#searchResults .result-card,
+#ingredientResults .result-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .report-metrics-grid .metric-card::before {
@@ -2871,95 +2956,124 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   overflow: hidden;
 }
 
-[data-theme="dark"] .hero-kcal-pill {
-  background: rgba(20, 184, 166, .24);
-  color: #5eead4;
-  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, .18);
-}
-[data-theme="dark"] .dashboard-hero.is-over-calories .hero-kcal-pill,
-[data-theme="dark"] .hero-kcal-pill.is-over {
-  background: rgba(239, 68, 68, .24);
-  color: #fca5a5;
-  box-shadow: inset 0 0 0 1px rgba(252, 165, 165, .2);
-}
-
-.search-tabs {
-  margin-bottom: -4px;
-}
-.search-tabs + .meal-head {
-  margin-top: -4px;
-  margin-bottom: -4px;
-}
-#searchResults.result-grid {
-  gap: 8px;
-}
-
 @media (max-width: 980px) {
-  #syncStatus {
-    position: fixed;
-    top: max(10px, env(safe-area-inset-top));
-    right: 10px;
-    z-index: 120;
-    box-shadow: var(--shadow);
+  #recipesPage .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  body.modal-open #syncStatus {
+    display: none !important;
   }
 }
 
 @media (max-width: 560px) {
   .meal-card .meal-head {
-    display: flex;
-    flex-direction: column;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+  }
+  .meal-card .meal-title {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
   }
   .meal-card .meal-actions {
-    order: -1;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: flex-start;
-    width: auto;
-  }
-  .meal-card .meal-actions .tiny-btn {
-    width: auto;
-    min-width: 72px;
-    justify-content: center;
-  }
-
-  #searchResults .result-card,
-  #ingredientResults .result-card {
+    order: 0;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: end;
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    gap: 6px;
+    width: auto;
+  }
+  .meal-card .meal-actions .tiny-btn {
+    width: 72px;
+    min-width: 72px;
+    padding-inline: 6px;
+    justify-content: center;
+  }
+
+  #searchResults,
+  #ingredientResults {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  #searchResults .result-card,
+  #ingredientResults .result-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+    padding: 12px;
+    margin-inline: 0;
+    overflow: hidden;
+  }
+  #searchResults .result-card > div:first-child,
+  #ingredientResults .result-card > div:first-child {
+    grid-column: 1;
+    min-width: 0;
   }
   #searchResults .result-card > .inline-actions,
   #ingredientResults .result-card > .inline-actions,
   #searchResults .result-card > button.primary-btn,
   #ingredientResults .result-card > button.primary-btn {
-    order: -1;
-    align-self: flex-start;
-    justify-content: flex-start;
-    margin-bottom: 4px;
+    order: 0;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: end;
+    margin: 0;
   }
   #searchResults .result-card > .inline-actions,
   #ingredientResults .result-card > .inline-actions {
-    flex-wrap: wrap;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 6px;
+  }
+  #searchResults .result-card > .inline-actions .primary-btn,
+  #searchResults .result-card > .inline-actions .tiny-btn,
+  #ingredientResults .result-card > .inline-actions .primary-btn,
+  #ingredientResults .result-card > .inline-actions .tiny-btn,
+  #ingredientResults .result-card > button.primary-btn {
+    min-width: 66px;
+    padding-inline: 8px;
+    justify-content: center;
   }
 
-  .target-item-row {
-    grid-template-columns: 1fr;
+  .target-item-row,
+  .current-target-items .target-item-row {
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
   }
   .target-item-actions {
-    justify-self: start;
-    flex-direction: row;
-    min-width: 0;
+    justify-self: end;
+    flex-direction: column;
+    min-width: 86px;
   }
   .target-item-actions .tiny-btn {
-    width: auto;
+    width: 86px;
+    padding-inline: 6px;
+    font-size: .76rem;
   }
 
   .search-tabs {
-    margin-bottom: -8px;
+    margin-bottom: 0;
   }
   .search-tabs + .meal-head {
-    margin-top: -8px;
-    margin-bottom: -6px;
+    margin-top: 7px;
+    margin-bottom: 1px;
+  }
+
+  .page,
+  .card,
+  .result-grid {
+    min-width: 0;
+    max-width: 100%;
   }
 }
