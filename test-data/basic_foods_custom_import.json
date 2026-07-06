@@ -1,0 +1,3655 @@
+{
+  "exportedAt": "2026-07-06T00:00:00.000Z",
+  "source": "NutriPilot basic foods import",
+  "note": "Approximate generic values per 100 g. Import through Settings > Import backup JSON. This adds custom foods without changing settings.",
+  "customFoods": [
+    {
+      "id": "basic-kartoffel",
+      "source": "custom",
+      "name": "Kartoffel",
+      "nameLower": "kartoffel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: potato, potato raw, basic vegetable",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 77,
+        "protein": 2.0,
+        "carbs": 17.0,
+        "sugar": 0.8,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 2.2,
+        "salt": 0.015,
+        "sodium": 6,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-sukartoffel",
+      "source": "custom",
+      "name": "Süßkartoffel",
+      "nameLower": "süßkartoffel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: sweet potato, batate",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 86,
+        "protein": 1.6,
+        "carbs": 20.1,
+        "sugar": 4.2,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.138,
+        "sodium": 55,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-karotte",
+      "source": "custom",
+      "name": "Karotte",
+      "nameLower": "karotte",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: carrot, moehre, möhre",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 41,
+        "protein": 0.9,
+        "carbs": 9.6,
+        "sugar": 4.7,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.172,
+        "sodium": 69,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-zwiebel",
+      "source": "custom",
+      "name": "Zwiebel",
+      "nameLower": "zwiebel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: onion",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 40,
+        "protein": 1.1,
+        "carbs": 9.3,
+        "sugar": 4.2,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 1.7,
+        "salt": 0.01,
+        "sodium": 4,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-knoblauch",
+      "source": "custom",
+      "name": "Knoblauch",
+      "nameLower": "knoblauch",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: garlic",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 149,
+        "protein": 6.4,
+        "carbs": 33.1,
+        "sugar": 1.0,
+        "fat": 0.5,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.043,
+        "sodium": 17,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-brokkoli",
+      "source": "custom",
+      "name": "Brokkoli",
+      "nameLower": "brokkoli",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: broccoli",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 34,
+        "protein": 2.8,
+        "carbs": 6.6,
+        "sugar": 1.7,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 2.6,
+        "salt": 0.083,
+        "sodium": 33,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-blumenkohl",
+      "source": "custom",
+      "name": "Blumenkohl",
+      "nameLower": "blumenkohl",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: cauliflower",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 25,
+        "protein": 1.9,
+        "carbs": 5.0,
+        "sugar": 1.9,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.075,
+        "sodium": 30,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-spinat",
+      "source": "custom",
+      "name": "Spinat",
+      "nameLower": "spinat",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: spinach",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23,
+        "protein": 2.9,
+        "carbs": 3.6,
+        "sugar": 0.4,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 2.2,
+        "salt": 0.198,
+        "sodium": 79,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-grunkohl",
+      "source": "custom",
+      "name": "Grünkohl",
+      "nameLower": "grünkohl",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: kale",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 49,
+        "protein": 4.3,
+        "carbs": 8.8,
+        "sugar": 2.3,
+        "fat": 0.9,
+        "saturatedFat": 0.14,
+        "transFat": 0,
+        "fiber": 3.6,
+        "salt": 0.095,
+        "sodium": 38,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kopfsalat",
+      "source": "custom",
+      "name": "Kopfsalat",
+      "nameLower": "kopfsalat",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: lettuce",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 15,
+        "protein": 1.4,
+        "carbs": 2.9,
+        "sugar": 0.8,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 1.3,
+        "salt": 0.07,
+        "sodium": 28,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-rucola",
+      "source": "custom",
+      "name": "Rucola",
+      "nameLower": "rucola",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: rocket, arugula",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 25,
+        "protein": 2.6,
+        "carbs": 3.7,
+        "sugar": 2.1,
+        "fat": 0.7,
+        "saturatedFat": 0.1,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.068,
+        "sodium": 27,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-tomate",
+      "source": "custom",
+      "name": "Tomate",
+      "nameLower": "tomate",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: tomato",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 18,
+        "protein": 0.9,
+        "carbs": 3.9,
+        "sugar": 2.6,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 1.2,
+        "salt": 0.013,
+        "sodium": 5,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-gurke",
+      "source": "custom",
+      "name": "Gurke",
+      "nameLower": "gurke",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: cucumber",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 15,
+        "protein": 0.7,
+        "carbs": 3.6,
+        "sugar": 1.7,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 0.5,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-paprika-rot",
+      "source": "custom",
+      "name": "Paprika rot",
+      "nameLower": "paprika rot",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: red bell pepper",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 31,
+        "protein": 1.0,
+        "carbs": 6.0,
+        "sugar": 4.2,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.01,
+        "sodium": 4,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-zucchini",
+      "source": "custom",
+      "name": "Zucchini",
+      "nameLower": "zucchini",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: courgette",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 17,
+        "protein": 1.2,
+        "carbs": 3.1,
+        "sugar": 2.5,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 1.0,
+        "salt": 0.02,
+        "sodium": 8,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-aubergine",
+      "source": "custom",
+      "name": "Aubergine",
+      "nameLower": "aubergine",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: eggplant",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 25,
+        "protein": 1.0,
+        "carbs": 5.9,
+        "sugar": 3.5,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-champignons",
+      "source": "custom",
+      "name": "Champignons",
+      "nameLower": "champignons",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: mushrooms, button mushrooms",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 22,
+        "protein": 3.1,
+        "carbs": 3.3,
+        "sugar": 2.0,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 1.0,
+        "salt": 0.013,
+        "sodium": 5,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-mais",
+      "source": "custom",
+      "name": "Mais",
+      "nameLower": "mais",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: corn, sweet corn",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 86,
+        "protein": 3.2,
+        "carbs": 19.0,
+        "sugar": 6.3,
+        "fat": 1.2,
+        "saturatedFat": 0.18,
+        "transFat": 0,
+        "fiber": 2.7,
+        "salt": 0.037,
+        "sodium": 15,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-erbsen",
+      "source": "custom",
+      "name": "Erbsen",
+      "nameLower": "erbsen",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: peas",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 81,
+        "protein": 5.4,
+        "carbs": 14.5,
+        "sugar": 5.7,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 5.1,
+        "salt": 0.013,
+        "sodium": 5,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-grune-bohnen",
+      "source": "custom",
+      "name": "Grüne Bohnen",
+      "nameLower": "grüne bohnen",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: green beans",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 31,
+        "protein": 1.8,
+        "carbs": 7.0,
+        "sugar": 3.3,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 3.4,
+        "salt": 0.015,
+        "sodium": 6,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-rote-bete",
+      "source": "custom",
+      "name": "Rote Bete",
+      "nameLower": "rote bete",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: beetroot",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 43,
+        "protein": 1.6,
+        "carbs": 9.6,
+        "sugar": 6.8,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.195,
+        "sodium": 78,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-sellerie",
+      "source": "custom",
+      "name": "Sellerie",
+      "nameLower": "sellerie",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: celery",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 16,
+        "protein": 0.7,
+        "carbs": 3.0,
+        "sugar": 1.3,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.2,
+        "sodium": 80,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-lauch",
+      "source": "custom",
+      "name": "Lauch",
+      "nameLower": "lauch",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: leek",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 61,
+        "protein": 1.5,
+        "carbs": 14.2,
+        "sugar": 3.9,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 1.8,
+        "salt": 0.05,
+        "sodium": 20,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-spargel",
+      "source": "custom",
+      "name": "Spargel",
+      "nameLower": "spargel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: asparagus",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 20,
+        "protein": 2.2,
+        "carbs": 3.9,
+        "sugar": 1.9,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kurbis",
+      "source": "custom",
+      "name": "Kürbis",
+      "nameLower": "kürbis",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: pumpkin",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 26,
+        "protein": 1.0,
+        "carbs": 6.5,
+        "sugar": 2.8,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 0.5,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-ingwer",
+      "source": "custom",
+      "name": "Ingwer",
+      "nameLower": "ingwer",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: ginger",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 80,
+        "protein": 1.8,
+        "carbs": 17.8,
+        "sugar": 1.7,
+        "fat": 0.8,
+        "saturatedFat": 0.12,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.033,
+        "sodium": 13,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-apfel",
+      "source": "custom",
+      "name": "Apfel",
+      "nameLower": "apfel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: apple",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 52,
+        "protein": 0.3,
+        "carbs": 13.8,
+        "sugar": 10.4,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-banane",
+      "source": "custom",
+      "name": "Banane",
+      "nameLower": "banane",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: banana",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 89,
+        "protein": 1.1,
+        "carbs": 22.8,
+        "sugar": 12.2,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.6,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-orange",
+      "source": "custom",
+      "name": "Orange",
+      "nameLower": "orange",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: orange",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47,
+        "protein": 0.9,
+        "carbs": 11.8,
+        "sugar": 9.4,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-zitrone",
+      "source": "custom",
+      "name": "Zitrone",
+      "nameLower": "zitrone",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: lemon",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 29,
+        "protein": 1.1,
+        "carbs": 9.3,
+        "sugar": 2.5,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-limette",
+      "source": "custom",
+      "name": "Limette",
+      "nameLower": "limette",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: lime",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 30,
+        "protein": 0.7,
+        "carbs": 10.5,
+        "sugar": 1.7,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-erdbeeren",
+      "source": "custom",
+      "name": "Erdbeeren",
+      "nameLower": "erdbeeren",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: strawberries",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 32,
+        "protein": 0.7,
+        "carbs": 7.7,
+        "sugar": 4.9,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-blaubeeren",
+      "source": "custom",
+      "name": "Blaubeeren",
+      "nameLower": "blaubeeren",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: blueberries",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 57,
+        "protein": 0.7,
+        "carbs": 14.5,
+        "sugar": 10.0,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-himbeeren",
+      "source": "custom",
+      "name": "Himbeeren",
+      "nameLower": "himbeeren",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: raspberries",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 52,
+        "protein": 1.2,
+        "carbs": 11.9,
+        "sugar": 4.4,
+        "fat": 0.7,
+        "saturatedFat": 0.1,
+        "transFat": 0,
+        "fiber": 6.5,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-trauben",
+      "source": "custom",
+      "name": "Trauben",
+      "nameLower": "trauben",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: grapes",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 69,
+        "protein": 0.7,
+        "carbs": 18.1,
+        "sugar": 15.5,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 0.9,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-mango",
+      "source": "custom",
+      "name": "Mango",
+      "nameLower": "mango",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: mango",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 60,
+        "protein": 0.8,
+        "carbs": 15.0,
+        "sugar": 13.7,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-ananas",
+      "source": "custom",
+      "name": "Ananas",
+      "nameLower": "ananas",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: pineapple",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 50,
+        "protein": 0.5,
+        "carbs": 13.1,
+        "sugar": 9.9,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 1.4,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kiwi",
+      "source": "custom",
+      "name": "Kiwi",
+      "nameLower": "kiwi",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: kiwifruit",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 61,
+        "protein": 1.1,
+        "carbs": 14.7,
+        "sugar": 9.0,
+        "fat": 0.5,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.007,
+        "sodium": 3,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-birne",
+      "source": "custom",
+      "name": "Birne",
+      "nameLower": "birne",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: pear",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 57,
+        "protein": 0.4,
+        "carbs": 15.2,
+        "sugar": 9.8,
+        "fat": 0.1,
+        "saturatedFat": 0.01,
+        "transFat": 0,
+        "fiber": 3.1,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-pfirsich",
+      "source": "custom",
+      "name": "Pfirsich",
+      "nameLower": "pfirsich",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: peach",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 39,
+        "protein": 0.9,
+        "carbs": 9.5,
+        "sugar": 8.4,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 1.5,
+        "salt": 0.0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-avocado",
+      "source": "custom",
+      "name": "Avocado",
+      "nameLower": "avocado",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: avocado",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 160,
+        "protein": 2.0,
+        "carbs": 8.5,
+        "sugar": 0.7,
+        "fat": 14.7,
+        "saturatedFat": 2.2,
+        "transFat": 0,
+        "fiber": 6.7,
+        "salt": 0.018,
+        "sodium": 7,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-haferflocken",
+      "source": "custom",
+      "name": "Haferflocken",
+      "nameLower": "haferflocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: oats, rolled oats",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 389,
+        "protein": 16.9,
+        "carbs": 66.3,
+        "sugar": 0.9,
+        "fat": 6.9,
+        "saturatedFat": 1.03,
+        "transFat": 0,
+        "fiber": 10.6,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-reis-gekocht",
+      "source": "custom",
+      "name": "Reis gekocht",
+      "nameLower": "reis gekocht",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: cooked rice",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 130,
+        "protein": 2.7,
+        "carbs": 28.2,
+        "sugar": 0.1,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 0.4,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-reis-trocken",
+      "source": "custom",
+      "name": "Reis trocken",
+      "nameLower": "reis trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: dry rice",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 365,
+        "protein": 7.1,
+        "carbs": 80.0,
+        "sugar": 0.1,
+        "fat": 0.7,
+        "saturatedFat": 0.1,
+        "transFat": 0,
+        "fiber": 1.3,
+        "salt": 0.013,
+        "sodium": 5,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-nudeln-trocken",
+      "source": "custom",
+      "name": "Nudeln trocken",
+      "nameLower": "nudeln trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: dry pasta",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 371,
+        "protein": 13.0,
+        "carbs": 75.0,
+        "sugar": 2.7,
+        "fat": 1.5,
+        "saturatedFat": 0.22,
+        "transFat": 0,
+        "fiber": 3.2,
+        "salt": 0.015,
+        "sodium": 6,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-bulgur-trocken",
+      "source": "custom",
+      "name": "Bulgur trocken",
+      "nameLower": "bulgur trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: bulgur dry",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 342,
+        "protein": 12.3,
+        "carbs": 75.9,
+        "sugar": 0.4,
+        "fat": 1.3,
+        "saturatedFat": 0.2,
+        "transFat": 0,
+        "fiber": 12.5,
+        "salt": 0.043,
+        "sodium": 17,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-couscous-trocken",
+      "source": "custom",
+      "name": "Couscous trocken",
+      "nameLower": "couscous trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: couscous dry",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 376,
+        "protein": 12.8,
+        "carbs": 77.4,
+        "sugar": 0.6,
+        "fat": 0.6,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 5.0,
+        "salt": 0.025,
+        "sodium": 10,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-quinoa-trocken",
+      "source": "custom",
+      "name": "Quinoa trocken",
+      "nameLower": "quinoa trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: quinoa dry",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 368,
+        "protein": 14.1,
+        "carbs": 64.2,
+        "sugar": 0.0,
+        "fat": 6.1,
+        "saturatedFat": 0.91,
+        "transFat": 0,
+        "fiber": 7.0,
+        "salt": 0.013,
+        "sodium": 5,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-linsen-trocken",
+      "source": "custom",
+      "name": "Linsen trocken",
+      "nameLower": "linsen trocken",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: lentils dry",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 352,
+        "protein": 24.6,
+        "carbs": 63.4,
+        "sugar": 2.0,
+        "fat": 1.1,
+        "saturatedFat": 0.17,
+        "transFat": 0,
+        "fiber": 10.7,
+        "salt": 0.015,
+        "sodium": 6,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kichererbsen-gekocht",
+      "source": "custom",
+      "name": "Kichererbsen gekocht",
+      "nameLower": "kichererbsen gekocht",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: chickpeas cooked",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 164,
+        "protein": 8.9,
+        "carbs": 27.4,
+        "sugar": 4.8,
+        "fat": 2.6,
+        "saturatedFat": 0.39,
+        "transFat": 0,
+        "fiber": 7.6,
+        "salt": 0.018,
+        "sodium": 7,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kidneybohnen-gekocht",
+      "source": "custom",
+      "name": "Kidneybohnen gekocht",
+      "nameLower": "kidneybohnen gekocht",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: kidney beans cooked",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 127,
+        "protein": 8.7,
+        "carbs": 22.8,
+        "sugar": 0.3,
+        "fat": 0.5,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 6.4,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-tofu-natur",
+      "source": "custom",
+      "name": "Tofu natur",
+      "nameLower": "tofu natur",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: firm tofu",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 144,
+        "protein": 15.7,
+        "carbs": 3.9,
+        "sugar": 0.6,
+        "fat": 8.7,
+        "saturatedFat": 1.3,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.035,
+        "sodium": 14,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-tempeh",
+      "source": "custom",
+      "name": "Tempeh",
+      "nameLower": "tempeh",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: tempeh",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 193,
+        "protein": 19.0,
+        "carbs": 9.4,
+        "sugar": 0.0,
+        "fat": 11.0,
+        "saturatedFat": 1.65,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.022,
+        "sodium": 9,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-mandeln",
+      "source": "custom",
+      "name": "Mandeln",
+      "nameLower": "mandeln",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: almonds",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 579,
+        "protein": 21.2,
+        "carbs": 21.6,
+        "sugar": 4.4,
+        "fat": 49.9,
+        "saturatedFat": 7.48,
+        "transFat": 0,
+        "fiber": 12.5,
+        "salt": 0.003,
+        "sodium": 1,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-walnusse",
+      "source": "custom",
+      "name": "Walnüsse",
+      "nameLower": "walnüsse",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: walnuts",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 654,
+        "protein": 15.2,
+        "carbs": 13.7,
+        "sugar": 2.6,
+        "fat": 65.2,
+        "saturatedFat": 9.78,
+        "transFat": 0,
+        "fiber": 6.7,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-erdnusse",
+      "source": "custom",
+      "name": "Erdnüsse",
+      "nameLower": "erdnüsse",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: peanuts",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 567,
+        "protein": 25.8,
+        "carbs": 16.1,
+        "sugar": 4.7,
+        "fat": 49.2,
+        "saturatedFat": 7.38,
+        "transFat": 0,
+        "fiber": 8.5,
+        "salt": 0.045,
+        "sodium": 18,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-chiasamen",
+      "source": "custom",
+      "name": "Chiasamen",
+      "nameLower": "chiasamen",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: chia seeds",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 486,
+        "protein": 16.5,
+        "carbs": 42.1,
+        "sugar": 0.0,
+        "fat": 30.7,
+        "saturatedFat": 4.6,
+        "transFat": 0,
+        "fiber": 34.4,
+        "salt": 0.04,
+        "sodium": 16,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-leinsamen",
+      "source": "custom",
+      "name": "Leinsamen",
+      "nameLower": "leinsamen",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: flaxseed",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 534,
+        "protein": 18.3,
+        "carbs": 28.9,
+        "sugar": 1.6,
+        "fat": 42.2,
+        "saturatedFat": 6.33,
+        "transFat": 0,
+        "fiber": 27.3,
+        "salt": 0.075,
+        "sodium": 30,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-olivenol",
+      "source": "custom",
+      "name": "Olivenöl",
+      "nameLower": "olivenöl",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: olive oil",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884,
+        "protein": 0.0,
+        "carbs": 0.0,
+        "sugar": 0.0,
+        "fat": 100.0,
+        "saturatedFat": 15.0,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.005,
+        "sodium": 2,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-rapsol",
+      "source": "custom",
+      "name": "Rapsöl",
+      "nameLower": "rapsöl",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: canola oil, rapeseed oil",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884,
+        "protein": 0.0,
+        "carbs": 0.0,
+        "sugar": 0.0,
+        "fat": 100.0,
+        "saturatedFat": 15.0,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-joghurt-griechisch-2",
+      "source": "custom",
+      "name": "Joghurt griechisch 2%",
+      "nameLower": "joghurt griechisch 2%",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: greek yogurt 2 percent",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 73,
+        "protein": 9.0,
+        "carbs": 3.9,
+        "sugar": 3.2,
+        "fat": 2.0,
+        "saturatedFat": 0.3,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.09,
+        "sodium": 36,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-magerquark",
+      "source": "custom",
+      "name": "Magerquark",
+      "nameLower": "magerquark",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: low fat quark",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 67,
+        "protein": 12.0,
+        "carbs": 4.0,
+        "sugar": 4.0,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.1,
+        "sodium": 40,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-milch-1-5",
+      "source": "custom",
+      "name": "Milch 1,5%",
+      "nameLower": "milch 1,5%",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: milk 1.5 percent",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47,
+        "protein": 3.4,
+        "carbs": 4.9,
+        "sugar": 4.9,
+        "fat": 1.5,
+        "saturatedFat": 0.22,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.11,
+        "sodium": 44,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-ei",
+      "source": "custom",
+      "name": "Ei",
+      "nameLower": "ei",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: egg whole",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 143,
+        "protein": 12.6,
+        "carbs": 0.7,
+        "sugar": 0.4,
+        "fat": 9.5,
+        "saturatedFat": 1.43,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.355,
+        "sodium": 142,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-salz",
+      "source": "custom",
+      "name": "Salz",
+      "nameLower": "salz",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: salt",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 0,
+        "protein": 0.0,
+        "carbs": 0.0,
+        "sugar": 0.0,
+        "fat": 0.0,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 96.895,
+        "sodium": 38758,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-pfeffer-schwarz",
+      "source": "custom",
+      "name": "Pfeffer schwarz",
+      "nameLower": "pfeffer schwarz",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: black pepper",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 251,
+        "protein": 10.4,
+        "carbs": 64.0,
+        "sugar": 0.6,
+        "fat": 3.3,
+        "saturatedFat": 0.49,
+        "transFat": 0,
+        "fiber": 25.3,
+        "salt": 0.05,
+        "sodium": 20,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-paprikapulver",
+      "source": "custom",
+      "name": "Paprikapulver",
+      "nameLower": "paprikapulver",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: paprika powder",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 282,
+        "protein": 14.1,
+        "carbs": 54.0,
+        "sugar": 10.0,
+        "fat": 12.9,
+        "saturatedFat": 1.94,
+        "transFat": 0,
+        "fiber": 34.9,
+        "salt": 0.17,
+        "sodium": 68,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-currypulver",
+      "source": "custom",
+      "name": "Currypulver",
+      "nameLower": "currypulver",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: curry powder",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 325,
+        "protein": 14.3,
+        "carbs": 55.8,
+        "sugar": 2.8,
+        "fat": 14.0,
+        "saturatedFat": 2.1,
+        "transFat": 0,
+        "fiber": 53.2,
+        "salt": 0.13,
+        "sodium": 52,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kurkuma",
+      "source": "custom",
+      "name": "Kurkuma",
+      "nameLower": "kurkuma",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: turmeric",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 312,
+        "protein": 9.7,
+        "carbs": 67.1,
+        "sugar": 3.2,
+        "fat": 3.3,
+        "saturatedFat": 0.49,
+        "transFat": 0,
+        "fiber": 22.7,
+        "salt": 0.068,
+        "sodium": 27,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-zimt",
+      "source": "custom",
+      "name": "Zimt",
+      "nameLower": "zimt",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: cinnamon",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 247,
+        "protein": 4.0,
+        "carbs": 80.6,
+        "sugar": 2.2,
+        "fat": 1.2,
+        "saturatedFat": 0.18,
+        "transFat": 0,
+        "fiber": 53.1,
+        "salt": 0.025,
+        "sodium": 10,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-kreuzkummel",
+      "source": "custom",
+      "name": "Kreuzkümmel",
+      "nameLower": "kreuzkümmel",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: cumin",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 375,
+        "protein": 17.8,
+        "carbs": 44.2,
+        "sugar": 2.3,
+        "fat": 22.3,
+        "saturatedFat": 3.35,
+        "transFat": 0,
+        "fiber": 10.5,
+        "salt": 0.42,
+        "sodium": 168,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-oregano-getrocknet",
+      "source": "custom",
+      "name": "Oregano getrocknet",
+      "nameLower": "oregano getrocknet",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: dried oregano",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 265,
+        "protein": 9.0,
+        "carbs": 68.9,
+        "sugar": 4.1,
+        "fat": 4.3,
+        "saturatedFat": 0.64,
+        "transFat": 0,
+        "fiber": 42.5,
+        "salt": 0.062,
+        "sodium": 25,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-basilikum-frisch",
+      "source": "custom",
+      "name": "Basilikum frisch",
+      "nameLower": "basilikum frisch",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: fresh basil",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23,
+        "protein": 3.2,
+        "carbs": 2.7,
+        "sugar": 0.3,
+        "fat": 0.6,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.01,
+        "sodium": 4,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-petersilie-frisch",
+      "source": "custom",
+      "name": "Petersilie frisch",
+      "nameLower": "petersilie frisch",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: fresh parsley",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 36,
+        "protein": 3.0,
+        "carbs": 6.3,
+        "sugar": 0.9,
+        "fat": 0.8,
+        "saturatedFat": 0.12,
+        "transFat": 0,
+        "fiber": 3.3,
+        "salt": 0.14,
+        "sodium": 56,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-koriander-frisch",
+      "source": "custom",
+      "name": "Koriander frisch",
+      "nameLower": "koriander frisch",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: fresh cilantro",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23,
+        "protein": 2.1,
+        "carbs": 3.7,
+        "sugar": 0.9,
+        "fat": 0.5,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.115,
+        "sodium": 46,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    },
+    {
+      "id": "basic-sojasauce",
+      "source": "custom",
+      "name": "Sojasauce",
+      "nameLower": "sojasauce",
+      "brand": null,
+      "notes": "Basic import; approximate values per 100 g. Aliases: soy sauce",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 53,
+        "protein": 8.1,
+        "carbs": 4.9,
+        "sugar": 0.4,
+        "fat": 0.6,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 0.8,
+        "salt": 13.732,
+        "sodium": 5493,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1783305101215
+    }
+  ]
+}

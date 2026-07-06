@@ -40,6 +40,9 @@ const SEARCH_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
+const API_SEARCH_RESULT_LIMIT = 100;
+const REPORT_CACHE_VERSION = 2;
+const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
   iron: { target: 14, mode: "min" },
@@ -244,6 +247,7 @@ const state = {
   defaultLogMeal: "breakfast",
   defaultLogDate: todayISO(),
   reportEntries: [],
+  reportData: null,
   reportRange: currentWeekRange(),
   reportMode: "week",
   reportBaseDate: todayISO(),
@@ -260,6 +264,7 @@ const state = {
   },
   tempFoods: new Map(),
   charts: {},
+  reportCacheJobs: new Map(),
   unsubs: [],
   sync: {
     online: navigator.onLine,
@@ -356,6 +361,30 @@ function entryDoc(entryId, dateISO = state.currentDate) {
 
 function dailyCaloriesDoc(dateISO = state.currentDate) {
   return doc(db, ...userBasePath(), "dailyCalories", dateISO);
+}
+
+function reportCacheDoc(key) {
+  return userDoc("reportCaches", key);
+}
+
+function reportPeriodMeta(mode, baseISO = state.currentDate) {
+  const safeMode = ["week", "month", "year"].includes(mode) ? mode : "week";
+  const [start, end] = safeMode === "month"
+    ? currentMonthRange(baseISO)
+    : safeMode === "year"
+      ? currentYearRange(baseISO)
+      : currentWeekRange(baseISO);
+  return { mode: safeMode, start, end, key: reportCacheKey(safeMode, start, end) };
+}
+
+function reportCacheKey(mode, start, end) {
+  if (mode === "year") return `year_${start.slice(0, 4)}`;
+  if (mode === "month") return `month_${start.slice(0, 7)}`;
+  return `week_${start}_${end}`;
+}
+
+function affectedReportPeriods(dateISO) {
+  return ["week", "month", "year"].map(mode => reportPeriodMeta(mode, dateISO));
 }
 
 function dailyGoalDoc(dateISO = state.currentDate) {
@@ -596,6 +625,7 @@ async function updateDailyCalorieSummary(dateISO, entries = null) {
     itemCount: summaryEntries?.length || 0,
     updatedAt: Date.now()
   }), { merge: true });
+  scheduleReportRecalculationForDate(dateISO);
 }
 
 function scaleNutrients(nutrients, factor) {
@@ -926,19 +956,28 @@ function sortFavoriteFirst(items) {
   });
 }
 
+function libraryItemSearchParts(item) {
+  return [
+    item?.name,
+    item?.notes,
+    ...(item?.ingredients || []).map(i => i.nameSnapshot),
+    ...(item?.items || []).map(i => i.nameSnapshot)
+  ];
+}
+
 function searchLibraryItems(items, queryText) {
-  const tokens = normalizeSearchText(queryText).split(/\s+/).filter(Boolean);
-  return sortFavoriteFirst(items).filter(item => {
-    if (!tokens.length) return true;
-    const parts = [
-      item.name,
-      item.notes,
-      ...(item.ingredients || []).map(i => i.nameSnapshot),
-      ...(item.items || []).map(i => i.nameSnapshot)
-    ];
-    const haystack = normalizeSearchText(parts.join(" "));
-    return tokens.every(token => haystack.includes(token));
-  });
+  const query = normalizeSearchText(queryText);
+  const scored = sortFavoriteFirst(items)
+    .map(item => ({ item, score: query ? searchMatchScore(libraryItemSearchParts(item), query) : 1 }))
+    .filter(({ score }) => !query || score > 0)
+    .sort((a, b) => {
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff) return scoreDiff;
+      const favoriteDiff = Number(!!b.item.favorite) - Number(!!a.item.favorite);
+      if (favoriteDiff) return favoriteDiff;
+      return String(a.item.name || "").localeCompare(String(b.item.name || ""));
+    });
+  return scored.map(({ item }) => item);
 }
 
 function ringPoint(radius, pct) {
@@ -1117,8 +1156,50 @@ function renderLogEntry(entry) {
 }
 
 function normalizeSearchText(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
+
+function normalizeCompactSearchText(value) {
+  return normalizeSearchText(value).replace(/[^a-z0-9äöüß]/gi, "");
+}
+
+function searchTokens(value) {
+  return normalizeSearchText(value).split(/\s+/).filter(Boolean);
+}
+
+function searchMatchScore(parts, queryText) {
+  const query = normalizeSearchText(queryText);
+  const compactQuery = normalizeCompactSearchText(queryText);
+  if (!query && !compactQuery) return 1;
+  const haystack = normalizeSearchText((parts || []).filter(Boolean).join(" "));
+  const compactHaystack = normalizeCompactSearchText(haystack);
+  const tokens = searchTokens(query);
+  let score = 0;
+
+  if (haystack === query || compactHaystack === compactQuery) score += 1000;
+  if (haystack.startsWith(query) || compactHaystack.startsWith(compactQuery)) score += 700;
+  if (haystack.includes(query) || compactHaystack.includes(compactQuery)) score += 450;
+  if (tokens.length && tokens.every(token => haystack.includes(token) || compactHaystack.includes(normalizeCompactSearchText(token)))) score += 260;
+  if (tokens.length) {
+    score += tokens.reduce((sum, token) => {
+      const compactToken = normalizeCompactSearchText(token);
+      if (haystack.startsWith(token) || compactHaystack.startsWith(compactToken)) return sum + 80;
+      if (haystack.includes(token) || compactHaystack.includes(compactToken)) return sum + 45;
+      return sum;
+    }, 0);
+  }
+  return score;
+}
+
+function foodSearchParts(food) {
+  return [food?.name, food?.brand, food?.barcode, food?.sourceId, food?.notes];
+}
+
 
 function looksLikeBarcode(value) {
   return /^\d{8,14}$/.test(String(value || "").replace(/\D/g, ""));
@@ -1149,29 +1230,23 @@ function foodSearchSort(a, b) {
 
 function searchPersonalLibrary(queryText) {
   const query = normalizeSearchText(queryText);
-  const tokens = query.split(/\s+/).filter(Boolean);
-  const foods = [...state.customFoods].sort(foodSearchSort);
-  if (!tokens.length) return [];
-  return foods
-    .filter(food => {
-      const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
-      return tokens.every(token => haystack.includes(token));
-    })
-    .slice(0, 40)
-    .map(food => markResultFood(food, resultKindForFood(food)));
+  if (!query) return [];
+  return state.customFoods
+    .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || foodSearchSort(a.food, b.food))
+    .slice(0, API_SEARCH_RESULT_LIMIT)
+    .map(({ food }) => markResultFood(food, resultKindForFood(food)));
 }
 
 function eatenFoodResults(queryText) {
-  const tokens = normalizeSearchText(queryText).split(/\s+/).filter(Boolean);
+  const query = normalizeSearchText(queryText);
   return state.customFoods
     .filter(food => searchRankForFood(food) > 0)
-    .filter(food => {
-      if (!tokens.length) return true;
-      const haystack = normalizeSearchText(`${food.name} ${food.brand || ""} ${food.barcode || ""}`);
-      return tokens.every(token => haystack.includes(token));
-    })
-    .sort((a, b) => searchRankForFood(b) - searchRankForFood(a) || displayFoodName(a).localeCompare(displayFoodName(b)))
-    .map(food => markResultFood(food, "eaten"));
+    .map(food => ({ food, score: query ? searchMatchScore(foodSearchParts(food), query) : 1 }))
+    .filter(({ score }) => !query || score > 0)
+    .sort((a, b) => b.score - a.score || searchRankForFood(b.food) - searchRankForFood(a.food) || displayFoodName(a.food).localeCompare(displayFoodName(b.food)))
+    .map(({ food }) => markResultFood(food, "eaten"));
 }
 
 function resultKindForFood(food) {
@@ -1231,7 +1306,7 @@ function openFoodFactsHost() {
   return SEARCH_REGIONS.find(([value]) => value === state.settings.searchRegion)?.[2] || "world.openfoodfacts.org";
 }
 
-function mergeFoodResults(localResults, apiResults) {
+function mergeFoodResults(localResults, apiResults, queryText = "") {
   const map = new Map();
   const apiMarked = (apiResults || []).map(food => {
     const existing = findPersonalFoodMatch(food);
@@ -1244,7 +1319,14 @@ function mergeFoodResults(localResults, apiResults) {
     const key = foodIdentity(food);
     if (!map.has(key)) map.set(key, food);
   }
-  return applySearchFilters([...map.values()]).sort(foodSearchSort);
+  const filtered = applySearchFilters([...map.values()]);
+  const query = normalizeSearchText(queryText);
+  if (!query) return filtered.sort(foodSearchSort);
+  return filtered
+    .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
+    .filter(({ score, food }) => score > 0 || food.resultKind !== "database")
+    .sort((a, b) => b.score - a.score || foodSearchSort(a.food, b.food))
+    .map(({ food }) => food);
 }
 
 function applySearchFilters(results) {
@@ -1349,7 +1431,7 @@ function renderSearchV2() {
   const combined = hasFoodQuery
     ? (state.searchResultsQuery === state.searchQuery && state.searchResults.length
       ? state.searchResults
-      : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || []))
+      : mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || [], state.searchQuery))
     : [];
   const eatenResults = eatenFoodResults(state.searchQuery);
   const mealsetResults = searchLibraryItems(state.mealsets, state.searchQuery);
@@ -1435,7 +1517,7 @@ function updateSearchFiltersFromInputs() {
     highProtein: !!document.getElementById("filterHighProtein")?.checked,
     lowSugar: !!document.getElementById("filterLowSugar")?.checked
   };
-  state.searchResults = mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || state.searchResults);
+  state.searchResults = mergeFoodResults(searchPersonalLibrary(state.searchQuery), getCachedSearch(state.searchQuery) || state.searchResults, state.searchQuery);
   renderSearchV2();
 }
 
@@ -1732,7 +1814,7 @@ async function searchOpenFoodFacts(queryText) {
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", "20");
+  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
   url.searchParams.set("fields", "code,product_name,brands,nutriments,serving_size,serving_quantity,quantity");
 
   showToast("Searching Open Food Facts…");
@@ -1743,7 +1825,7 @@ async function searchOpenFoodFacts(queryText) {
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
     .filter(food => food.nutrientsPer100g.kcal > 0)
-    .slice(0, 20);
+    .slice(0, API_SEARCH_RESULT_LIMIT);
   renderSearch();
 }
 
@@ -1757,7 +1839,7 @@ async function getOpenFoodFactsByBarcode(barcode) {
   if (!data.product) throw new Error("No product found for this barcode.");
   const food = normalizeOpenFoodFactsProduct(data.product);
   if (!food) throw new Error("Product found, but nutrition data is incomplete.");
-  state.searchResults = [food, ...state.searchResults.filter(f => f.barcode !== food.barcode)].slice(0, 20);
+  state.searchResults = [food, ...state.searchResults.filter(f => f.barcode !== food.barcode)].slice(0, API_SEARCH_RESULT_LIMIT);
   renderSearch();
   showToast(`Found ${displayFoodName(food)}.`);
 }
@@ -1770,7 +1852,7 @@ async function fetchOpenFoodFacts(queryText) {
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", "25");
+  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
   url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
   const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
   if (!res.ok) throw new Error("Open Food Facts search failed.");
@@ -1779,7 +1861,7 @@ async function fetchOpenFoodFacts(queryText) {
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
     .filter(food => food.nutrientsPer100g.kcal > 0)
-    .slice(0, 25);
+    .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
 async function runFoodSearch(queryText, options = {}) {
@@ -1815,7 +1897,7 @@ async function runFoodSearch(queryText, options = {}) {
   state.searchPage = 1;
   const localResults = searchPersonalLibrary(query);
   const cached = getCachedSearch(query) || [];
-  state.searchResults = mergeFoodResults(localResults, cached);
+  state.searchResults = mergeFoodResults(localResults, cached, query);
   state.searchFeedback = cached.length ? `Showing ${cached.length} offline database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
   state.searchLoading = true;
   if (options.updateState !== false) renderSearchV2();
@@ -1830,7 +1912,7 @@ async function runFoodSearch(queryText, options = {}) {
   try {
     const apiResults = await fetchOpenFoodFacts(query);
     setCachedSearch(query, apiResults);
-    state.searchResults = mergeFoodResults(localResults, apiResults);
+    state.searchResults = mergeFoodResults(localResults, apiResults, query);
     state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
     return state.searchResults;
   } catch (error) {
@@ -1862,7 +1944,7 @@ async function lookupBarcodeCached(barcode, options = {}) {
     state.searchTab = "foods";
     state.searchQuery = cleanBarcode;
     state.searchResultsQuery = cleanBarcode;
-    state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [cached]);
+    state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [cached], cleanBarcode);
     state.searchFeedback = "Barcode loaded from cache.";
     if (options.updateState !== false) renderSearchV2();
     return cached;
@@ -1879,7 +1961,7 @@ async function lookupBarcodeCached(barcode, options = {}) {
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
   state.searchResultsQuery = cleanBarcode;
-  state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [food]);
+  state.searchResults = mergeFoodResults(searchPersonalLibrary(cleanBarcode), [food], cleanBarcode);
   state.searchFeedback = `Found ${displayFoodName(food)}.`;
   if (options.updateState !== false) renderSearchV2();
   return food;
@@ -2934,14 +3016,159 @@ async function loadReport() {
   const [start, end] = state.reportRange || periodRange();
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
   state.reportRange = [start, end];
+  const meta = { mode: state.reportMode || "week", start, end, key: reportCacheKey(state.reportMode || "week", start, end) };
+  const cached = await readReportCache(meta);
+  if (cached) {
+    applyReportGoalsFromData(cached);
+    state.reportEntries = cached.entries || [];
+    state.reportData = cached;
+    renderReportOutput(start, end, state.reportEntries, cached);
+    return cached;
+  }
+
+  const output = document.getElementById("reportOutput");
+  if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report once and saving it to Firebase...</div>`;
+  const data = await calculateAndStoreReportCache(meta, { force: true });
+  applyReportGoalsFromData(data);
+  state.reportEntries = data.entries || [];
+  state.reportData = data;
+  renderReportOutput(start, end, state.reportEntries, data);
+  return data;
+}
+
+async function readReportCache(meta) {
+  if (!state.user || !meta?.key) return null;
+  try {
+    const snap = await getDoc(reportCacheDoc(meta.key));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    if (data?.dirty || data?.version !== REPORT_CACHE_VERSION) return null;
+    if (data.mode !== meta.mode || data.start !== meta.start || data.end !== meta.end) return null;
+    return normalizeReportData(data);
+  } catch (error) {
+    console.warn("Report cache read failed; recalculating.", error);
+    return null;
+  }
+}
+
+function normalizeReportData(data = {}) {
+  const dates = data.dates || dateRange(data.start, data.end);
+  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  return {
+    ...data,
+    dates,
+    activeDates: data.activeDates || reportActiveDates(data.entries || [], dates),
+    entries: data.entries || [],
+    byDate,
+    total: normalizeNutrients(data.total || {}),
+    flatRows: data.flatRows || [],
+    goalsByDate: data.goalsByDate || {}
+  };
+}
+
+function applyReportGoalsFromData(data = {}) {
+  for (const [dateISO, goal] of Object.entries(data.goalsByDate || {})) {
+    if (!dateISO || !goal) continue;
+    state.dailyGoals[dateISO] = goal;
+  }
+}
+
+function flatRowsFromReportEntries(entries = []) {
+  return entries.flatMap(entry => flattenReportEntry(entry).map(item => ({
+    ...item,
+    entryDate: entry.date || null,
+    meal: entry.meal || "",
+    source: entry.source || entry.itemType || "",
+    brand: item.brand || entry.brandSnapshot || entry.itemSnapshot?.brand || ""
+  })));
+}
+
+async function buildReportData(meta) {
+  const dates = dateRange(meta.start, meta.end);
   const entries = [];
-  for (const dateISO of dateRange(start, end)) {
+  const goalsByDate = {};
+  for (const dateISO of dates) {
     await loadDailyGoalForDate(dateISO);
+    goalsByDate[dateISO] = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
     const snap = await getDocs(entryCollection(dateISO));
     snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
   }
-  state.reportEntries = entries;
-  renderReportOutput(start, end, entries);
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const total = addNutrients(entries);
+  const flatRows = flatRowsFromReportEntries(entries);
+  return cleanForFirestore({
+    version: REPORT_CACHE_VERSION,
+    key: meta.key,
+    mode: meta.mode,
+    start: meta.start,
+    end: meta.end,
+    dates,
+    activeDates: reportActiveDates(entries, dates),
+    entries,
+    byDate,
+    total,
+    flatRows,
+    goalsByDate,
+    dirty: false,
+    generatedAt: Date.now(),
+    sourceEntryCount: entries.length
+  });
+}
+
+async function calculateAndStoreReportCache(meta, options = {}) {
+  if (!state.user || !meta?.key) return buildReportData(meta);
+  if (!options.force) {
+    const cached = await readReportCache(meta);
+    if (cached) return cached;
+  }
+  const data = await buildReportData(meta);
+  await setDoc(reportCacheDoc(meta.key), data, { merge: false });
+  return normalizeReportData(data);
+}
+
+function scheduleReportRecalculationForDate(dateISO) {
+  if (!state.user || !dateISO) return;
+  for (const meta of affectedReportPeriods(dateISO)) {
+    const existing = state.reportCacheJobs.get(meta.key);
+    if (existing?.timeout) clearTimeout(existing.timeout);
+    const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    setDoc(reportCacheDoc(meta.key), {
+      key: meta.key,
+      mode: meta.mode,
+      start: meta.start,
+      end: meta.end,
+      version: REPORT_CACHE_VERSION,
+      dirty: true,
+      invalidatedAt: Date.now()
+    }, { merge: true }).catch(console.warn);
+    const timeout = setTimeout(() => rebuildReportCacheInBackground(meta, token), REPORT_RECALC_DEBOUNCE_MS);
+    state.reportCacheJobs.set(meta.key, { token, timeout });
+  }
+}
+
+async function rebuildReportCacheInBackground(meta, token) {
+  const current = state.reportCacheJobs.get(meta.key);
+  if (!current || current.token !== token) return;
+  current.timeout = null;
+  try {
+    const data = await buildReportData(meta);
+    const latest = state.reportCacheJobs.get(meta.key);
+    if (!latest || latest.token !== token) return;
+    await setDoc(reportCacheDoc(meta.key), data, { merge: false });
+    const [start, end] = state.reportRange || [];
+    if (state.route === "reports" && state.reportMode === meta.mode && start === meta.start && end === meta.end) {
+      applyReportGoalsFromData(data);
+      state.reportEntries = data.entries || [];
+      state.reportData = normalizeReportData(data);
+      renderReportOutput(meta.start, meta.end, state.reportEntries, state.reportData);
+    }
+  } catch (error) {
+    console.warn("Background report cache rebuild failed.", error);
+  } finally {
+    const latest = state.reportCacheJobs.get(meta.key);
+    if (latest?.token === token) state.reportCacheJobs.delete(meta.key);
+  }
 }
 
 function goalStatus(value, goal, mode = "min") {
@@ -3034,17 +3261,19 @@ function renderReportPagination(table, pageData) {
 }
 
 
-function renderReportOutput(start, end, entries) {
-  const dates = dateRange(start, end);
-  const activeDates = reportActiveDates(entries, dates);
+function renderReportOutput(start, end, entries, reportData = null) {
+  const sourceData = reportData ? normalizeReportData(reportData) : null;
+  if (sourceData) applyReportGoalsFromData(sourceData);
+  const dates = sourceData?.dates || dateRange(start, end);
+  const activeDates = sourceData?.activeDates || reportActiveDates(entries, dates);
   const activeDays = Math.max(1, activeDates.length);
-  const total = addNutrients(entries);
+  const total = normalizeNutrients(sourceData?.total || addNutrients(entries));
   const avg = scaleNutrients(total, 1 / activeDays);
   const macro = macroCalories(total);
-  const byDate = Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
-  for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const filteredEntries = applyReportEntryFilters(entries);
-  const foodRows = foodFrequencyRows(filteredEntries);
+  const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
+  if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
+  const foodRows = foodFrequencyRowsFromFlatRows(filteredFlatRows);
   const topRows = sortReportRows(foodRows, "topSources");
   const frequencyRows = sortReportRows(foodRows, "frequency");
   const topPage = paginatedReportRows(topRows, "topSources");
@@ -3191,6 +3420,34 @@ function foodFrequencyRows(entries) {
     }
   }
   return [...map.values()].sort((a, b) => b.kcal - a.kcal);
+}
+
+function foodFrequencyRowsFromFlatRows(rows = []) {
+  const map = new Map();
+  for (const item of rows || []) {
+    const key = normalizeSearchText(`${item.name}|${item.brand}`);
+    const current = map.get(key) || { name: item.name, count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: item.brand || "" };
+    current.count += 1;
+    current.grams += number(item.grams);
+    current.kcal += number(item.kcal);
+    current.protein += number(item.protein);
+    current.carbs += number(item.carbs);
+    current.fat += number(item.fat);
+    map.set(key, current);
+  }
+  return [...map.values()].sort((a, b) => b.kcal - a.kcal);
+}
+
+function applyReportFlatFilters(rows = []) {
+  const meal = document.getElementById("reportMealFilter")?.value || "all";
+  const brand = normalizeSearchText(document.getElementById("reportBrandFilter")?.value || "");
+  const source = normalizeSearchText(document.getElementById("reportSourceFilter")?.value || "");
+  return rows.filter(row => {
+    if (meal !== "all" && row.meal !== meal) return false;
+    if (brand && !normalizeSearchText(row.brand).includes(brand)) return false;
+    if (source && !normalizeSearchText(row.source).includes(source)) return false;
+    return true;
+  });
 }
 
 function applyReportEntryFilters(entries) {
@@ -4055,6 +4312,7 @@ async function deleteAllAccountData(progress = () => {}) {
   state.dailyGoals = {};
   state.searchResults = [];
   state.reportEntries = [];
+  state.reportData = null;
   state.reportPages = { topSources: 1, frequency: 1 };
   state.reportRange = periodRange();
   setTheme();
@@ -4478,11 +4736,13 @@ async function handleClick(event) {
     if (action === "set-report-mode") {
       state.reportMode = btn.dataset.mode || "week";
       state.reportRange = periodRange();
+      state.reportData = null;
       state.reportPages = { topSources: 1, frequency: 1 };
       renderReportsShell();
     }
     if (action === "report-prev-period" || action === "report-next-period") {
       shiftReportPeriod(action === "report-prev-period" ? -1 : 1);
+      state.reportData = null;
       state.reportPages = { topSources: 1, frequency: 1 };
       renderReportsShell();
     }
@@ -4491,24 +4751,24 @@ async function handleClick(event) {
       setReportSort(btn.dataset.table, btn.dataset.key);
       if (state.reportPages?.[btn.dataset.table]) state.reportPages[btn.dataset.table] = 1;
       const [start, end] = state.reportRange || periodRange();
-      renderReportOutput(start, end, state.reportEntries || []);
+      renderReportOutput(start, end, state.reportEntries || [], state.reportData);
     }
     if (action === "report-page") {
       const table = btn.dataset.table;
       state.reportPages[table] = Math.max(1, number(state.reportPages?.[table], 1) + number(btn.dataset.dir, 0));
       const [start, end] = state.reportRange || periodRange();
-      renderReportOutput(start, end, state.reportEntries || []);
+      renderReportOutput(start, end, state.reportEntries || [], state.reportData);
     }
     if (action === "set-report-micro-mode") {
       state.reportMicroMode = btn.dataset.mode === "avg" ? "avg" : "abs";
       const [start, end] = state.reportRange || periodRange();
-      renderReportOutput(start, end, state.reportEntries || []);
+      renderReportOutput(start, end, state.reportEntries || [], state.reportData);
     }
     if (action === "set-report-frequency-mode") {
       state.reportFrequencyMode = btn.dataset.mode === "avg" ? "avg" : "abs";
       state.reportPages.frequency = 1;
       const [start, end] = state.reportRange || periodRange();
-      renderReportOutput(start, end, state.reportEntries || []);
+      renderReportOutput(start, end, state.reportEntries || [], state.reportData);
     }
     if (action === "export-full-csv") await exportEntries("csv", false);
     if (action === "export-calories-csv") await exportEntries("csv", true);
