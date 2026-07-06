@@ -1135,17 +1135,19 @@ function renderMealCard(mealId, label) {
   const entries = state.logs.filter(entry => entry.meal === mealId);
   const total = addNutrients(entries);
   const collapsed = state.collapsedMeals[mealId] !== false;
-  return `
-    <article class="meal-card meal-card-${safeText(mealId)}">
-      <div class="meal-head">
-        <div class="meal-title">
-          <h3>${safeText(label)}</h3>
+  const summaryHTML = entries.length ? `
           <div class="meal-summary">
             <span class="meal-kcal">${round(total.kcal, 0)} kcal</span>
             <span class="meal-protein">P ${round(total.protein)}g</span>
             <span class="meal-carbs">C ${round(total.carbs)}g</span>
             <span class="meal-fat">F ${round(total.fat)}g</span>
-          </div>
+          </div>` : "";
+  return `
+    <article class="meal-card meal-card-${safeText(mealId)}">
+      <div class="meal-head">
+        <div class="meal-title">
+          <h3>${safeText(label)}</h3>
+          ${summaryHTML}
         </div>
         <div class="meal-actions">
           ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
@@ -1160,20 +1162,18 @@ function renderMealCard(mealId, label) {
 function renderLogEntry(entry) {
   const n = normalizeNutrients(entry.nutrientsSnapshot);
   return `
-    <div class="food-entry">
+    <div class="food-entry diary-log-entry">
       <div class="food-entry-head">
         <div class="food-entry-title">
           <strong>${safeText(entry.nameSnapshot)}</strong>
           <small>${round(entry.amount)} ${safeText(entry.unit)}${entry.gramsEquivalent ? ` · ${round(entry.gramsEquivalent)} g` : ""}</small>
         </div>
-        <strong>${round(n.kcal, 0)} kcal</strong>
+        <div class="entry-actions entry-head-actions">
+          <button class="tiny-btn" data-action="edit-entry" data-id="${entry.id}">Edit</button>
+          <button class="tiny-btn" data-action="delete-entry" data-id="${entry.id}">Delete</button>
+        </div>
       </div>
       ${nutrientSummaryHTML(n)}
-      <div class="entry-actions">
-        ${entry.itemSnapshot && entry.itemType !== "food" ? `<button class="tiny-btn" data-action="entry-snapshot" data-id="${entry.id}">Snapshot</button>` : ""}
-        <button class="tiny-btn" data-action="edit-entry" data-id="${entry.id}">Edit</button>
-        <button class="tiny-btn" data-action="delete-entry" data-id="${entry.id}">Delete</button>
-      </div>
     </div>
   `;
 }
@@ -1679,7 +1679,7 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `<button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
+        ${food.source === "custom" ? `<button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1702,9 +1702,9 @@ function renderFoodResultCard(food, key) {
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
         ${food.source === "custom" ? `
-          <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
+          <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
           <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-          <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
+          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
           <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
         ` : ""}
       </div>
@@ -1716,7 +1716,7 @@ function openFoodDetailModal(food) {
   if (!food) return;
   const warnings = foodDataWarnings(food);
   openModal(`
-    <div class="modal">
+    <div class="modal food-detail-modal">
       <div class="modal-head"><h3>${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
         <div class="badges">
