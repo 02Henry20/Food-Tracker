@@ -265,6 +265,9 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
+  dailySummaryJobs: new Map(),
+  targetDetailScroll: {},
+  keyboardSelection: { search: -1, ingredient: -1 },
   unsubs: [],
   sync: {
     online: navigator.onLine,
@@ -626,6 +629,26 @@ async function updateDailyCalorieSummary(dateISO, entries = null) {
     updatedAt: Date.now()
   }), { merge: true });
   scheduleReportRecalculationForDate(dateISO);
+}
+
+function queueDailySummaryUpdate(dateISO, entries = null, delay = 220) {
+  if (!state.user || !dateISO) return;
+  const existing = state.dailySummaryJobs.get(dateISO);
+  if (existing?.timeout) clearTimeout(existing.timeout);
+  const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  const timeout = setTimeout(async () => {
+    const job = state.dailySummaryJobs.get(dateISO);
+    if (!job || job.token !== token) return;
+    try {
+      await updateDailyCalorieSummary(dateISO, entries);
+    } catch (error) {
+      console.warn("Daily summary background update failed.", error);
+    } finally {
+      const latest = state.dailySummaryJobs.get(dateISO);
+      if (latest?.token === token) state.dailySummaryJobs.delete(dateISO);
+    }
+  }, delay);
+  state.dailySummaryJobs.set(dateISO, { token, timeout });
 }
 
 function scaleNutrients(nutrients, factor) {
@@ -1137,18 +1160,20 @@ function renderMealCard(mealId, label) {
 function renderLogEntry(entry) {
   const n = normalizeNutrients(entry.nutrientsSnapshot);
   return `
-    <div class="food-entry diary-entry-card">
-      <div class="food-entry-head diary-entry-head">
+    <div class="food-entry">
+      <div class="food-entry-head">
         <div class="food-entry-title">
           <strong>${safeText(entry.nameSnapshot)}</strong>
           <small>${round(entry.amount)} ${safeText(entry.unit)}${entry.gramsEquivalent ? ` · ${round(entry.gramsEquivalent)} g` : ""}</small>
         </div>
-        <div class="entry-actions diary-entry-actions">
-          <button class="tiny-btn" data-action="edit-entry" data-id="${entry.id}">Edit</button>
-          <button class="tiny-btn" data-action="delete-entry" data-id="${entry.id}">Delete</button>
-        </div>
+        <strong>${round(n.kcal, 0)} kcal</strong>
       </div>
       ${nutrientSummaryHTML(n)}
+      <div class="entry-actions">
+        ${entry.itemSnapshot && entry.itemType !== "food" ? `<button class="tiny-btn" data-action="entry-snapshot" data-id="${entry.id}">Snapshot</button>` : ""}
+        <button class="tiny-btn" data-action="edit-entry" data-id="${entry.id}">Edit</button>
+        <button class="tiny-btn" data-action="delete-entry" data-id="${entry.id}">Delete</button>
+      </div>
     </div>
   `;
 }
@@ -1524,7 +1549,7 @@ function nutrientInputHTML(key, nutrients = {}) {
   const hasValue = rawValue !== undefined && rawValue !== null && rawValue !== "" && number(rawValue) !== 0;
   const valueAttr = hasValue ? ` value="${round(rawValue, 3)}"` : "";
   return `
-    <label>${safeText(NUTRIENT_LABELS[key])} / 100 g
+    <label>${safeText(NUTRIENT_LABELS[key])} (${safeText(NUTRIENT_UNITS[key])}) / 100 g
       <input name="${key}" type="number" step="0.01" min="0"${valueAttr} />
     </label>
   `;
@@ -1611,12 +1636,12 @@ function renderRecipeSearchCard(recipe) {
   const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
   return `
     <div class="result-card used ${recipe.favorite ? "favorite" : ""}">
-      <div class="result-main">
+      <div>
         <h4>${safeText(recipe.name)}</h4>
         <p>${round(n.kcal, 0)} kcal / portion</p>
         ${nutrientSummaryHTML(n)}
       </div>
-      <div class="inline-actions result-actions">
+      <div class="inline-actions">
         ${itemFavoriteButton("recipe", recipe)}
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
       </div>
@@ -1628,12 +1653,12 @@ function renderMealsetSearchCard(mealset) {
   const n = normalizeNutrients(mealset.totalNutrients);
   return `
     <div class="result-card used ${mealset.favorite ? "favorite" : ""}">
-      <div class="result-main">
+      <div>
         <h4>${safeText(mealset.name)}</h4>
         <p>${round(n.kcal, 0)} kcal / mealset</p>
         ${nutrientSummaryHTML(n)}
       </div>
-      <div class="inline-actions result-actions">
+      <div class="inline-actions">
         ${itemFavoriteButton("mealset", mealset)}
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
       </div>
@@ -1646,14 +1671,15 @@ function renderEatenFoodCard(food, key) {
   const count = searchRankForFood(food);
   return `
     <div class="result-card eaten ${food.favorite ? "favorite" : ""}">
-      <div class="result-main">
+      <div>
         <h4>${safeText(displayFoodName(food))}</h4>
         <p>${count}x eaten${food.lastUsedAt ? ` · last ${new Date(number(food.lastUsedAt)).toLocaleDateString()}` : ""}</p>
         ${nutrientSummaryHTML(n)}
       </div>
-      <div class="inline-actions result-actions">
+      <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? `<button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1663,17 +1689,22 @@ function renderFoodResultCard(food, key) {
   const warnings = foodDataWarnings(food);
   return `
     <div class="result-card ${safeText(food.resultKind || resultKindForFood(food))} ${warnings.length ? "warning" : ""}">
-      <div class="result-main">
+      <div>
         <h4>${safeText(displayFoodName(food))}</h4>
         <p>${safeText(caloriesText(food))}</p>
         ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
-        ${warnings.length ? `<div class="badges"><span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span></div>` : ""}
+        <div class="badges">
+          ${food.favorite ? `<span class="badge green">Favorite</span>` : ""}
+          ${warnings.length ? `<span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
+        </div>
       </div>
-      <div class="inline-actions result-actions">
+      <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
         ${food.source === "custom" ? `
+          <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
           <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+          <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
           <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
         ` : ""}
       </div>
@@ -2071,18 +2102,45 @@ async function ensureFoodInPersonalLibrary(food, options = { incrementUsage: tru
 
 function buildServingOptions(food) {
   const options = [
-    { label: "grams", grams: 1, mode: "grams" },
-    { label: "100 g", grams: 100, mode: "serving" }
+    { label: "grams", grams: 1, mode: "grams", unit: "g" },
+    { label: "100 g", grams: 100, mode: "serving", unit: "g" }
   ];
-  for (const serving of food.servingOptions || []) {
-    if (number(serving.grams) > 0 && !options.some(option => normalizeSearchText(option.label) === normalizeSearchText(serving.label))) {
-      options.push({ ...serving, mode: "serving" });
+  for (const serving of food?.servingOptions || []) {
+    const grams = number(serving.grams);
+    if (grams > 0 && !options.some(option => normalizeSearchText(servingDisplayName(option)) === normalizeSearchText(servingDisplayName(serving)))) {
+      options.push({ ...serving, grams, mode: "serving", unit: serving.unit || serving.label || "serving" });
     }
   }
-  if (food.defaultServing?.grams && !options.some(option => normalizeSearchText(option.label) === normalizeSearchText(food.defaultServing.label))) {
-    options.push({ ...food.defaultServing, mode: "serving" });
+  if (food?.defaultServing?.grams && !options.some(option => normalizeSearchText(servingDisplayName(option)) === normalizeSearchText(servingDisplayName(food.defaultServing)))) {
+    options.push({ ...food.defaultServing, mode: "serving", unit: food.defaultServing.unit || food.defaultServing.label || "serving" });
   }
   return options;
+}
+
+function servingDisplayName(serving = {}) {
+  if (serving.mode === "grams") return "grams";
+  return String(serving.label || serving.unit || "serving").trim() || "serving";
+}
+
+function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex") {
+  const servingOptions = buildServingOptions(food);
+  const amount = number(data.get(amountName), 100);
+  const selected = servingOptions[number(data.get(unitName))] || servingOptions[0];
+  const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
+  const unit = selected.mode === "grams" ? "g" : servingDisplayName(selected);
+  return { amount, selected, unit, grams };
+}
+
+function bindServingAmountDefaults(form, food) {
+  if (!form || !food) return;
+  const amountInput = form.elements.amount;
+  const select = form.elements.unitIndex;
+  const applyDefault = () => {
+    const serving = buildServingOptions(food)[number(select?.value)] || buildServingOptions(food)[0];
+    if (!amountInput || document.activeElement === amountInput) return;
+    amountInput.value = serving?.mode === "grams" ? 100 : 1;
+  };
+  select?.addEventListener("change", applyDefault);
 }
 
 function openLogFoodModal(food) {
@@ -2093,14 +2151,14 @@ function openLogFoodModal(food) {
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
-    <div class="modal">
+    <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" step="0.01" min="0" value="100" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="100" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(s.mode === "grams" ? "grams" : s.label)}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -2113,6 +2171,12 @@ function openLogFoodModal(food) {
       </form>
     </div>
   `);
+  const form = document.getElementById("logFoodForm");
+  bindServingAmountDefaults(form, food);
+  requestAnimationFrame(() => {
+    form?.elements.amount?.focus();
+    form?.elements.amount?.select?.();
+  });
 }
 
 function cloneSnapshot(value) {
@@ -2173,10 +2237,9 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
 async function logFood(food, amount, unit, grams, meal, dateISO) {
   const createdAt = Date.now();
   const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
-  const libraryId = await ensureFoodInPersonalLibrary(food, { incrementUsage: true });
   const entry = {
     itemType: "food",
-    itemId: libraryId || food.id || food.sourceId || null,
+    itemId: food.id || food.sourceId || null,
     source: food.source,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
@@ -2191,9 +2254,10 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     updatedAt: createdAt
   };
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
-  await updateDailyCalorieSummary(dateISO).catch(console.warn);
-  if (dateISO === state.currentDate) subscribeLogsForCurrentDate();
   showToast("Food logged.");
+  ensureFoodInPersonalLibrary(food, { incrementUsage: true }).catch(console.warn);
+  queueDailySummaryUpdate(dateISO);
+  scheduleReportRecalculationForDate(dateISO);
 }
 
 function renderRecipes() {
@@ -2518,13 +2582,14 @@ function renderTargetCurrentItems(kind, id) {
         ${items.length ? items.map((item, index) => {
           const displayNutrients = targetItemDisplayNutrients(kind, target, item);
           return `
-          <div class="food-entry target-item-entry">
-            <div class="food-entry-head">
-              <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
-              <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
+          <div class="food-entry target-item-entry target-item-row" data-target-item-index="${index}">
+            <div class="target-item-main">
+              <div class="food-entry-head">
+                <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
+              </div>
+              ${targetItemEditPreviewHTML(kind, target, items, number(index), displayNutrients)}
             </div>
-            ${targetItemEditPreviewHTML(kind, target, items, number(index), displayNutrients)}
-            <div class="inline-actions">
+            <div class="inline-actions target-item-actions">
               <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Amount</button>
               <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
             </div>
@@ -2605,37 +2670,56 @@ function renderIngredientResult(food, key, kind, id) {
   `;
 }
 
-function nutrientsForIngredientAmount(food, amount) {
+function nutrientsForIngredientAmount(food, amount, grams = null) {
   if (food?.source === "recipe") return scaleNutrients(food.nutrientsPerPortion, amount);
-  return scaleNutrients(food?.nutrientsPer100g, amount / 100);
+  const gramAmount = grams === null ? amount : grams;
+  return scaleNutrients(food?.nutrientsPer100g, gramAmount / 100);
 }
 
-function ingredientAmountPreviewNutrients(food, amount, kind, id) {
-  const nutrients = nutrientsForIngredientAmount(food, amount);
-  const target = targetForKind(kind, id);
-  return scaleNutrients(nutrients, 1 / targetPortionDivisor(kind, target));
+function targetTotalAbsoluteNutrients(kind, target) {
+  if (!target) return emptyNutrients();
+  return normalizeNutrients(target.totalNutrients);
 }
 
-function targetItemContributionPreviewHTML(food, amount, kind, id) {
+function ingredientAmountPreviewNutrients(food, amount, kind, id, grams = null) {
+  return nutrientsForIngredientAmount(food, amount, grams);
+}
+
+function targetItemContributionPreviewHTML(food, amount, kind, id, grams = null) {
   const target = targetForKind(kind, id);
-  const displayNutrients = ingredientAmountPreviewNutrients(food, amount, kind, id);
-  const total = targetTotalDisplayNutrients(kind, target);
+  const displayNutrients = ingredientAmountPreviewNutrients(food, amount, kind, id, grams);
+  const total = targetTotalAbsoluteNutrients(kind, target);
   return `${nutrientSummaryHTML(displayNutrients)}${targetItemContributionHTML(displayNutrients, total)}`;
 }
 
+function resetIngredientSearch(kind, id) {
+  state.ingredientSearch = { kind, id, query: "", mode: "food", page: 1, results: [] };
+  state.keyboardSelection.ingredient = -1;
+}
+
 function openIngredientAmountModal(food, kind, id) {
+  if (!food) return;
   const isRecipePortion = food?.source === "recipe";
-  const defaultAmount = isRecipePortion ? 1 : 100;
+  const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
+  const defaultAmount = isRecipePortion ? 1 : (servingOptions[0]?.mode === "grams" ? 100 : 1);
+  const defaultGrams = isRecipePortion ? null : (servingOptions[0]?.mode === "grams" ? defaultAmount : defaultAmount * number(servingOptions[0]?.grams, 1));
   openModal(`
-    <div class="modal">
+    <div class="modal amount-selector-modal">
       <div class="modal-head">
         <h3>Add ${safeText(displayFoodName(food))}</h3>
-        <button class="close-btn" type="button" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button>
+        <button class="close-btn" type="button" data-action="back-to-ingredient-search" data-kind="${kind}" data-id="${id}">x</button>
       </div>
       <form id="ingredientAmountForm" class="modal-body">
-        <label>${isRecipePortion ? "Portions" : "Amount in grams"}<input name="amount" type="number" step="0.1" min="0" value="${defaultAmount}" required /></label>
+        <div class="form-grid two">
+          <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
+          <label>Unit
+            <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
+              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
+            </select>
+          </label>
+        </div>
         <div id="ingredientAmountPreview" class="amount-preview">
-          ${targetItemContributionPreviewHTML(food, defaultAmount, kind, id)}
+          ${targetItemContributionPreviewHTML(food, defaultAmount, kind, id, defaultGrams)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
       </form>
@@ -2643,57 +2727,89 @@ function openIngredientAmountModal(food, kind, id) {
   `);
   const form = document.getElementById("ingredientAmountForm");
   const preview = document.getElementById("ingredientAmountPreview");
-  form?.elements.amount?.addEventListener("input", event => {
-    preview.innerHTML = targetItemContributionPreviewHTML(food, number(event.currentTarget.value), kind, id);
+  const updatePreview = () => {
+    const data = new FormData(form);
+    const amount = number(data.get("amount"), defaultAmount);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
+    preview.innerHTML = targetItemContributionPreviewHTML(food, amount, kind, id, grams);
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", () => {
+    if (!isRecipePortion && form.elements.amount && document.activeElement !== form.elements.amount) {
+      const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
+      form.elements.amount.value = selected.mode === "grams" ? 100 : 1;
+    }
+    updatePreview();
   });
-  form.addEventListener("submit", async event => {
+  requestAnimationFrame(() => {
+    form?.elements.amount?.focus();
+    form?.elements.amount?.select?.();
+  });
+  form.addEventListener("submit", event => {
     event.preventDefault();
-    const amount = number(new FormData(event.currentTarget).get("amount"));
-    await addIngredientToTarget(food, amount, kind, id);
-    openTargetDetail(kind, id);
+    if (form.dataset.submitting === "true") return;
+    form.dataset.submitting = "true";
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
+    const data = new FormData(event.currentTarget);
+    const amount = number(data.get("amount"), defaultAmount);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
+    const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
+    addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
+    resetIngredientSearch(kind, id);
+    openIngredientModal(kind, id, { restore: false });
   });
 }
 
-async function addIngredientToTarget(food, amount, kind, id) {
+async function addIngredientToTarget(food, amount, unit, grams, kind, id) {
   const isRecipePortion = food?.source === "recipe";
-  const libraryId = isRecipePortion ? null : await ensureFoodInPersonalLibrary(food, { incrementUsage: false });
-  const grams = isRecipePortion ? null : amount;
   const nutrientsSnapshot = isRecipePortion
     ? scaleNutrients(food.nutrientsPerPortion, amount)
-    : scaleNutrients(food.nutrientsPer100g, amount / 100);
+    : scaleNutrients(food.nutrientsPer100g, number(grams) / 100);
   const ingredient = isRecipePortion
     ? recipeReferenceItem(state.recipes.find(recipe => recipe.id === food.id) || food, amount, { createdAt: Date.now() })
     : {
       itemType: "food",
       source: food.source,
-      itemId: libraryId || food.id || food.sourceId || null,
+      itemId: food.id || food.sourceId || null,
+      sourceId: food.sourceId || food.id || null,
+      barcode: food.barcode || null,
       nameSnapshot: displayFoodName(food),
       brandSnapshot: food.brand || null,
       grams,
       amount,
-      unit: "g",
+      unit,
       nutrientsSnapshot,
       createdAt: Date.now()
     };
 
   if (kind === "recipe") {
     const recipe = state.recipes.find(r => r.id === id);
+    if (!recipe) throw new Error("Recipe not found anymore.");
     const ingredients = [...(recipe.ingredients || []), ingredient];
     const totalNutrients = addNutrients(ingredients);
     const nutrientsPerPortion = scaleNutrients(totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)));
     const updatedRecipe = { ...recipe, ingredients, totalNutrients, nutrientsPerPortion, updatedAt: Date.now() };
     updateLocalTarget("recipe", id, updatedRecipe);
-    await updateDoc(userDoc("recipes", id), cleanForFirestore({ ingredients, totalNutrients, nutrientsPerPortion, updatedAt: updatedRecipe.updatedAt }));
-    await syncRecipeReferencesInMealsets(id, updatedRecipe);
+    showToast("Ingredient added.");
+    updateDoc(userDoc("recipes", id), cleanForFirestore({ ingredients, totalNutrients, nutrientsPerPortion, updatedAt: updatedRecipe.updatedAt }))
+      .then(() => syncRecipeReferencesInMealsets(id, updatedRecipe))
+      .catch(console.warn);
   } else {
     const mealset = state.mealsets.find(m => m.id === id);
+    if (!mealset) throw new Error("Mealset not found anymore.");
     const items = [...(mealset.items || []), ingredient];
     const totalNutrients = addNutrients(items);
     const updatedAt = Date.now();
     updateLocalTarget("mealset", id, { items, totalNutrients, updatedAt });
-    await updateDoc(userDoc("mealsets", id), cleanForFirestore({ items, totalNutrients, updatedAt }));
+    showToast("Item added.");
+    updateDoc(userDoc("mealsets", id), cleanForFirestore({ items, totalNutrients, updatedAt })).catch(console.warn);
   }
-  showToast("Ingredient added.");
+
+  if (!isRecipePortion && food?.source !== "custom") {
+    ensureFoodInPersonalLibrary(food, { incrementUsage: false }).catch(console.warn);
+  }
 }
 
 function recalculateTarget(kind, target, items) {
@@ -2707,6 +2823,26 @@ function recalculateTarget(kind, target, items) {
     };
   }
   return { items, totalNutrients, updatedAt: Date.now() };
+}
+
+function saveTargetDetailScroll(kind, id) {
+  const modal = document.querySelector(".target-detail-modal");
+  const body = document.querySelector(".target-detail-modal .modal-body");
+  state.targetDetailScroll[`${kind}:${id}`] = {
+    modalTop: number(modal?.scrollTop),
+    bodyTop: number(body?.scrollTop)
+  };
+}
+
+function restoreTargetDetailScroll(kind, id) {
+  const saved = state.targetDetailScroll[`${kind}:${id}`];
+  if (!saved) return;
+  requestAnimationFrame(() => {
+    const modal = document.querySelector(".target-detail-modal");
+    const body = document.querySelector(".target-detail-modal .modal-body");
+    if (modal) modal.scrollTop = number(saved.modalTop);
+    if (body) body.scrollTop = number(saved.bodyTop);
+  });
 }
 
 function openTargetDetail(kind, id) {
@@ -2734,13 +2870,14 @@ function openTargetDetail(kind, id) {
           ${items.length ? items.map((item, index) => {
             const displayNutrients = targetItemDisplayNutrients(kind, target, item);
             return `
-            <div class="food-entry">
-              <div class="food-entry-head">
-                <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
-                <strong>${round(displayNutrients.kcal, 0)} ${targetItemKcalLabel(kind)}</strong>
+            <div class="food-entry target-item-row" data-target-item-index="${index}">
+              <div class="target-item-main">
+                <div class="food-entry-head">
+                  <div class="food-entry-title"><strong>${safeText(item.nameSnapshot)}</strong><small>${itemAmountText(item)}</small></div>
+                </div>
+                ${targetItemStatsHTML(kind, target, item, displayNutrients)}
               </div>
-              ${targetItemStatsHTML(kind, target, item, displayNutrients)}
-              <div class="inline-actions">
+              <div class="inline-actions target-item-actions">
                 <button class="tiny-btn" data-action="edit-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Edit amount</button>
                 <button class="tiny-btn" data-action="remove-target-item" data-kind="${kind}" data-id="${id}" data-index="${index}">Remove</button>
               </div>
@@ -2750,6 +2887,7 @@ function openTargetDetail(kind, id) {
       </div>
     </div>
   `);
+  restoreTargetDetailScroll(kind, id);
 }
 
 function openTargetEditor(kind, id) {
@@ -2818,10 +2956,10 @@ function openTargetItemAmountEditor(kind, id, index) {
   const oldAmount = number(item.amount ?? item.grams, 1) || 1;
   const displayNutrients = targetItemDisplayNutrients(kind, target, item);
   openModal(`
-    <div class="modal">
+    <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetItemEditForm" class="modal-body">
-        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" step="0.1" min="0" value="${currentAmount}" /></label>
+        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
         <div id="targetItemAmountPreview" class="amount-preview">
           ${targetItemStatsHTML(kind, target, item, displayNutrients)}
         </div>
@@ -2835,23 +2973,28 @@ function openTargetItemAmountEditor(kind, id, index) {
     const factor = number(event.currentTarget.value) / oldAmount;
     preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), scaleNutrients(displayNutrients, factor));
   });
-  form.addEventListener("submit", async event => {
+  requestAnimationFrame(() => {
+    form?.elements.amount?.focus();
+    form?.elements.amount?.select?.();
+  });
+  form.addEventListener("submit", event => {
     event.preventDefault();
     const newAmount = number(new FormData(event.currentTarget).get("amount"), item.amount ?? item.grams);
     const factor = newAmount / oldAmount;
     items[number(index)] = {
       ...item,
       amount: newAmount,
-      grams: item.unit === "g" ? newAmount : item.grams,
+      grams: item.grams ? number(item.grams) * factor : (item.unit === "g" ? newAmount : item.grams),
       nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
       updatedAt: Date.now()
     };
     const patch = recalculateTarget(kind, target, items);
     updateLocalTarget(kind, id, patch);
-    await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
-    if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
-    showToast("Amount updated.");
     openTargetDetail(kind, id);
+    updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch))
+      .then(() => isRecipe ? syncRecipeReferencesInMealsets(id, { ...target, ...patch }) : null)
+      .catch(console.warn);
+    showToast("Amount updated.");
   });
 }
 
@@ -2863,10 +3006,11 @@ async function removeTargetItem(kind, id, index) {
   items.splice(number(index), 1);
   const patch = recalculateTarget(kind, target, items);
   updateLocalTarget(kind, id, patch);
-  await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
-  if (isRecipe) await syncRecipeReferencesInMealsets(id, { ...target, ...patch });
-  showToast("Item removed.");
   openTargetDetail(kind, id);
+  updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch))
+    .then(() => isRecipe ? syncRecipeReferencesInMealsets(id, { ...target, ...patch }) : null)
+    .catch(console.warn);
+  showToast("Item removed.");
 }
 
 async function incrementFoodUsageForTargetItems(items = []) {
@@ -4551,6 +4695,7 @@ async function duplicateEntry(id) {
 function openModal(html) {
   els.modalRoot.innerHTML = html;
   els.modalRoot.classList.remove("hidden");
+  document.body.classList.add("modal-open");
 }
 
 function closeModal() {
@@ -4558,6 +4703,7 @@ function closeModal() {
   if (video?.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
   els.modalRoot.classList.add("hidden");
   els.modalRoot.innerHTML = "";
+  document.body.classList.remove("modal-open");
 }
 
 async function handleDynamicSubmit(event) {
@@ -4572,11 +4718,8 @@ async function handleDynamicSubmit(event) {
       const key = form.dataset.foodKey;
       const food = key ? getFoodByKey(key) : state.activeLogFood;
       if (!food) throw new Error("Could not find this food anymore. Close the modal and open it again.");
-      const servingOptions = buildServingOptions(food);
-      const amount = number(data.get("amount"), 100);
-      const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
-      const grams = selected.mode === "grams" ? amount : amount * number(selected.grams);
-      await logFood(food, amount, selected.mode === "grams" ? "g" : selected.label, grams, data.get("meal"), data.get("date"));
+      const { amount, unit, grams } = servingSelectionFromData(food, data);
+      await logFood(food, amount, unit, grams, data.get("meal"), data.get("date"));
       closeModal();
       return;
     }
@@ -4585,6 +4728,51 @@ async function handleDynamicSubmit(event) {
     showError(error);
   }
 }
+
+
+function selectableCardsForKeyboard(scope) {
+  const root = scope === "ingredient" ? document.getElementById("ingredientResults") : document.getElementById("searchResults");
+  if (!root) return [];
+  return [...root.querySelectorAll(".result-card")].filter(card => card.offsetParent !== null);
+}
+
+function updateKeyboardSelection(scope, direction) {
+  const cards = selectableCardsForKeyboard(scope);
+  if (!cards.length) return;
+  const current = number(state.keyboardSelection?.[scope], -1);
+  const next = Math.max(0, Math.min(cards.length - 1, current + direction));
+  state.keyboardSelection[scope] = next;
+  cards.forEach((card, index) => card.classList.toggle("keyboard-active", index === next));
+  cards[next]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function activateKeyboardSelection(scope) {
+  const cards = selectableCardsForKeyboard(scope);
+  const index = number(state.keyboardSelection?.[scope], -1);
+  const card = cards[index];
+  if (!card) return false;
+  const button = card.querySelector('[data-action="select-ingredient"], [data-action="log-food"], [data-action="log-recipe"], [data-action="log-mealset"], .primary-btn');
+  button?.click();
+  return !!button;
+}
+
+function handleKeyboardNavigation(event) {
+  if (window.matchMedia("(max-width: 980px)").matches) return;
+  const inIngredient = !!document.getElementById("ingredientResults") && !els.modalRoot.classList.contains("hidden");
+  const inSearch = state.route === "search" && !!document.getElementById("searchResults");
+  const scope = inIngredient ? "ingredient" : inSearch ? "search" : null;
+  if (!scope) return;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    updateKeyboardSelection(scope, event.key === "ArrowDown" ? 1 : -1);
+  }
+  if (event.key === "Enter" && state.keyboardSelection?.[scope] >= 0) {
+    event.preventDefault();
+    activateKeyboardSelection(scope);
+  }
+}
+
+document.addEventListener("keydown", handleKeyboardNavigation);
 
 document.addEventListener("submit", handleDynamicSubmit);
 
@@ -4655,7 +4843,10 @@ async function handleClick(event) {
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
-      state.collapsedMeals[meal] = state.collapsedMeals[meal] === false;
+      const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
+      const nextCollapsed = state.collapsedMeals[meal] === false;
+      state.collapsedMeals[meal] = nextCollapsed;
+      if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
       renderToday();
     }
     if (action === "create-recipe") await createRecipe();
@@ -4687,13 +4878,23 @@ async function handleClick(event) {
     if (action === "ingredient-search") {
       const query = document.getElementById("ingredientSearchInput")?.value || "";
       const root = document.getElementById("ingredientResults");
-      if (!normalizeSearchText(query)) {
-        state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query: "", mode: "food", page: 1, results: [] };
-        root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
-      } else {
-        const results = await runFoodSearch(query, { updateState: false });
-        state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results };
-        root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
+      const oldLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Searching...";
+      try {
+        if (!normalizeSearchText(query)) {
+          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query: "", mode: "food", page: 1, results: [] };
+          state.keyboardSelection.ingredient = -1;
+          root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
+        } else {
+          const results = await runFoodSearch(query, { updateState: false });
+          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results };
+          state.keyboardSelection.ingredient = -1;
+          root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldLabel;
       }
     }
     if (action === "show-recipe-ingredients") {
@@ -4718,9 +4919,18 @@ async function handleClick(event) {
       state.ingredientSearch = { kind, id, query, mode, page: nextPage, results };
       root.innerHTML = renderIngredientResultPage(results, kind, id, nextPage, mode, query);
     }
-    if (action === "select-ingredient") openIngredientAmountModal(getFoodByKey(btn.dataset.key), btn.dataset.kind, btn.dataset.id);
-    if (action === "edit-target-item") openTargetItemAmountEditor(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
-    if (action === "remove-target-item") await removeTargetItem(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
+    if (action === "select-ingredient") {
+      btn.disabled = true;
+      openIngredientAmountModal(getFoodByKey(btn.dataset.key), btn.dataset.kind, btn.dataset.id);
+    }
+    if (action === "edit-target-item") {
+      saveTargetDetailScroll(btn.dataset.kind, btn.dataset.id);
+      openTargetItemAmountEditor(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
+    }
+    if (action === "remove-target-item") {
+      saveTargetDetailScroll(btn.dataset.kind, btn.dataset.id);
+      await removeTargetItem(btn.dataset.kind, btn.dataset.id, btn.dataset.index);
+    }
     if (action === "log-recipe") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id));
     if (action === "log-mealset") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id));
     if (action === "log-recipe-from-detail") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id), { kind: "recipe", id: btn.dataset.id });
