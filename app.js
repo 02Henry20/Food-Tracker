@@ -41,7 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 4;
+const REPORT_CACHE_VERSION = 5;
+const WEEKLY_SUMMARY_VERSION = 1;
 const REPORT_TABLE_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -69,6 +70,7 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   accent: "teal",
   searchRegion: "world",
+  searchRegions: ["world"],
   databasePreference: "custom-first",
   dashboardDensity: "comfortable",
   macroGoalMode: "manual",
@@ -266,6 +268,7 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
+  weeklySummaryJobs: new Map(),
   dailySummaryJobs: new Map(),
   logSnapshotSignatures: {},
   targetDetailScroll: {},
@@ -370,6 +373,10 @@ function dailyCaloriesDoc(dateISO = state.currentDate) {
 
 function reportCacheDoc(key) {
   return userDoc("reportCaches", key);
+}
+
+function weeklySummaryDoc(key) {
+  return userDoc("weeklySummaries", key);
 }
 
 function reportPeriodMeta(mode, baseISO = state.currentDate) {
@@ -517,7 +524,22 @@ function mergeSettings(raw = {}) {
   for (const key of Object.keys(MICRO_DEFAULTS)) {
     merged.micronutrientGoals[key] = { ...MICRO_DEFAULTS[key], ...(merged.micronutrientGoals[key] || {}) };
   }
+  merged.searchRegions = normalizeSearchRegions(source.searchRegions || source.searchRegion || merged.searchRegion);
+  merged.searchRegion = merged.searchRegions[0] || "world";
   return merged;
+}
+
+function normalizeSearchRegions(value) {
+  const raw = Array.isArray(value) ? value : String(value || "world").split(",");
+  const valid = new Set(SEARCH_REGIONS.map(([region]) => region));
+  const regions = [];
+  for (const item of raw) {
+    const region = String(item || "").trim();
+    if (!region || !valid.has(region) || regions.includes(region)) continue;
+    regions.push(region);
+    if (regions.length >= 3) break;
+  }
+  return regions.length ? regions : ["world"];
 }
 
 function updateSyncStatus(partial = {}) {
@@ -616,7 +638,7 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
   goalsSnapshot.savedForDate = dateISO;
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
   for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
-  await setDoc(dailyCaloriesDoc(dateISO), cleanForFirestore({
+  const dailySummary = cleanForFirestore({
     date: dateISO,
     uid: state.user.uid,
     app: "NutriPilot",
@@ -628,9 +650,15 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     meals: byMeal,
     goalsSnapshot,
     itemCount: summaryEntries?.length || 0,
+    hasEntries: !!summaryEntries?.length,
+    entrySignature: logEntriesSignature(summaryEntries || []),
     updatedAt: Date.now()
-  }), { merge: true });
-  if (options.invalidateReports !== false) scheduleReportRecalculationForDate(dateISO);
+  });
+  await setDoc(dailyCaloriesDoc(dateISO), dailySummary, { merge: true });
+  if (options.invalidateReports !== false) {
+    await updateWeeklySummaryForDate(dateISO, summaryEntries || [], { goalsSnapshot }).catch(console.warn);
+    scheduleReportRecalculationForDate(dateISO, { markWeeklyDirty: false });
+  }
 }
 
 function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
@@ -928,9 +956,10 @@ function subscribeLogsForCurrentDate() {
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
     writeLocal(`logs:${dateISO}`, state.logs);
     const signature = logEntriesSignature(state.logs);
-    const previousSignature = state.logSnapshotSignatures?.[dateISO] || "";
+    const previousSignature = state.logSnapshotSignatures?.[dateISO] || readLocal(`logSignature:${dateISO}`, "") || "";
     const shouldInvalidateReports = !!previousSignature && previousSignature !== signature;
     state.logSnapshotSignatures[dateISO] = signature;
+    writeLocal(`logSignature:${dateISO}`, signature);
     if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: shouldInvalidateReports }).catch(console.warn);
     if (state.route === "today") renderToday();
   }, error => {
@@ -1338,8 +1367,16 @@ function addRecentSearch(queryText) {
   markSearchStateSaved();
 }
 
+function openFoodFactsHosts(settings = state.settings) {
+  const selected = normalizeSearchRegions(settings.searchRegions || settings.searchRegion || "world");
+  const hosts = selected
+    .map(region => SEARCH_REGIONS.find(([value]) => value === region)?.[2])
+    .filter(Boolean);
+  return hosts.length ? [...new Set(hosts)].slice(0, 3) : ["world.openfoodfacts.org"];
+}
+
 function openFoodFactsHost() {
-  return SEARCH_REGIONS.find(([value]) => value === state.settings.searchRegion)?.[2] || "world.openfoodfacts.org";
+  return openFoodFactsHosts()[0];
 }
 
 function mergeFoodResults(localResults, apiResults, queryText = "") {
@@ -1880,24 +1917,40 @@ async function getOpenFoodFactsByBarcode(barcode) {
   showToast(`Found ${displayFoodName(food)}.`);
 }
 
-async function fetchOpenFoodFacts(queryText) {
-  const queryTextTrimmed = queryText.trim();
-  if (!queryTextTrimmed) return [];
-  const url = new URL(`https://${openFoodFactsHost()}/cgi/search.pl`);
-  url.searchParams.set("search_terms", queryTextTrimmed);
+async function fetchOpenFoodFactsFromHost(host, queryText, pageSize) {
+  const url = new URL(`https://${host}/cgi/search.pl`);
+  url.searchParams.set("search_terms", queryText);
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
+  url.searchParams.set("page_size", String(pageSize));
   url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
   const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-  if (!res.ok) throw new Error("Open Food Facts search failed.");
+  if (!res.ok) throw new Error(`Open Food Facts search failed for ${host}.`);
   const data = await res.json();
   return (data.products || [])
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
-    .filter(food => food.nutrientsPer100g.kcal > 0)
-    .slice(0, API_SEARCH_RESULT_LIMIT);
+    .filter(food => food.nutrientsPer100g.kcal > 0);
+}
+
+async function fetchOpenFoodFacts(queryText) {
+  const queryTextTrimmed = queryText.trim();
+  if (!queryTextTrimmed) return [];
+  const hosts = openFoodFactsHosts();
+  const pageSize = Math.max(20, Math.ceil(API_SEARCH_RESULT_LIMIT / hosts.length));
+  const settled = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(host, queryTextTrimmed, pageSize)));
+  const results = [];
+  for (const outcome of settled) {
+    if (outcome.status === "fulfilled") results.push(...outcome.value);
+  }
+  if (!results.length && settled.some(outcome => outcome.status === "rejected")) throw new Error("Open Food Facts search failed.");
+  const map = new Map();
+  for (const food of results) {
+    const key = foodIdentity(food);
+    if (!map.has(key)) map.set(key, food);
+  }
+  return [...map.values()].slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
 async function runFoodSearch(queryText, options = {}) {
@@ -1986,13 +2039,21 @@ async function lookupBarcodeCached(barcode, options = {}) {
     return cached;
   }
   if (!navigator.onLine) throw new Error("No offline barcode result is available.");
-  const url = `https://${openFoodFactsHost()}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
-  if (!res.ok) throw new Error("Barcode lookup failed.");
-  const data = await res.json();
-  if (!data.product) throw new Error("No product found for this barcode.");
-  const food = normalizeOpenFoodFactsProduct(data.product);
-  if (!food) throw new Error("Product found, but nutrition data is incomplete.");
+  let food = null;
+  for (const host of openFoodFactsHosts()) {
+    try {
+      const url = `https://${host}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.product) continue;
+      food = normalizeOpenFoodFactsProduct(data.product);
+      if (food) break;
+    } catch (error) {
+      console.warn("Barcode lookup host failed.", host, error);
+    }
+  }
+  if (!food) throw new Error("No product found for this barcode in the selected regions.");
   setCachedBarcode(cleanBarcode, food);
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
@@ -2287,7 +2348,6 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
   showToast("Food logged.");
   ensureFoodInPersonalLibrary(food, { incrementUsage: true }).catch(console.warn);
   queueDailySummaryUpdate(dateISO);
-  scheduleReportRecalculationForDate(dateISO);
 }
 
 function renderRecipes() {
@@ -3106,6 +3166,43 @@ function openLogRecipeModal(recipe, returnTarget = null) {
   });
 }
 
+
+function loggedMealsetItemEntry(item, multiplier, meal, dateISO, mealset, createdAt) {
+  const entryType = item.itemType === "recipe" ? "recipe" : "food";
+  const baseAmount = number(item.amount ?? item.grams, 1) || 1;
+  const amount = baseAmount * multiplier;
+  const gramsEquivalent = item.grams || item.gramsEquivalent ? number(item.grams ?? item.gramsEquivalent) * multiplier : null;
+  const nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, multiplier);
+  const itemSnapshot = cloneSnapshot({
+    ...item,
+    itemType: entryType,
+    amount,
+    grams: gramsEquivalent,
+    gramsEquivalent,
+    nutrientsSnapshot,
+    parentMealset: { id: mealset.id || null, name: mealset.name || "Mealset" },
+    loggedAt: createdAt
+  });
+  return cleanForFirestore({
+    itemType: entryType,
+    itemId: item.itemId || item.id || null,
+    source: item.source || entryType,
+    nameSnapshot: item.nameSnapshot || item.name || "Mealset item",
+    brandSnapshot: item.brandSnapshot || item.brand || null,
+    amount,
+    unit: item.unit || (gramsEquivalent ? "g" : "serving"),
+    gramsEquivalent,
+    meal,
+    date: dateISO,
+    nutrientsSnapshot,
+    itemSnapshot,
+    parentMealsetId: mealset.id || null,
+    parentMealsetName: mealset.name || "Mealset",
+    createdAt,
+    updatedAt: createdAt
+  });
+}
+
 function openLogMealsetModal(mealset, returnTarget = null) {
   const total = normalizeNutrients(mealset.totalNutrients);
   const closeAction = returnTarget ? `data-action="return-target-detail" data-kind="${returnTarget.kind}" data-id="${returnTarget.id}"` : `data-action="close-modal"`;
@@ -3127,27 +3224,19 @@ function openLogMealsetModal(mealset, returnTarget = null) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
+    const meal = data.get("meal");
+    const dateISO = data.get("date");
+    const items = mealset.items || [];
+    if (!items.length) throw new Error("This mealset has no items to log.");
     const createdAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(total, amount);
-    const entry = {
-      itemType: "mealset",
-      itemId: mealset.id,
-      nameSnapshot: mealset.name,
-      amount,
-      unit: "mealset",
-      meal: data.get("meal"),
-      date: data.get("date"),
-      nutrientsSnapshot,
-      itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
-      createdAt,
-      updatedAt: createdAt
-    };
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(mealset.items || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
+    for (const [index, item] of items.entries()) {
+      await addDoc(entryCollection(dateISO), loggedMealsetItemEntry(item, amount, meal, dateISO, mealset, createdAt + index));
+    }
+    await incrementFoodUsageForTargetItems(items);
+    await updateDailyCalorieSummary(dateISO).catch(console.warn);
     closeModal();
     if (returnTarget) renderRecipes();
-    showToast("Mealset logged.");
+    showToast(`Mealset logged as ${items.length} separate item${items.length === 1 ? "" : "s"}.`);
   });
 }
 
@@ -3307,36 +3396,195 @@ function flatRowsFromReportEntries(entries = []) {
   })));
 }
 
-async function buildReportData(meta, options = {}) {
-  const dates = dateRange(meta.start, meta.end);
-  const entries = [];
-  const goalsByDate = {};
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
-  progress?.({ mode: meta.mode, current: 0, total: dates.length, label: `Calculating ${meta.mode} report...`, detail: "Loading diary days and goal snapshots." });
+function weekMetaForDate(dateISO) {
+  const [start, end] = currentWeekRange(dateISO);
+  return { mode: "week", start, end, key: reportCacheKey("week", start, end) };
+}
 
+function weekMetasForRange(startISO, endISO) {
+  const metas = [];
+  const seen = new Set();
+  for (const dateISO of dateRange(startISO, endISO)) {
+    const meta = weekMetaForDate(dateISO);
+    if (seen.has(meta.key)) continue;
+    seen.add(meta.key);
+    metas.push(meta);
+  }
+  return metas;
+}
+
+function dayReportSummaryFromEntries(dateISO, entries = [], goalsSnapshot = null) {
+  const cleanEntries = entries || [];
+  const total = addNutrients(cleanEntries);
+  const flatRows = flatRowsFromReportEntries(cleanEntries);
+  return cleanForFirestore({
+    date: dateISO,
+    hasEntries: cleanEntries.length > 0,
+    entryCount: cleanEntries.length,
+    entrySignature: logEntriesSignature(cleanEntries),
+    total,
+    foodRows: foodFrequencyRowsFromFlatRows(flatRows),
+    goalsSnapshot: goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings),
+    updatedAt: Date.now()
+  });
+}
+
+function mergeReportFoodRows(rowGroups = []) {
+  const map = new Map();
+  for (const rows of rowGroups) {
+    for (const row of rows || []) {
+      const key = normalizeSearchText(`${row.name}|${row.brand || ""}`);
+      const current = map.get(key) || { name: row.name || "Unnamed", count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: row.brand || "" };
+      current.count += number(row.count);
+      current.grams += number(row.grams);
+      current.kcal += number(row.kcal);
+      current.protein += number(row.protein);
+      current.carbs += number(row.carbs);
+      current.fat += number(row.fat);
+      map.set(key, current);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.kcal - a.kcal || b.count - a.count || String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function weeklySummaryFromDays(meta, days = {}) {
+  const dates = dateRange(meta.start, meta.end);
+  const keptDays = {};
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const goalsByDate = {};
+  const foodGroups = [];
+  let entryCount = 0;
+  for (const dateISO of dates) {
+    const day = days?.[dateISO];
+    if (!day?.hasEntries) continue;
+    const total = normalizeNutrients(day.total || {});
+    keptDays[dateISO] = {
+      ...day,
+      total,
+      foodRows: day.foodRows || [],
+      goalsSnapshot: day.goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings)
+    };
+    byDate[dateISO] = total;
+    goalsByDate[dateISO] = keptDays[dateISO].goalsSnapshot;
+    foodGroups.push(keptDays[dateISO].foodRows || []);
+    entryCount += number(day.entryCount);
+  }
+  const activeDates = Object.keys(keptDays).sort();
+  return cleanForFirestore({
+    version: WEEKLY_SUMMARY_VERSION,
+    key: meta.key,
+    mode: "week",
+    start: meta.start,
+    end: meta.end,
+    dates,
+    activeDates,
+    days: keptDays,
+    byDate,
+    total: addNutrients(activeDates.map(dateISO => ({ nutrientsSnapshot: keptDays[dateISO].total }))),
+    foodRows: mergeReportFoodRows(foodGroups),
+    goalsByDate,
+    dirty: false,
+    generatedAt: Date.now(),
+    sourceEntryCount: entryCount
+  });
+}
+
+async function readWeeklySummary(meta) {
+  if (!state.user || !meta?.key) return null;
+  try {
+    const snap = await getDoc(weeklySummaryDoc(meta.key));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    if (data?.dirty || data?.version !== WEEKLY_SUMMARY_VERSION) return null;
+    if (data.start !== meta.start || data.end !== meta.end) return null;
+    return data;
+  } catch (error) {
+    console.warn("Weekly summary read failed; rebuilding this week.", error);
+    return null;
+  }
+}
+
+async function buildWeeklySummaryData(meta, options = {}) {
+  const dates = dateRange(meta.start, meta.end);
+  const days = {};
+  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
   for (const [index, dateISO] of dates.entries()) {
-    await loadDailyGoalForDate(dateISO);
-    goalsByDate[dateISO] = compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
     const snap = await getDocs(entryCollection(dateISO));
-    const dayEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
-    entries.push(...dayEntries);
-    byDate[dateISO] = addNutrients(dayEntries);
+    const entries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+    if (entries.length) {
+      await loadDailyGoalForDate(dateISO);
+      const goalsSnapshot = compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
+      days[dateISO] = dayReportSummaryFromEntries(dateISO, entries, goalsSnapshot);
+    }
     progress?.({
-      mode: meta.mode,
-      current: index + 1,
-      total: dates.length,
-      label: `Calculating ${meta.mode} report...`,
-      detail: `Loaded ${dateISO}. ${entries.length} entries included.`
+      mode: options.mode || meta.mode || "week",
+      current: number(options.baseProgress) + index + 1,
+      total: number(options.totalProgress, dates.length),
+      label: options.label || "Updating weekly summaries...",
+      detail: entries.length ? `Loaded ${dateISO}; ${entries.length} entries.` : `Skipped ${dateISO}; no entries.`
     });
   }
+  return weeklySummaryFromDays(meta, days);
+}
 
-  const total = addNutrients(entries);
-  const flatRows = flatRowsFromReportEntries(entries);
-  const allFoodRows = foodFrequencyRowsFromFlatRows(flatRows);
-  const topSourceRows = capReportRows(allFoodRows, "kcal");
-  const frequencyRows = capReportRows(allFoodRows, "count");
-  const foodRows = capReportRows(allFoodRows, "kcal");
+async function ensureWeeklySummary(meta, options = {}) {
+  const cached = options.force ? null : await readWeeklySummary(meta);
+  if (cached) return cached;
+  const data = await buildWeeklySummaryData(meta, options);
+  if (state.user) await setDoc(weeklySummaryDoc(meta.key), data, { merge: false });
+  return data;
+}
+
+async function updateWeeklySummaryForDate(dateISO, entries = null, options = {}) {
+  if (!state.user || !dateISO) return null;
+  const meta = weekMetaForDate(dateISO);
+  let summaryEntries = entries;
+  if (!summaryEntries) {
+    const snap = await getDocs(entryCollection(dateISO));
+    summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+  }
+  let current = null;
+  try {
+    const snap = await getDoc(weeklySummaryDoc(meta.key));
+    if (snap.exists() && snap.data()?.version === WEEKLY_SUMMARY_VERSION) current = snap.data();
+  } catch (error) {
+    console.warn("Could not read weekly summary before updating one day.", error);
+  }
+  if (!current) {
+    const rebuilt = await buildWeeklySummaryData(meta);
+    await setDoc(weeklySummaryDoc(meta.key), rebuilt, { merge: false });
+    return rebuilt;
+  }
+  const days = { ...(current.days || {}) };
+  if (summaryEntries.length) {
+    const goalsSnapshot = options.goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
+    days[dateISO] = dayReportSummaryFromEntries(dateISO, summaryEntries, goalsSnapshot);
+  } else {
+    delete days[dateISO];
+  }
+  const next = weeklySummaryFromDays(meta, days);
+  await setDoc(weeklySummaryDoc(meta.key), next, { merge: false });
+  return next;
+}
+
+function combineWeeklySummariesForReport(meta, weeklySummaries = []) {
+  const dates = dateRange(meta.start, meta.end);
+  const dateSet = new Set(dates);
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const goalsByDate = {};
+  const foodGroups = [];
+  let entryCount = 0;
+  for (const week of weeklySummaries || []) {
+    for (const [dateISO, day] of Object.entries(week.days || {})) {
+      if (!dateSet.has(dateISO) || !day?.hasEntries) continue;
+      byDate[dateISO] = normalizeNutrients(day.total || {});
+      goalsByDate[dateISO] = day.goalsSnapshot || week.goalsByDate?.[dateISO] || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
+      foodGroups.push(day.foodRows || []);
+      entryCount += number(day.entryCount);
+    }
+  }
+  const activeDates = dates.filter(dateISO => number(byDate[dateISO]?.kcal) || goalsByDate[dateISO]);
+  const allFoodRows = mergeReportFoodRows(foodGroups);
   return cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
@@ -3344,19 +3592,45 @@ async function buildReportData(meta, options = {}) {
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates: reportActiveDates(entries, dates),
+    activeDates,
     entries: [],
     byDate,
-    total,
-    foodRows,
-    topSourceRows,
-    frequencyRows,
+    total: addNutrients(activeDates.map(dateISO => ({ nutrientsSnapshot: byDate[dateISO] }))),
+    foodRows: capReportRows(allFoodRows, "kcal"),
+    topSourceRows: capReportRows(allFoodRows, "kcal"),
+    frequencyRows: capReportRows(allFoodRows, "count"),
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
-    sourceEntryCount: entries.length,
+    sourceEntryCount: entryCount,
+    sourceWeekCount: weeklySummaries.length,
     storedRowLimit: REPORT_TABLE_LIMIT
   });
+}
+
+async function buildReportData(meta, options = {}) {
+  const weeks = weekMetasForRange(meta.start, meta.end);
+  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
+  progress?.({ mode: meta.mode, current: 0, total: Math.max(1, weeks.length * 7), label: `Preparing ${meta.mode} report...`, detail: "Loading reusable weekly summaries." });
+  const weeklySummaries = [];
+  for (const [index, week] of weeks.entries()) {
+    const summary = await ensureWeeklySummary(week, {
+      onProgress: progress,
+      mode: meta.mode,
+      baseProgress: index * 7,
+      totalProgress: Math.max(1, weeks.length * 7),
+      label: `Preparing ${meta.mode} report...`
+    });
+    weeklySummaries.push(summary);
+    progress?.({
+      mode: meta.mode,
+      current: Math.min(Math.max(1, weeks.length * 7), (index + 1) * 7),
+      total: Math.max(1, weeks.length * 7),
+      label: `Preparing ${meta.mode} report...`,
+      detail: `Added week ${week.start} to ${week.end}.`
+    });
+  }
+  return combineWeeklySummariesForReport(meta, weeklySummaries);
 }
 
 async function calculateAndStoreReportCache(meta, options = {}) {
@@ -3366,13 +3640,27 @@ async function calculateAndStoreReportCache(meta, options = {}) {
     if (cached) return cached;
   }
   const data = await buildReportData(meta, options);
-  options.onProgress?.({ mode: meta.mode, current: dateRange(meta.start, meta.end).length, total: dateRange(meta.start, meta.end).length, label: `Saving ${meta.mode} report...`, detail: `Saving capped top ${REPORT_TABLE_LIMIT} source and frequency rows to Firebase.` });
+  const saveSteps = Math.max(1, weekMetasForRange(meta.start, meta.end).length * 7);
+  options.onProgress?.({ mode: meta.mode, current: saveSteps, total: saveSteps, label: `Saving ${meta.mode} report...`, detail: `Saving capped top ${REPORT_TABLE_LIMIT} source and frequency rows to Firebase.` });
   await setDoc(reportCacheDoc(meta.key), data, { merge: false });
   return normalizeReportData(data);
 }
 
-function scheduleReportRecalculationForDate(dateISO) {
+function scheduleReportRecalculationForDate(dateISO, options = {}) {
   if (!state.user || !dateISO) return;
+  const week = weekMetaForDate(dateISO);
+  if (options.markWeeklyDirty !== false) {
+    setDoc(weeklySummaryDoc(week.key), {
+      key: week.key,
+      mode: "week",
+      start: week.start,
+      end: week.end,
+      version: WEEKLY_SUMMARY_VERSION,
+      dirty: true,
+      invalidatedAt: Date.now(),
+      invalidatedByDate: dateISO
+    }, { merge: true }).catch(console.warn);
+  }
   for (const meta of affectedReportPeriods(dateISO)) {
     const existing = state.reportCacheJobs.get(meta.key);
     if (existing?.timeout) clearTimeout(existing.timeout);
@@ -4076,10 +4364,11 @@ function renderSettingsV2() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${appPrefs.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${preferenceControl("Search region", `
-            <select name="searchRegion">
-              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${appPrefs.searchRegion === value ? "selected" : ""}>${label}</option>`).join("")}
+          ${preferenceControl("Search regions", `
+            <select name="searchRegions" multiple size="6" data-max-selected="3">
+              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${normalizeSearchRegions(appPrefs.searchRegions || appPrefs.searchRegion).includes(value) ? "selected" : ""}>${label}</option>`).join("")}
             </select>
+            <span class="kicker">Select up to 3. Smaller regional APIs are usually faster than global search.</span>
           `)}
           ${preferenceControl("Database preference", `
             <select name="databasePreference">
@@ -4149,8 +4438,18 @@ function renderSettingsV2() {
     if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
   });
   form?.addEventListener("input", queueSettingsAutosave);
-  form?.addEventListener("change", queueSettingsAutosave);
+  form?.addEventListener("change", event => {
+    if (event.target.matches('select[name="searchRegions"]')) enforceSearchRegionLimit(event.target);
+    queueSettingsAutosave(event);
+  });
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
+}
+
+function enforceSearchRegionLimit(select) {
+  const selected = [...select.selectedOptions];
+  if (selected.length <= 3) return;
+  selected.slice(3).forEach(option => { option.selected = false; });
+  showToast("Use at most 3 search regions.");
 }
 
 function syncMacroGoalInputs(form, changed = null) {
@@ -4203,7 +4502,8 @@ function collectSettingsFromForm(form) {
     sodiumMax: number(data.get("micro_sodium_target"), state.settings.sodiumMax),
     saltMax: round(number(data.get("micro_sodium_target"), state.settings.sodiumMax) / 400, 2),
     theme: String(data.get("theme") || "system"),
-    searchRegion: String(data.get("searchRegion") || "world"),
+    searchRegions: normalizeSearchRegions(data.getAll("searchRegions")),
+    searchRegion: normalizeSearchRegions(data.getAll("searchRegions"))[0] || "world",
     databasePreference: String(data.get("databasePreference") || "custom-first"),
     dashboardDensity: "comfortable",
     macroGoalMode: String(data.get("macroGoalMode") || "manual"),
@@ -4243,6 +4543,8 @@ function queueSettingsAutosave(event) {
         setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
         setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
       ]);
+      await updateWeeklySummaryForDate(state.currentDate, state.logs || [], { goalsSnapshot: dayGoal }).catch(console.warn);
+      scheduleReportRecalculationForDate(state.currentDate, { markWeeklyDirty: false });
       const message = document.getElementById("settingsSaveMessage");
       if (message) message.textContent = "Saved automatically.";
     } catch (error) {
@@ -4723,6 +5025,7 @@ async function repeatYesterday() {
     const copy = { ...entry, date: state.currentDate, createdAt: Date.now(), updatedAt: Date.now() };
     await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
   }
+  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
   showToast("Copied yesterday to this day.");
 }
 

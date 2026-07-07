@@ -3244,3 +3244,12 @@ input[type="number"]::-webkit-inner-spin-button {
   background: linear-gradient(135deg, var(--primary), #3b82f6);
   transition: width .2s var(--ease);
 }
+
+/* Report/search optimization pass v34 */
+select[name="searchRegions"] {
+  min-height: 148px;
+  padding: 8px;
+}
+select[name="searchRegions"] option {
+  padding: 6px 8px;
+}
