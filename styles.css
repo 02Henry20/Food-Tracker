@@ -3321,3 +3321,61 @@ input[type="number"]::-webkit-inner-spin-button {
     min-width: 0;
   }
 }
+
+/* NutriPilot v38: foreground region dropdown and progressive search polish */
+@media (min-width: 981px) {
+  .preferences-card {
+    width: 100%;
+    max-width: none;
+  }
+  .preferences-card .form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .preferences-card .region-picker {
+    width: 100%;
+    max-width: none;
+  }
+}
+#settingsForm,
+#settingsForm > .card,
+.preferences-card,
+.preferences-card::before,
+.preferences-card > *,
+.preferences-card label,
+.region-picker {
+  overflow: visible !important;
+}
+.preferences-card {
+  position: relative !important;
+  z-index: 100000 !important;
+}
+.macro-settings-card {
+  position: relative;
+  z-index: 1;
+}
+#settingsForm > .card:not(.preferences-card):not(.macro-settings-card) {
+  position: relative;
+  z-index: 0;
+}
+.region-picker.is-open {
+  position: relative;
+  z-index: 100001 !important;
+}
+.region-picker-menu {
+  z-index: 2147483000 !important;
+}
+@media (min-width: 981px) {
+  .region-picker-menu {
+    width: max(100%, 420px);
+    max-width: min(560px, calc(100vw - 56px));
+  }
+}
+@media (max-width: 560px) {
+  .preferences-card {
+    z-index: 20 !important;
+  }
+  .region-picker-menu {
+    width: 100%;
+    max-width: 100%;
+  }
+}

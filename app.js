@@ -1973,13 +1973,20 @@ async function runFoodSearch(queryText, options = {}) {
   const localResults = searchPersonalLibrary(query);
   const cached = getCachedSearch(query) || [];
   state.searchResults = mergeFoodResults(localResults, cached, query);
-  state.searchFeedback = cached.length ? `Showing ${cached.length} offline database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
+  const cachedCount = cached.length;
+  const localCount = localResults.length;
+  const initialCount = state.searchResults.length;
+  state.searchFeedback = initialCount
+    ? `Showing ${initialCount} local/cache result${initialCount === 1 ? "" : "s"} while searching.`
+    : "Searching database.";
   state.searchLoading = true;
+  if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "local");
   if (options.updateState !== false) renderSearchV2();
 
   if (!navigator.onLine || state.settings.databasePreference === "offline-only") {
     state.searchLoading = false;
     state.searchFeedback = `Offline: ${state.searchResults.length} personal/offline result${state.searchResults.length === 1 ? "" : "s"}.`;
+    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "offline");
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
@@ -1988,11 +1995,13 @@ async function runFoodSearch(queryText, options = {}) {
     const apiResults = await fetchOpenFoodFacts(query);
     setCachedSearch(query, apiResults);
     state.searchResults = mergeFoodResults(localResults, apiResults, query);
-    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
+    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library/cache and Open Food Facts.`;
+    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "api");
     return state.searchResults;
   } catch (error) {
-    state.searchFeedback = cached.length ? "Network search failed, using offline results." : "Network search failed and no offline result was found.";
-    if (!cached.length && !localResults.length) throw error;
+    state.searchFeedback = cachedCount || localCount ? "Network search failed, using local/cache results." : "Network search failed and no offline result was found.";
+    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "error");
+    if (!cachedCount && !localCount) throw error;
     return state.searchResults;
   } finally {
     state.searchLoading = false;
@@ -5154,10 +5163,23 @@ async function handleClick(event) {
           state.keyboardSelection.ingredient = -1;
           root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
         } else {
-          const results = await runFoodSearch(query, { updateState: false });
-          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results };
-          state.keyboardSelection.ingredient = -1;
-          root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
+          const kind = btn.dataset.kind;
+          const id = btn.dataset.id;
+          const publishIngredientResults = (results, phase) => {
+            const list = Array.isArray(results) ? results : [];
+            state.ingredientSearch = { kind, id, query, mode: "food", page: 1, results: list };
+            state.keyboardSelection.ingredient = -1;
+            if (list.length) {
+              root.innerHTML = renderIngredientResultPage(list, kind, id, 1, "food", query);
+            } else if (["local", "offline", "error"].includes(phase)) {
+              root.innerHTML = `<div class="empty-state">${phase === "local" ? "Searching database..." : "No results."}</div>`;
+            }
+          };
+          const results = await runFoodSearch(query, {
+            updateState: false,
+            onIntermediate: publishIngredientResults
+          });
+          publishIngredientResults(results, "final");
         }
       } finally {
         btn.disabled = false;
