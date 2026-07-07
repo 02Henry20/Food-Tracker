@@ -42,8 +42,8 @@ const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const REPORT_CACHE_VERSION = 7;
-const WEEKLY_SUMMARY_VERSION = 3;
-const REPORT_TABLE_LIMIT = 30;
+const WEEK_SUMMARY_VERSION = 2;
+const REPORT_ROW_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
@@ -268,9 +268,7 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
-  weeklySummaryJobs: new Map(),
   dailySummaryJobs: new Map(),
-  logSnapshotSignatures: {},
   targetDetailScroll: {},
   keyboardSelection: { search: -1, ingredient: -1 },
   unsubs: [],
@@ -377,6 +375,27 @@ function reportCacheDoc(key) {
 
 function weeklySummaryDoc(key) {
   return userDoc("weeklySummaries", key);
+}
+
+function weekMetaForDate(dateISO) {
+  const [start, end] = currentWeekRange(dateISO);
+  return { key: `week_${start}_${end}`, start, end };
+}
+
+function weekMetasForRange(startISO, endISO) {
+  const metas = [];
+  const seen = new Set();
+  let cursor = startISO;
+  while (cursor <= endISO) {
+    const meta = weekMetaForDate(cursor);
+    if (!seen.has(meta.key)) {
+      seen.add(meta.key);
+      metas.push(meta);
+    }
+    cursor = addDaysISO(meta.end, 1);
+    if (metas.length > 60) break;
+  }
+  return metas;
 }
 
 function reportPeriodMeta(mode, baseISO = state.currentDate) {
@@ -521,25 +540,15 @@ function mergeSettings(raw = {}) {
   merged.modules = { ...DEFAULT_SETTINGS.modules, ...(source.modules || {}) };
   merged.nutrientVisibility = { ...DEFAULT_SETTINGS.nutrientVisibility, ...(source.nutrientVisibility || {}) };
   merged.micronutrientGoals = { ...structuredClone(MICRO_DEFAULTS), ...(source.micronutrientGoals || {}) };
+  const rawRegions = Array.isArray(source.searchRegions) ? source.searchRegions : [source.searchRegion || "world"];
+  const validRegionValues = new Set(SEARCH_REGIONS.map(([value]) => value));
+  merged.searchRegions = rawRegions.filter(value => validRegionValues.has(value)).slice(0, 3);
+  if (!merged.searchRegions.length) merged.searchRegions = ["world"];
+  merged.searchRegion = merged.searchRegions[0];
   for (const key of Object.keys(MICRO_DEFAULTS)) {
     merged.micronutrientGoals[key] = { ...MICRO_DEFAULTS[key], ...(merged.micronutrientGoals[key] || {}) };
   }
-  merged.searchRegions = normalizeSearchRegions(source.searchRegions || source.searchRegion || merged.searchRegion);
-  merged.searchRegion = merged.searchRegions[0] || "world";
   return merged;
-}
-
-function normalizeSearchRegions(value) {
-  const raw = Array.isArray(value) ? value : String(value || "world").split(",");
-  const valid = new Set(SEARCH_REGIONS.map(([region]) => region));
-  const regions = [];
-  for (const item of raw) {
-    const region = String(item || "").trim();
-    if (!region || !valid.has(region) || regions.includes(region)) continue;
-    regions.push(region);
-    if (regions.length >= 3) break;
-  }
-  return regions.length ? regions : ["world"];
 }
 
 function updateSyncStatus(partial = {}) {
@@ -632,53 +641,24 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     const snap = await getDocs(entryCollection(dateISO));
     summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
   }
-  await ensureDailyGoalSnapshot(dateISO);
   const total = addNutrients(summaryEntries || []);
-  const goalsSnapshot = goalSnapshotFromSettings(effectiveGoalsForDate(dateISO));
-  goalsSnapshot.savedForDate = dateISO;
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
   for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
-  const dailySummary = cleanForFirestore({
+  writeLocal(`dailySummary:${dateISO}`, {
     date: dateISO,
-    uid: state.user.uid,
-    app: "NutriPilot",
     totalKcal: round(total.kcal, 0),
     protein: round(total.protein, 1),
     carbs: round(total.carbs, 1),
     fat: round(total.fat, 1),
     fiber: round(total.fiber, 1),
     meals: byMeal,
-    goalsSnapshot,
     itemCount: summaryEntries?.length || 0,
-    hasEntries: !!summaryEntries?.length,
-    entrySignature: logEntriesSignature(summaryEntries || []),
     updatedAt: Date.now()
   });
-  writeLocal(`dailySummary:${dateISO}`, dailySummary);
-  if (options.invalidateReports !== false) {
-    await updateWeeklySummaryForDate(dateISO, summaryEntries || [], { goalsSnapshot, dailySummary }).catch(console.warn);
-    await removeLegacyDailyCalorieSummary(dateISO).catch(console.warn);
-    scheduleReportRecalculationForDate(dateISO, { markWeeklyDirty: false });
-  }
+  if (options.invalidateReports !== false) scheduleReportRecalculationForDate(dateISO);
 }
 
-async function removeLegacyDailyCalorieSummary(dateISO) {
-  if (!state.user || !dateISO) return;
-  try {
-    await deleteDoc(dailyCaloriesDoc(dateISO));
-  } catch (error) {
-    if (error?.code !== "not-found") console.warn("Legacy daily calorie summary cleanup failed.", error);
-  }
-}
-
-async function readDaySummaryFromWeekly(dateISO) {
-  if (!state.user || !dateISO) return readLocal(`dailySummary:${dateISO}`, null);
-  const meta = weekMetaForDate(dateISO);
-  const weekly = await readWeeklySummary(meta);
-  return weekly?.days?.[dateISO] || readLocal(`dailySummary:${dateISO}`, null);
-}
-
-function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
+function queueDailySummaryUpdate(dateISO, entries = null, delay = 220) {
   if (!state.user || !dateISO) return;
   const existing = state.dailySummaryJobs.get(dateISO);
   if (existing?.timeout) clearTimeout(existing.timeout);
@@ -687,7 +667,7 @@ function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options =
     const job = state.dailySummaryJobs.get(dateISO);
     if (!job || job.token !== token) return;
     try {
-      await updateDailyCalorieSummary(dateISO, entries, options);
+      await updateDailyCalorieSummary(dateISO, entries);
     } catch (error) {
       console.warn("Daily summary background update failed.", error);
     } finally {
@@ -946,13 +926,6 @@ function subscribeUserData() {
   subscribeLogsForCurrentDate();
 }
 
-function logEntriesSignature(entries = []) {
-  return (entries || [])
-    .map(entry => `${entry.id || ""}:${number(entry.updatedAt) || number(entry.createdAt)}:${round(entry.nutrientsSnapshot?.kcal, 2)}:${entry.meal || ""}`)
-    .sort()
-    .join("|");
-}
-
 function subscribeLogsForCurrentDate() {
   if (state.unsubLogs) state.unsubLogs();
   if (state.unsubDailyGoal) state.unsubDailyGoal();
@@ -972,12 +945,7 @@ function subscribeLogsForCurrentDate() {
     if (state.currentDate !== dateISO) return;
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
     writeLocal(`logs:${dateISO}`, state.logs);
-    const signature = logEntriesSignature(state.logs);
-    const previousSignature = state.logSnapshotSignatures?.[dateISO] || readLocal(`logSignature:${dateISO}`, "") || "";
-    const shouldInvalidateReports = !!previousSignature && previousSignature !== signature;
-    state.logSnapshotSignatures[dateISO] = signature;
-    writeLocal(`logSignature:${dateISO}`, signature);
-    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: shouldInvalidateReports }).catch(console.warn);
+    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: false }).catch(console.warn);
     if (state.route === "today") renderToday();
   }, error => {
     console.warn("Log snapshot failed; local cache remains active.", error);
@@ -1384,16 +1352,21 @@ function addRecentSearch(queryText) {
   markSearchStateSaved();
 }
 
+function selectedSearchRegions(settings = state.settings) {
+  const values = Array.isArray(settings.searchRegions) ? settings.searchRegions : [settings.searchRegion || "world"];
+  const valid = new Set(SEARCH_REGIONS.map(([value]) => value));
+  const out = values.filter(value => valid.has(value)).slice(0, 3);
+  return out.length ? out : ["world"];
+}
+
 function openFoodFactsHosts(settings = state.settings) {
-  const selected = normalizeSearchRegions(settings.searchRegions || settings.searchRegion || "world");
-  const hosts = selected
-    .map(region => SEARCH_REGIONS.find(([value]) => value === region)?.[2])
-    .filter(Boolean);
-  return hosts.length ? [...new Set(hosts)].slice(0, 3) : ["world.openfoodfacts.org"];
+  const selected = selectedSearchRegions(settings);
+  const hostMap = new Map(SEARCH_REGIONS.map(([value, , host]) => [value, host]));
+  return [...new Set(selected.map(value => hostMap.get(value) || "world.openfoodfacts.org"))];
 }
 
 function openFoodFactsHost() {
-  return openFoodFactsHosts()[0];
+  return openFoodFactsHosts()[0] || "world.openfoodfacts.org";
 }
 
 function mergeFoodResults(localResults, apiResults, queryText = "") {
@@ -1746,7 +1719,6 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `<button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1768,12 +1740,6 @@ function renderFoodResultCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `
-          <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
-          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
-        ` : ""}
       </div>
     </div>
   `;
@@ -1804,6 +1770,14 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
+        ${food.source === "custom" && food.id ? `
+          <div class="inline-actions food-detail-actions">
+            <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
+            <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+            <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
+            <button class="danger-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
+          </div>
+        ` : ""}
       </div>
     </div>
   `);
@@ -1934,40 +1908,35 @@ async function getOpenFoodFactsByBarcode(barcode) {
   showToast(`Found ${displayFoodName(food)}.`);
 }
 
-async function fetchOpenFoodFactsFromHost(host, queryText, pageSize) {
-  const url = new URL(`https://${host}/cgi/search.pl`);
-  url.searchParams.set("search_terms", queryText);
-  url.searchParams.set("search_simple", "1");
-  url.searchParams.set("action", "process");
-  url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", String(pageSize));
-  url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
-  const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-  if (!res.ok) throw new Error(`Open Food Facts search failed for ${host}.`);
-  const data = await res.json();
-  return (data.products || [])
-    .map(normalizeOpenFoodFactsProduct)
-    .filter(Boolean)
-    .filter(food => food.nutrientsPer100g.kcal > 0);
-}
-
 async function fetchOpenFoodFacts(queryText) {
   const queryTextTrimmed = queryText.trim();
   if (!queryTextTrimmed) return [];
   const hosts = openFoodFactsHosts();
-  const pageSize = Math.max(20, Math.ceil(API_SEARCH_RESULT_LIMIT / hosts.length));
-  const settled = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(host, queryTextTrimmed, pageSize)));
-  const results = [];
-  for (const outcome of settled) {
-    if (outcome.status === "fulfilled") results.push(...outcome.value);
-  }
-  if (!results.length && settled.some(outcome => outcome.status === "rejected")) throw new Error("Open Food Facts search failed.");
-  const map = new Map();
+  const fetchFromHost = async host => {
+    const url = new URL(`https://${host}/cgi/search.pl`);
+    url.searchParams.set("search_terms", queryTextTrimmed);
+    url.searchParams.set("search_simple", "1");
+    url.searchParams.set("action", "process");
+    url.searchParams.set("json", "1");
+    url.searchParams.set("page_size", String(Math.max(20, Math.ceil(API_SEARCH_RESULT_LIMIT / Math.max(1, hosts.length)))));
+    url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+    const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+    if (!res.ok) throw new Error(`Open Food Facts search failed for ${host}.`);
+    const data = await res.json();
+    return (data.products || [])
+      .map(normalizeOpenFoodFactsProduct)
+      .filter(Boolean)
+      .filter(food => food.nutrientsPer100g.kcal > 0);
+  };
+  const settled = await Promise.allSettled(hosts.map(fetchFromHost));
+  const results = settled.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  if (!results.length && settled.some(result => result.status === "rejected")) throw settled.find(result => result.status === "rejected").reason;
+  const deduped = new Map();
   for (const food of results) {
     const key = foodIdentity(food);
-    if (!map.has(key)) map.set(key, food);
+    if (!deduped.has(key)) deduped.set(key, food);
   }
-  return [...map.values()].slice(0, API_SEARCH_RESULT_LIMIT);
+  return [...deduped.values()].slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
 async function runFoodSearch(queryText, options = {}) {
@@ -2056,21 +2025,13 @@ async function lookupBarcodeCached(barcode, options = {}) {
     return cached;
   }
   if (!navigator.onLine) throw new Error("No offline barcode result is available.");
-  let food = null;
-  for (const host of openFoodFactsHosts()) {
-    try {
-      const url = `https://${host}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
-      const res = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (!data.product) continue;
-      food = normalizeOpenFoodFactsProduct(data.product);
-      if (food) break;
-    } catch (error) {
-      console.warn("Barcode lookup host failed.", host, error);
-    }
-  }
-  if (!food) throw new Error("No product found for this barcode in the selected regions.");
+  const url = `https://${openFoodFactsHost()}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("Barcode lookup failed.");
+  const data = await res.json();
+  if (!data.product) throw new Error("No product found for this barcode.");
+  const food = normalizeOpenFoodFactsProduct(data.product);
+  if (!food) throw new Error("Product found, but nutrition data is incomplete.");
   setCachedBarcode(cleanBarcode, food);
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
@@ -2213,19 +2174,24 @@ function servingDisplayName(serving = {}) {
   return String(serving.label || serving.unit || "serving").trim() || "serving";
 }
 
-function isGramBasedServing(serving = {}) {
-  const label = normalizeSearchText(`${serving.label || ""} ${serving.unit || ""}`);
-  return serving.mode === "grams" || serving.unit === "g" || /^\d+(?:[.,]\d+)?\s*g(?:rams?)?$/.test(label) || label === "g" || label === "gram" || label === "grams";
+function isGramServing(serving = {}) {
+  const label = normalizeSearchText(servingDisplayName(serving));
+  const unit = normalizeSearchText(serving.unit || "");
+  return serving.mode === "grams" || unit === "g" || unit === "gram" || unit === "grams" || /(^|\s)g$/.test(label) || label.includes("gram");
 }
 
-function preferredServingSelection(food, servingOptions = buildServingOptions(food)) {
-  const defaultServing = food?.defaultServing || food?.servingOptions?.[0] || null;
-  if (defaultServing && isGramBasedServing(defaultServing)) {
-    return { index: 0, amount: number(defaultServing.grams, 100) || 100 };
+function defaultServingSelection(food) {
+  const options = buildServingOptions(food);
+  const explicitDefault = food?.defaultServing || food?.servingOptions?.[0] || null;
+  if (explicitDefault && !isGramServing(explicitDefault)) {
+    const defaultName = normalizeSearchText(servingDisplayName(explicitDefault));
+    const exactNonGramIndex = options.findIndex(option => !isGramServing(option) && normalizeSearchText(servingDisplayName(option)) === defaultName);
+    if (exactNonGramIndex >= 0) return { index: exactNonGramIndex, amount: 1, grams: number(options[exactNonGramIndex].grams, 1) };
+    const firstNonGramIndex = options.findIndex(option => !isGramServing(option));
+    if (firstNonGramIndex >= 0) return { index: firstNonGramIndex, amount: 1, grams: number(options[firstNonGramIndex].grams, 1) };
   }
-  const nonGramIndex = servingOptions.findIndex(option => option.mode !== "grams" && !isGramBasedServing(option));
-  if (nonGramIndex >= 0) return { index: nonGramIndex, amount: 1 };
-  return { index: 0, amount: number(defaultServing?.grams, 100) || 100 };
+  const grams = number(explicitDefault?.grams, 100) || 100;
+  return { index: 0, amount: grams, grams };
 }
 
 function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex") {
@@ -2241,12 +2207,10 @@ function bindServingAmountDefaults(form, food) {
   if (!form || !food) return;
   const amountInput = form.elements.amount;
   const select = form.elements.unitIndex;
-  const servingOptions = buildServingOptions(food);
   const applyDefault = () => {
-    const serving = servingOptions[number(select?.value)] || servingOptions[0];
+    const serving = buildServingOptions(food)[number(select?.value)] || buildServingOptions(food)[0];
     if (!amountInput || document.activeElement === amountInput) return;
-    amountInput.value = serving?.mode === "grams" ? number(food.defaultServing?.grams, 100) || 100 : 1;
-    if (serving?.mode !== "grams") amountInput.value = 1;
+    amountInput.value = serving?.mode === "grams" ? number(food?.defaultServing?.grams, 100) || 100 : 1;
   };
   select?.addEventListener("change", applyDefault);
 }
@@ -2256,7 +2220,7 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
-  const preferredServing = preferredServingSelection(food, servingOptions);
+  const defaultServing = defaultServingSelection(food);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2264,10 +2228,10 @@ function openLogFoodModal(food) {
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${preferredServing.amount}" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${round(defaultServing.amount, 2)}" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -2366,6 +2330,7 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
   showToast("Food logged.");
   ensureFoodInPersonalLibrary(food, { incrementUsage: true }).catch(console.warn);
   queueDailySummaryUpdate(dateISO);
+  scheduleReportRecalculationForDate(dateISO);
 }
 
 function renderRecipes() {
@@ -2809,10 +2774,9 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const preferredServing = isRecipePortion ? { index: 0, amount: 1 } : preferredServingSelection(food, servingOptions);
-  const defaultAmount = preferredServing.amount;
-  const defaultSelected = servingOptions[preferredServing.index] || servingOptions[0];
-  const defaultGrams = isRecipePortion ? null : (defaultSelected?.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected?.grams, 1));
+  const defaultServing = isRecipePortion ? { index: 0, amount: 1, grams: null } : defaultServingSelection(food);
+  const defaultAmount = defaultServing.amount;
+  const defaultGrams = isRecipePortion ? null : defaultServing.grams;
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head">
@@ -2824,7 +2788,7 @@ function openIngredientAmountModal(food, kind, id) {
           <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === preferredServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -2848,7 +2812,7 @@ function openIngredientAmountModal(food, kind, id) {
   form?.elements.unitIndex?.addEventListener("change", () => {
     if (!isRecipePortion && form.elements.amount && document.activeElement !== form.elements.amount) {
       const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
-      form.elements.amount.value = selected.mode === "grams" ? number(food.defaultServing?.grams, 100) || 100 : 1;
+      form.elements.amount.value = selected.mode === "grams" ? 100 : 1;
     }
     updatePreview();
   });
@@ -2862,10 +2826,10 @@ function openIngredientAmountModal(food, kind, id) {
     form.dataset.submitting = "true";
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), defaultAmount);
-    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[preferredServing.index] || servingOptions[0];
-    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
     const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
     const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
     resetIngredientSearch(kind, id);
     openIngredientModal(kind, id, { restore: false });
@@ -3160,73 +3124,30 @@ function openLogRecipeModal(recipe, returnTarget = null) {
     event.preventDefault();
     const form = event.currentTarget;
     if (form.dataset.submitting === "true") return;
+    setFormSubmitting(form, true);
     const data = new FormData(form);
     const amount = number(data.get("amount"), 1);
-    const dateISO = data.get("date");
-    setSubmitButtonsBusy(form, true, "Logging...");
-    try {
-      const createdAt = Date.now();
-      const nutrientsSnapshot = scaleNutrients(perPortion, amount);
-      const entry = {
-        itemType: "recipe",
-        itemId: recipe.id,
-        nameSnapshot: recipe.name,
-        amount,
-        unit: "portion",
-        meal: data.get("meal"),
-        date: dateISO,
-        nutrientsSnapshot,
-        itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
-        createdAt,
-        updatedAt: createdAt
-      };
-      await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
-      await incrementFoodUsageForTargetItems(recipe.ingredients || []);
-      await updateDailyCalorieSummary(dateISO).catch(console.warn);
-      closeModal();
-      if (returnTarget) renderRecipes();
-      showToast("Recipe logged.");
-    } catch (error) {
-      setSubmitButtonsBusy(form, false);
-      showError(error);
-    }
-  });
-}
-
-
-function loggedMealsetItemEntry(item, multiplier, meal, dateISO, mealset, createdAt) {
-  const entryType = item.itemType === "recipe" ? "recipe" : "food";
-  const baseAmount = number(item.amount ?? item.grams, 1) || 1;
-  const amount = baseAmount * multiplier;
-  const gramsEquivalent = item.grams || item.gramsEquivalent ? number(item.grams ?? item.gramsEquivalent) * multiplier : null;
-  const nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, multiplier);
-  const itemSnapshot = cloneSnapshot({
-    ...item,
-    itemType: entryType,
-    amount,
-    grams: gramsEquivalent,
-    gramsEquivalent,
-    nutrientsSnapshot,
-    parentMealset: { id: mealset.id || null, name: mealset.name || "Mealset" },
-    loggedAt: createdAt
-  });
-  return cleanForFirestore({
-    itemType: entryType,
-    itemId: item.itemId || item.id || null,
-    source: item.source || entryType,
-    nameSnapshot: item.nameSnapshot || item.name || "Mealset item",
-    brandSnapshot: item.brandSnapshot || item.brand || null,
-    amount,
-    unit: item.unit || (gramsEquivalent ? "g" : "serving"),
-    gramsEquivalent,
-    meal,
-    date: dateISO,
-    nutrientsSnapshot,
-    itemSnapshot,
-    parentMealsetId: mealset.id || null,
-    parentMealsetName: mealset.name || "Mealset",
-    createdAt,
-    updatedAt: createdAt
+    const createdAt = Date.now();
+    const nutrientsSnapshot = scaleNutrients(perPortion, amount);
+    const entry = {
+      itemType: "recipe",
+      itemId: recipe.id,
+      nameSnapshot: recipe.name,
+      amount,
+      unit: "portion",
+      meal: data.get("meal"),
+      date: data.get("date"),
+      nutrientsSnapshot,
+      itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
+      createdAt,
+      updatedAt: createdAt
+    };
+    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await incrementFoodUsageForTargetItems(recipe.ingredients || []);
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
+    closeModal();
+    if (returnTarget) renderRecipes();
+    showToast("Recipe logged.");
   });
 }
 
@@ -3251,25 +3172,61 @@ function openLogMealsetModal(mealset, returnTarget = null) {
     event.preventDefault();
     const form = event.currentTarget;
     if (form.dataset.submitting === "true") return;
-    const data = new FormData(form);
-    const amount = number(data.get("amount"), 1);
-    const meal = data.get("meal");
-    const dateISO = data.get("date");
-    const items = mealset.items || [];
-    if (!items.length) throw new Error("This mealset has no items to log.");
-    setSubmitButtonsBusy(form, true, "Logging...");
+    setFormSubmitting(form, true);
     try {
+      const data = new FormData(form);
+      const amount = number(data.get("amount"), 1);
+      const meal = data.get("meal");
+      const dateISO = data.get("date");
       const createdAt = Date.now();
-      for (const [index, item] of items.entries()) {
-        await addDoc(entryCollection(dateISO), loggedMealsetItemEntry(item, amount, meal, dateISO, mealset, createdAt + index));
+      const items = mealset.items || [];
+      if (!items.length) {
+        const nutrientsSnapshot = scaleNutrients(total, amount);
+        await addDoc(entryCollection(dateISO), cleanForFirestore({
+          itemType: "mealset",
+          itemId: mealset.id,
+          nameSnapshot: mealset.name,
+          amount,
+          unit: "mealset",
+          meal,
+          date: dateISO,
+          nutrientsSnapshot,
+          itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
+          createdAt,
+          updatedAt: createdAt
+        }));
+      } else {
+        await Promise.all(items.map((item, index) => {
+          const itemAmount = number(item.amount, 1) * amount;
+          const gramsEquivalent = item.grams ? number(item.grams) * amount : (item.unit === "g" ? itemAmount : null);
+          const nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, amount);
+          return addDoc(entryCollection(dateISO), cleanForFirestore({
+            itemType: item.itemType || "food",
+            itemId: item.itemId || null,
+            source: item.source || null,
+            sourceId: item.sourceId || null,
+            barcode: item.barcode || null,
+            nameSnapshot: item.nameSnapshot || mealset.name,
+            brandSnapshot: item.brandSnapshot || null,
+            amount: itemAmount,
+            unit: item.unit || "serving",
+            gramsEquivalent,
+            meal,
+            date: dateISO,
+            nutrientsSnapshot,
+            itemSnapshot: cloneSnapshot({ ...item, amount: itemAmount, grams: gramsEquivalent, nutrientsSnapshot, loggedFromMealset: mealset.id }),
+            createdAt: createdAt + index,
+            updatedAt: createdAt + index
+          }));
+        }));
       }
       await incrementFoodUsageForTargetItems(items);
       await updateDailyCalorieSummary(dateISO).catch(console.warn);
       closeModal();
       if (returnTarget) renderRecipes();
-      showToast(`Mealset logged as ${items.length} separate item${items.length === 1 ? "" : "s"}.`);
+      showToast(items.length ? "Mealset items logged separately." : "Mealset logged.");
     } catch (error) {
-      setSubmitButtonsBusy(form, false);
+      setFormSubmitting(form, false);
       showError(error);
     }
   });
@@ -3304,52 +3261,6 @@ function renderReportsShell() {
   setTimeout(() => loadReport().catch(showError), 0);
 }
 
-function reportProgressHTML(mode, current = 0, total = 1, label = "Preparing report...", detail = "") {
-  const safeTotal = Math.max(1, number(total, 1));
-  const safeCurrent = Math.min(safeTotal, Math.max(0, number(current)));
-  const pct = Math.round(safeCurrent / safeTotal * 100);
-  return `
-    <div class="card report-progress-card">
-      <h3>${safeText(label)}</h3>
-      <p>${safeText(detail || `${mode} report is being calculated and saved to Firebase.`)}</p>
-      <div class="report-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
-        <span style="width:${pct}%"></span>
-      </div>
-      <span class="kicker">${pct}% · ${safeCurrent}/${safeTotal}</span>
-    </div>
-  `;
-}
-
-function showReportProgress(progress = {}) {
-  const output = document.getElementById("reportOutput");
-  if (!output) return;
-  output.innerHTML = reportProgressHTML(
-    progress.mode || state.reportMode || "report",
-    progress.current,
-    progress.total,
-    progress.label,
-    progress.detail
-  );
-}
-
-function compactGoalSnapshotForReport(settings = state.settings) {
-  const macros = effectiveMacroGoals(settings);
-  return {
-    calorieGoal: number(settings.calorieGoal, DEFAULT_SETTINGS.calorieGoal),
-    proteinGoal: number(macros.proteinGoal),
-    carbsGoal: number(macros.carbsGoal),
-    fatGoal: number(macros.fatGoal),
-    macroGoalMode: "manual"
-  };
-}
-
-function capReportRows(rows = [], key = "kcal", limit = REPORT_TABLE_LIMIT) {
-  const dir = key === "name" ? 1 : -1;
-  return [...(rows || [])]
-    .sort((a, b) => compareReportValue(a, b, key) * dir || compareReportValue(a, b, "kcal") * -1 || String(a.name || "").localeCompare(String(b.name || "")))
-    .slice(0, limit);
-}
-
 async function loadReport() {
   const [start, end] = state.reportRange || periodRange();
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
@@ -3364,14 +3275,9 @@ async function loadReport() {
     return cached;
   }
 
-  showReportProgress({
-    mode: meta.mode,
-    current: 0,
-    total: dateRange(start, end).length,
-    label: `Calculating ${meta.mode} report...`,
-    detail: "No valid Firebase cache found, or the cache was marked dirty after diary changes."
-  });
-  const data = await calculateAndStoreReportCache(meta, { force: true, onProgress: showReportProgress });
+  const output = document.getElementById("reportOutput");
+  if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report once and saving it to Firebase...</div>`;
+  const data = await calculateAndStoreReportCache(meta, { force: true });
   applyReportGoalsFromData(data);
   state.reportEntries = data.entries || [];
   state.reportData = data;
@@ -3397,8 +3303,6 @@ async function readReportCache(meta) {
 function normalizeReportData(data = {}) {
   const dates = data.dates || dateRange(data.start, data.end);
   const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
-  const legacyFlatRows = data.flatRows || [];
-  const legacyFoodRows = legacyFlatRows.length ? foodFrequencyRowsFromFlatRows(legacyFlatRows) : [];
   return {
     ...data,
     dates,
@@ -3406,10 +3310,8 @@ function normalizeReportData(data = {}) {
     entries: data.entries || [],
     byDate,
     total: normalizeNutrients(data.total || {}),
-    flatRows: [],
-    foodRows: (data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
-    topSourceRows: (data.topSourceRows || data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
-    frequencyRows: (data.frequencyRows || data.foodRows || legacyFoodRows).slice(0, REPORT_TABLE_LIMIT),
+    flatRows: data.flatRows || [],
+    foodRows: data.foodRows || null,
     goalsByDate: data.goalsByDate || {}
   };
 }
@@ -3431,215 +3333,104 @@ function flatRowsFromReportEntries(entries = []) {
   })));
 }
 
-function weekMetaForDate(dateISO) {
-  const [start, end] = currentWeekRange(dateISO);
-  return { mode: "week", start, end, key: reportCacheKey("week", start, end) };
-}
-
-function weekMetasForRange(startISO, endISO) {
-  const metas = [];
-  const seen = new Set();
-  for (const dateISO of dateRange(startISO, endISO)) {
-    const meta = weekMetaForDate(dateISO);
-    if (seen.has(meta.key)) continue;
-    seen.add(meta.key);
-    metas.push(meta);
-  }
-  return metas;
-}
-
-function dayReportSummaryFromEntries(dateISO, entries = [], goalsSnapshot = null) {
-  const cleanEntries = entries || [];
-  const total = addNutrients(cleanEntries);
-  const flatRows = flatRowsFromReportEntries(cleanEntries);
-  return cleanForFirestore({
-    date: dateISO,
-    hasEntries: cleanEntries.length > 0,
-    entryCount: cleanEntries.length,
-    entrySignature: logEntriesSignature(cleanEntries),
-    total,
-    foodRows: foodFrequencyRowsFromFlatRows(flatRows),
-    goalsSnapshot: goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings),
-    updatedAt: Date.now()
-  });
-}
-
-function mergeReportFoodRows(rowGroups = []) {
-  const map = new Map();
-  for (const rows of rowGroups) {
-    for (const row of rows || []) {
-      const key = normalizeSearchText(`${row.name}|${row.brand || ""}`);
-      const current = map.get(key) || { name: row.name || "Unnamed", count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: row.brand || "" };
-      current.count += number(row.count);
-      current.grams += number(row.grams);
-      current.kcal += number(row.kcal);
-      current.protein += number(row.protein);
-      current.carbs += number(row.carbs);
-      current.fat += number(row.fat);
-      map.set(key, current);
-    }
-  }
-  return [...map.values()].sort((a, b) => b.kcal - a.kcal || b.count - a.count || String(a.name || "").localeCompare(String(b.name || "")));
-}
-
-function weeklySummaryFromDays(meta, days = {}) {
-  const dates = dateRange(meta.start, meta.end);
-  const keptDays = {};
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  const goalsByDate = {};
-  const foodGroups = [];
-  const dayEntrySignatures = {};
-  let entryCount = 0;
-  for (const dateISO of dates) {
-    const day = days?.[dateISO];
-    if (!day?.hasEntries) continue;
-    const total = normalizeNutrients(day.total || {});
-    keptDays[dateISO] = {
-      ...day,
-      total,
-      foodRows: day.foodRows || [],
-      goalsSnapshot: day.goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings)
-    };
-    byDate[dateISO] = total;
-    goalsByDate[dateISO] = keptDays[dateISO].goalsSnapshot;
-    dayEntrySignatures[dateISO] = keptDays[dateISO].entrySignature || "";
-    foodGroups.push(keptDays[dateISO].foodRows || []);
-    entryCount += number(day.entryCount);
-  }
-  const activeDates = Object.keys(keptDays).sort();
-  const isEmpty = activeDates.length === 0;
-  return cleanForFirestore({
-    version: WEEKLY_SUMMARY_VERSION,
-    key: meta.key,
-    mode: "week",
-    start: meta.start,
-    end: meta.end,
-    dates,
-    activeDates,
-    days: keptDays,
-    byDate,
-    total: addNutrients(activeDates.map(dateISO => ({ nutrientsSnapshot: keptDays[dateISO].total }))),
-    foodRows: mergeReportFoodRows(foodGroups),
-    goalsByDate,
-    dayEntrySignatures,
-    isEmpty,
-    empty: isEmpty,
-    dirty: false,
-    generatedAt: Date.now(),
-    sourceEntryCount: entryCount
-  });
-}
-
 async function readWeeklySummary(meta) {
   if (!state.user || !meta?.key) return null;
   try {
     const snap = await getDoc(weeklySummaryDoc(meta.key));
     if (!snap.exists()) return null;
     const data = snap.data();
-    if (data?.dirty || data?.version !== WEEKLY_SUMMARY_VERSION) return null;
-    if (data.start !== meta.start || data.end !== meta.end) return null;
+    if (data?.dirty || data?.version !== WEEK_SUMMARY_VERSION || data.start !== meta.start || data.end !== meta.end) return null;
     return data;
   } catch (error) {
-    console.warn("Weekly summary read failed; rebuilding this week.", error);
+    console.warn("Weekly summary read failed; rebuilding.", error);
     return null;
   }
 }
 
-async function buildWeeklySummaryData(meta, options = {}) {
+async function buildWeeklySummary(meta, options = {}) {
+  if (!options.force) {
+    const cached = await readWeeklySummary(meta);
+    if (cached) return cached;
+  }
   const dates = dateRange(meta.start, meta.end);
-  const days = {};
-  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
-  for (const [index, dateISO] of dates.entries()) {
+  const entries = [];
+  const goalsByDate = {};
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  for (const dateISO of dates) {
     const snap = await getDocs(entryCollection(dateISO));
-    const entries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
-    if (entries.length) {
+    if (!snap.empty) {
       await loadDailyGoalForDate(dateISO);
-      const goalsSnapshot = compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
-      days[dateISO] = dayReportSummaryFromEntries(dateISO, entries, goalsSnapshot);
+      goalsByDate[dateISO] = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
+      snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
     }
-    progress?.({
-      mode: options.mode || meta.mode || "week",
-      current: number(options.baseProgress) + index + 1,
-      total: number(options.totalProgress, dates.length),
-      label: options.label || "Updating weekly summaries...",
-      detail: entries.length ? `Loaded ${dateISO}; ${entries.length} entries.` : `Marked ${dateISO} as empty.`
-    });
   }
-  return weeklySummaryFromDays(meta, days);
-}
-
-async function ensureWeeklySummary(meta, options = {}) {
-  const cached = options.force ? null : await readWeeklySummary(meta);
-  if (cached) {
-    if (cached.isEmpty || cached.empty || !number(cached.sourceEntryCount)) {
-      options.onProgress?.({
-        mode: options.mode || meta.mode || "week",
-        current: number(options.baseProgress) + 7,
-        total: number(options.totalProgress, 7),
-        label: options.label || "Preparing report...",
-        detail: `Reused empty week ${meta.start} to ${meta.end}; no daily entry reads needed.`
-      });
-    }
-    return cached;
-  }
-  const data = await buildWeeklySummaryData(meta, options);
+  for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const flatRows = flatRowsFromReportEntries(entries);
+  const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
+  const data = cleanForFirestore({
+    version: WEEK_SUMMARY_VERSION,
+    key: meta.key,
+    start: meta.start,
+    end: meta.end,
+    dates,
+    activeDates: reportActiveDates(entries, dates),
+    entries,
+    byDate,
+    total: addNutrients(entries),
+    flatRows,
+    foodRows,
+    goalsByDate,
+    isEmpty: entries.length === 0,
+    empty: entries.length === 0,
+    dirty: false,
+    generatedAt: Date.now(),
+    sourceEntryCount: entries.length
+  });
   if (state.user) await setDoc(weeklySummaryDoc(meta.key), data, { merge: false });
   return data;
 }
 
-async function updateWeeklySummaryForDate(dateISO, entries = null, options = {}) {
-  if (!state.user || !dateISO) return null;
-  const meta = weekMetaForDate(dateISO);
-  let summaryEntries = entries;
-  if (!summaryEntries) {
-    const snap = await getDocs(entryCollection(dateISO));
-    summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+function mergeFoodRows(rowSets = []) {
+  const map = new Map();
+  for (const row of rowSets.flat()) {
+    const key = normalizeSearchText(`${row.name}|${row.brand}`);
+    const current = map.get(key) || { name: row.name, count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: row.brand || "" };
+    current.count += number(row.count);
+    current.grams += number(row.grams);
+    current.kcal += number(row.kcal);
+    current.protein += number(row.protein);
+    current.carbs += number(row.carbs);
+    current.fat += number(row.fat);
+    map.set(key, current);
   }
-  let current = null;
-  try {
-    const snap = await getDoc(weeklySummaryDoc(meta.key));
-    if (snap.exists()) {
-      const data = snap.data();
-      if (data?.version === WEEKLY_SUMMARY_VERSION && data?.days) current = data;
-    }
-  } catch (error) {
-    console.warn("Could not read weekly summary before updating one day.", error);
-  }
-  if (!current) {
-    const rebuilt = await buildWeeklySummaryData(meta);
-    await setDoc(weeklySummaryDoc(meta.key), rebuilt, { merge: false });
-    return rebuilt;
-  }
-  const days = { ...(current.days || {}) };
-  if (summaryEntries.length) {
-    const goalsSnapshot = options.goalsSnapshot || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
-    days[dateISO] = dayReportSummaryFromEntries(dateISO, summaryEntries, goalsSnapshot);
-  } else {
-    delete days[dateISO];
-  }
-  const next = weeklySummaryFromDays(meta, days);
-  await setDoc(weeklySummaryDoc(meta.key), next, { merge: false });
-  return next;
+  return [...map.values()];
 }
 
-function combineWeeklySummariesForReport(meta, weeklySummaries = []) {
+async function buildReportData(meta) {
   const dates = dateRange(meta.start, meta.end);
-  const dateSet = new Set(dates);
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const entries = [];
   const goalsByDate = {};
-  const foodGroups = [];
-  let entryCount = 0;
-  for (const week of weeklySummaries || []) {
-    for (const [dateISO, day] of Object.entries(week.days || {})) {
-      if (!dateSet.has(dateISO) || !day?.hasEntries) continue;
-      byDate[dateISO] = normalizeNutrients(day.total || {});
-      goalsByDate[dateISO] = day.goalsSnapshot || week.goalsByDate?.[dateISO] || compactGoalSnapshotForReport(state.dailyGoals?.[dateISO] || state.settings);
-      foodGroups.push(day.foodRows || []);
-      entryCount += number(day.entryCount);
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const weekSummaries = [];
+  const output = document.getElementById("reportOutput");
+  const weekMetas = weekMetasForRange(meta.start, meta.end);
+  for (let i = 0; i < weekMetas.length; i += 1) {
+    if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report... week ${i + 1} of ${weekMetas.length}</div>`;
+    const week = await buildWeeklySummary(weekMetas[i]);
+    weekSummaries.push(week);
+    for (const entry of week.entries || []) {
+      if (entry.date >= meta.start && entry.date <= meta.end) entries.push(entry);
+    }
+    for (const [date, nutrients] of Object.entries(week.byDate || {})) {
+      if (date >= meta.start && date <= meta.end) byDate[date] = normalizeNutrients(nutrients);
+    }
+    for (const [date, goal] of Object.entries(week.goalsByDate || {})) {
+      if (date >= meta.start && date <= meta.end) goalsByDate[date] = goal;
     }
   }
-  const activeDates = dates.filter(dateISO => number(byDate[dateISO]?.kcal) || goalsByDate[dateISO]);
-  const allFoodRows = mergeReportFoodRows(foodGroups);
+  const flatRows = flatRowsFromReportEntries(entries);
+  const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
+  const topFoodRows = [...foodRows].sort((a, b) => b.kcal - a.kcal).slice(0, REPORT_ROW_LIMIT);
   return cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
@@ -3647,80 +3438,46 @@ function combineWeeklySummariesForReport(meta, weeklySummaries = []) {
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates,
-    entries: [],
+    activeDates: reportActiveDates(entries, dates),
+    entries: meta.mode === "week" ? entries : [],
     byDate,
-    total: addNutrients(activeDates.map(dateISO => ({ nutrientsSnapshot: byDate[dateISO] }))),
-    foodRows: capReportRows(allFoodRows, "kcal"),
-    topSourceRows: capReportRows(allFoodRows, "kcal"),
-    frequencyRows: capReportRows(allFoodRows, "count"),
+    total: addNutrients(entries),
+    flatRows: meta.mode === "week" ? flatRows : [],
+    foodRows: topFoodRows,
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
-    sourceEntryCount: entryCount,
-    sourceWeekCount: weeklySummaries.length,
-    emptyWeekCount: weeklySummaries.filter(week => week?.isEmpty || week?.empty || !number(week?.sourceEntryCount)).length,
-    storedRowLimit: REPORT_TABLE_LIMIT
+    sourceEntryCount: entries.length,
+    sourceWeekCount: weekSummaries.length
   });
 }
 
-async function buildReportData(meta, options = {}) {
-  const weeks = weekMetasForRange(meta.start, meta.end);
-  const progress = typeof options.onProgress === "function" ? options.onProgress : null;
-  progress?.({ mode: meta.mode, current: 0, total: Math.max(1, weeks.length * 7), label: `Preparing ${meta.mode} report...`, detail: "Loading reusable weekly summaries." });
-  const weeklySummaries = [];
-  for (const [index, week] of weeks.entries()) {
-    const summary = await ensureWeeklySummary(week, {
-      onProgress: progress,
-      mode: meta.mode,
-      baseProgress: index * 7,
-      totalProgress: Math.max(1, weeks.length * 7),
-      label: `Preparing ${meta.mode} report...`
-    });
-    weeklySummaries.push(summary);
-    progress?.({
-      mode: meta.mode,
-      current: Math.min(Math.max(1, weeks.length * 7), (index + 1) * 7),
-      total: Math.max(1, weeks.length * 7),
-      label: `Preparing ${meta.mode} report...`,
-      detail: `Added week ${week.start} to ${week.end}.`
-    });
-  }
-  return combineWeeklySummariesForReport(meta, weeklySummaries);
-}
-
 async function calculateAndStoreReportCache(meta, options = {}) {
-  if (!state.user || !meta?.key) return buildReportData(meta, options);
+  if (!state.user || !meta?.key) return buildReportData(meta);
   if (!options.force) {
     const cached = await readReportCache(meta);
     if (cached) return cached;
   }
-  const data = await buildReportData(meta, options);
-  const saveSteps = Math.max(1, weekMetasForRange(meta.start, meta.end).length * 7);
-  options.onProgress?.({ mode: meta.mode, current: saveSteps, total: saveSteps, label: `Saving ${meta.mode} report...`, detail: `Saving capped top ${REPORT_TABLE_LIMIT} source and frequency rows to Firebase.` });
+  const data = await buildReportData(meta);
   await setDoc(reportCacheDoc(meta.key), data, { merge: false });
   return normalizeReportData(data);
 }
 
-function scheduleReportRecalculationForDate(dateISO, options = {}) {
+function scheduleReportRecalculationForDate(dateISO) {
   if (!state.user || !dateISO) return;
-  const week = weekMetaForDate(dateISO);
-  if (options.markWeeklyDirty !== false) {
-    setDoc(weeklySummaryDoc(week.key), {
-      key: week.key,
-      mode: "week",
-      start: week.start,
-      end: week.end,
-      version: WEEKLY_SUMMARY_VERSION,
-      dirty: true,
-      invalidatedAt: Date.now(),
-      invalidatedByDate: dateISO
-    }, { merge: true }).catch(console.warn);
-  }
+  const weekMeta = weekMetaForDate(dateISO);
+  setDoc(weeklySummaryDoc(weekMeta.key), {
+    key: weekMeta.key,
+    start: weekMeta.start,
+    end: weekMeta.end,
+    version: WEEK_SUMMARY_VERSION,
+    dirty: true,
+    invalidatedAt: Date.now()
+  }, { merge: false }).catch(console.warn);
   for (const meta of affectedReportPeriods(dateISO)) {
     const existing = state.reportCacheJobs.get(meta.key);
     if (existing?.timeout) clearTimeout(existing.timeout);
-    state.reportCacheJobs.delete(meta.key);
+    const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     setDoc(reportCacheDoc(meta.key), {
       key: meta.key,
       mode: meta.mode,
@@ -3728,9 +3485,10 @@ function scheduleReportRecalculationForDate(dateISO, options = {}) {
       end: meta.end,
       version: REPORT_CACHE_VERSION,
       dirty: true,
-      invalidatedAt: Date.now(),
-      invalidatedByDate: dateISO
+      invalidatedAt: Date.now()
     }, { merge: false }).catch(console.warn);
+    const timeout = setTimeout(() => rebuildReportCacheInBackground(meta, token), REPORT_RECALC_DEBOUNCE_MS);
+    state.reportCacheJobs.set(meta.key, { token, timeout });
   }
 }
 
@@ -3859,12 +3617,10 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const macro = macroCalories(total);
   const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const fallbackFlatRows = sourceData ? [] : applyReportFlatFilters(flatRowsFromReportEntries(entries));
-  const fallbackFoodRows = fallbackFlatRows.length ? foodFrequencyRowsFromFlatRows(fallbackFlatRows) : [];
-  const topRowsBase = sourceData?.topSourceRows?.length ? sourceData.topSourceRows : capReportRows(sourceData?.foodRows?.length ? sourceData.foodRows : fallbackFoodRows, "kcal");
-  const frequencyRowsBase = sourceData?.frequencyRows?.length ? sourceData.frequencyRows : capReportRows(sourceData?.foodRows?.length ? sourceData.foodRows : fallbackFoodRows, "count");
-  const topRows = sortReportRows(topRowsBase, "topSources").slice(0, REPORT_TABLE_LIMIT);
-  const frequencyRows = sortReportRows(frequencyRowsBase, "frequency").slice(0, REPORT_TABLE_LIMIT);
+  const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
+  const foodRows = sourceData?.foodRows || foodFrequencyRowsFromFlatRows(filteredFlatRows);
+  const topRows = sortReportRows(foodRows, "topSources").slice(0, REPORT_ROW_LIMIT);
+  const frequencyRows = sortReportRows(foodRows, "frequency").slice(0, REPORT_ROW_LIMIT);
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
   const avgGoals = reportGoalAverages(start, end, activeDates);
@@ -4212,23 +3968,14 @@ function renderCharts(byDate) {
   }
 }
 
-async function fetchReportEntriesForRange(start, end) {
-  const entries = [];
-  for (const dateISO of dateRange(start, end)) {
-    const snap = await getDocs(entryCollection(dateISO));
-    snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
-  }
-  return entries;
-}
-
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
-  if (!state.reportData) await loadReport();
+  if (!state.reportEntries.length) await loadReport();
+  const entries = state.reportEntries;
 
   if (caloriesOnly) {
-    const byDate = state.reportData?.byDate || {};
     const rows = dateRange(start, end).map(dateISO => {
-      const total = normalizeNutrients(byDate[dateISO] || {});
+      const total = addNutrients(entries.filter(e => e.date === dateISO));
       return { date: dateISO, totalKcal: round(total.kcal, 0) };
     });
     if (format === "json") {
@@ -4240,7 +3987,6 @@ async function exportEntries(format, caloriesOnly = false) {
     return;
   }
 
-  const entries = state.reportEntries?.length ? state.reportEntries : await fetchReportEntriesForRange(start, end);
   const header = ["date", "meal", "item_name", "brand", "amount", "unit", "grams", "kcal", "protein", "carbs", "sugar", "fat", "saturated_fat", "trans_fat", "fiber", "sodium", "source"];
   const rows = entries.map(e => {
     const n = normalizeNutrients(e.nutrientsSnapshot);
@@ -4295,10 +4041,8 @@ function renderSettings() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${s.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           </label>
-          <label>Search region
-            <select name="searchRegion">
-              ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
-            </select>
+          <label>Search regions
+            ${searchRegionPickerHTML(s)}
           </label>
         </div>
         <div class="grid-3" style="margin-top:14px;">
@@ -4356,25 +4100,41 @@ function settingLabel(label, info, inputHTML) {
   `;
 }
 
-function searchRegionPickerHTML(selectedValue = state.settings.searchRegions || state.settings.searchRegion) {
-  const selected = normalizeSearchRegions(selectedValue);
-  const selectedLabels = selected.map(region => SEARCH_REGIONS.find(([value]) => value === region)?.[1] || region);
+
+function searchRegionPickerHTML(settings = state.settings) {
+  const selected = selectedSearchRegions(settings);
+  const label = selected.map(value => SEARCH_REGIONS.find(([region]) => region === value)?.[1] || value).join(", ");
   return `
-    <details class="region-picker">
-      <summary>
-        <span class="region-picker-label">${safeText(selectedLabels.join(", "))}</span>
-        <span class="region-picker-count">${selected.length}/3</span>
-      </summary>
-      <div class="region-picker-menu">
-        ${SEARCH_REGIONS.map(([value, label]) => `
+    <div class="region-picker" data-region-picker>
+      <button class="region-picker-toggle" type="button" data-action="toggle-region-picker">
+        <span>${safeText(label || "World / global")}</span>
+        <span aria-hidden="true">▾</span>
+      </button>
+      <div class="region-picker-menu" role="group" aria-label="Search regions">
+        ${SEARCH_REGIONS.map(([value, regionLabel]) => `
           <label class="region-option">
-            <input type="checkbox" name="searchRegions" value="${safeText(value)}" ${selected.includes(value) ? "checked" : ""} />
-            <span>${safeText(label)}</span>
+            <input type="checkbox" name="searchRegions" value="${value}" ${selected.includes(value) ? "checked" : ""} />
+            <span>${safeText(regionLabel)}</span>
           </label>
         `).join("")}
       </div>
-    </details>
+    </div>
   `;
+}
+
+function handleSearchRegionPickerChange(event) {
+  if (!event.target.matches('input[name="searchRegions"]')) return;
+  const checked = [...document.querySelectorAll('input[name="searchRegions"]:checked')];
+  if (checked.length > 3) {
+    event.target.checked = false;
+    showToast("Choose at most 3 search regions.");
+    return;
+  }
+  if (!checked.length) event.target.checked = true;
+  document.querySelectorAll(".region-picker-toggle span:first-child").forEach(label => {
+    const selected = [...document.querySelectorAll('input[name="searchRegions"]:checked')].map(input => input.value);
+    label.textContent = selected.map(value => SEARCH_REGIONS.find(([region]) => region === value)?.[1] || value).join(", ");
+  });
 }
 
 function renderSettingsV2() {
@@ -4404,10 +4164,10 @@ function renderSettingsV2() {
   `;
 
   const preferenceControl = (label, inputHTML) => `
-    <div class="preference-control">
+    <label>
       <span class="label-row">${safeText(label)}</span>
       ${inputHTML}
-    </div>
+    </label>
   `;
 
   els.pages.settings.innerHTML = `
@@ -4442,7 +4202,7 @@ function renderSettingsV2() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${appPrefs.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${preferenceControl("Search regions", searchRegionPickerHTML(appPrefs.searchRegions || appPrefs.searchRegion))}
+          ${preferenceControl("Search regions", searchRegionPickerHTML(appPrefs))}
           ${preferenceControl("Database preference", `
             <select name="databasePreference">
               ${[
@@ -4507,31 +4267,13 @@ function renderSettingsV2() {
   `;
   const form = document.getElementById("settingsForm");
   syncMacroGoalInputs(form);
+  form?.addEventListener("change", handleSearchRegionPickerChange);
   form?.addEventListener("input", event => {
     if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
   });
   form?.addEventListener("input", queueSettingsAutosave);
-  form?.addEventListener("change", event => {
-    if (event.target.matches('input[name="searchRegions"]')) enforceSearchRegionLimit(event.target);
-    queueSettingsAutosave(event);
-  });
+  form?.addEventListener("change", queueSettingsAutosave);
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
-}
-
-function enforceSearchRegionLimit(changedInput) {
-  const picker = changedInput?.closest?.(".region-picker");
-  const inputs = [...(picker || document).querySelectorAll('input[name="searchRegions"]')];
-  const checked = inputs.filter(input => input.checked);
-  if (checked.length > 3) {
-    changedInput.checked = false;
-    showToast("Use at most 3 search regions.");
-  }
-  const current = inputs.filter(input => input.checked);
-  const labels = current.map(input => SEARCH_REGIONS.find(([value]) => value === input.value)?.[1] || input.value);
-  const labelNode = picker?.querySelector(".region-picker-label");
-  const countNode = picker?.querySelector(".region-picker-count");
-  if (labelNode) labelNode.textContent = labels.length ? labels.join(", ") : "World / global";
-  if (countNode) countNode.textContent = `${Math.max(1, labels.length)}/3`;
 }
 
 function syncMacroGoalInputs(form, changed = null) {
@@ -4584,8 +4326,8 @@ function collectSettingsFromForm(form) {
     sodiumMax: number(data.get("micro_sodium_target"), state.settings.sodiumMax),
     saltMax: round(number(data.get("micro_sodium_target"), state.settings.sodiumMax) / 400, 2),
     theme: String(data.get("theme") || "system"),
-    searchRegions: normalizeSearchRegions(data.getAll("searchRegions")),
-    searchRegion: normalizeSearchRegions(data.getAll("searchRegions"))[0] || "world",
+    searchRegions: data.getAll("searchRegions").slice(0, 3),
+    searchRegion: (data.getAll("searchRegions")[0] || data.get("searchRegion") || "world"),
     databasePreference: String(data.get("databasePreference") || "custom-first"),
     dashboardDensity: "comfortable",
     macroGoalMode: String(data.get("macroGoalMode") || "manual"),
@@ -4625,8 +4367,6 @@ function queueSettingsAutosave(event) {
         setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
         setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
       ]);
-      await updateWeeklySummaryForDate(state.currentDate, state.logs || [], { goalsSnapshot: dayGoal }).catch(console.warn);
-      scheduleReportRecalculationForDate(state.currentDate, { markWeeklyDirty: false });
       const message = document.getElementById("settingsSaveMessage");
       if (message) message.textContent = "Saved automatically.";
     } catch (error) {
@@ -5107,7 +4847,6 @@ async function repeatYesterday() {
     const copy = { ...entry, date: state.currentDate, createdAt: Date.now(), updatedAt: Date.now() };
     await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
   }
-  await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
   showToast("Copied yesterday to this day.");
 }
 
@@ -5209,18 +4948,17 @@ function closeModal() {
   document.body.classList.remove("modal-open");
 }
 
-function setSubmitButtonsBusy(form, busy, label = "Logging...") {
+function setFormSubmitting(form, submitting = true, label = "Logging...") {
   if (!form) return;
-  form.dataset.submitting = busy ? "true" : "";
-  form.querySelectorAll('button[type="submit"]').forEach(button => {
-    if (busy) {
-      if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+  form.dataset.submitting = submitting ? "true" : "";
+  form.querySelectorAll('button[type="submit"], .form-actions button').forEach(button => {
+    if (submitting) {
+      button.dataset.originalText = button.dataset.originalText || button.textContent;
       button.textContent = label;
       button.disabled = true;
     } else {
-      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
-      delete button.dataset.originalText;
       button.disabled = false;
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
     }
   });
 }
@@ -5232,18 +4970,18 @@ async function handleDynamicSubmit(event) {
     if (form.id === "logFoodForm") {
       event.preventDefault();
       if (form.dataset.submitting === "true") return;
+      setFormSubmitting(form, true);
       const data = new FormData(form);
       const key = form.dataset.foodKey;
       const food = key ? getFoodByKey(key) : state.activeLogFood;
       if (!food) throw new Error("Could not find this food anymore. Close the modal and open it again.");
       const { amount, unit, grams } = servingSelectionFromData(food, data);
-      setSubmitButtonsBusy(form, true, "Logging...");
       await logFood(food, amount, unit, grams, data.get("meal"), data.get("date"));
       closeModal();
       return;
     }
   } catch (error) {
-    setSubmitButtonsBusy(form, false);
+    setFormSubmitting(form, false);
     showError(error);
   }
 }
@@ -5305,6 +5043,12 @@ async function handleClick(event) {
 
   try {
     if (action === "close-modal") closeModal();
+    if (action === "toggle-region-picker") {
+      const picker = btn.closest(".region-picker");
+      document.querySelectorAll(".region-picker.is-open").forEach(node => { if (node !== picker) node.classList.remove("is-open"); });
+      picker?.classList.toggle("is-open");
+      return;
+    }
     if (action === "show-info") {
       showInfoPopover(btn);
       return;
@@ -5362,10 +5106,14 @@ async function handleClick(event) {
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
-      const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
       const nextCollapsed = state.collapsedMeals[meal] === false;
+      if (window.matchMedia("(max-width: 980px)").matches && !nextCollapsed) {
+        state.collapsedMeals = Object.fromEntries(MEALS.map(([id]) => [id, true]));
+      } else if (!window.matchMedia("(max-width: 980px)").matches) {
+        const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
+        if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
+      }
       state.collapsedMeals[meal] = nextCollapsed;
-      if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
       renderToday();
     }
     if (action === "create-recipe") await createRecipe();
@@ -5547,6 +5295,9 @@ document.addEventListener("click", handleClick);
 document.addEventListener("click", event => {
   if (!event.target.closest(".info-btn") && !event.target.closest(".info-popover")) {
     document.querySelectorAll(".info-popover").forEach(node => node.remove());
+  }
+  if (!event.target.closest(".region-picker")) {
+    document.querySelectorAll(".region-picker.is-open").forEach(node => node.classList.remove("is-open"));
   }
 });
 

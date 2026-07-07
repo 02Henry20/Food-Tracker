@@ -1,0 +1,10 @@
+NutriPilot v37 verified package
+
+Verified changes present:
+- sw.js cache: nutripilot-v37
+- compact region picker CSS/classes present
+- searchRegions max-3 settings present
+- weeklySummaries cache path present
+- empty weekly summaries use isEmpty/empty markers
+- mealset logging splits items into separate entries
+- mobile meal accordion opens only one meal at a time
