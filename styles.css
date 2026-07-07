@@ -3411,3 +3411,42 @@ input[type="number"]::-webkit-inner-spin-button {
     display: none !important;
   }
 }
+
+/* NutriPilot pass v41: report calculation progress and chart stability */
+.report-progress-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(20, 184, 166, .24);
+  background: linear-gradient(135deg, rgba(20, 184, 166, .10), rgba(37, 99, 235, .08)), var(--surface);
+}
+.report-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+.report-progress-head strong {
+  display: block;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+.report-progress-head span,
+.report-progress-card small {
+  color: var(--muted);
+  font-weight: 850;
+}
+.report-progress-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .18);
+}
+.report-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  transition: width .24s var(--ease);
+}
+.chart-card canvas {
+  max-width: 100%;
+}

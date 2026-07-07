@@ -41,8 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 9;
-const WEEK_SUMMARY_VERSION = 3;
+const REPORT_CACHE_VERSION = 10;
+const WEEK_SUMMARY_VERSION = 4;
 const REPORT_ROW_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -3311,8 +3311,7 @@ async function loadReport() {
     return cached;
   }
 
-  const output = document.getElementById("reportOutput");
-  if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report once and saving it to Firebase...</div>`;
+  showReportProgress({ mode: meta.mode, current: 0, total: 1, label: "Preparing report", detail: "Reading diary entries and saving a fresh cache." });
   const data = await calculateAndStoreReportCache(meta, { force: true });
   applyReportGoalsFromData(data);
   state.reportEntries = data.entries || [];
@@ -3329,32 +3328,47 @@ async function readReportCache(meta) {
     const data = snap.data();
     if (data?.dirty || data?.version !== REPORT_CACHE_VERSION) return null;
     if (data.mode !== meta.mode || data.start !== meta.start || data.end !== meta.end) return null;
-    return normalizeReportData(data);
+    if (!reportDatesMatchPeriod(data)) return null;
+    const normalized = normalizeReportData(data);
+    if (normalized.dates.length !== canonicalReportDates(meta.start, meta.end).length) return null;
+    return normalized;
   } catch (error) {
     console.warn("Report cache read failed; recalculating.", error);
     return null;
   }
 }
 
+function canonicalReportDates(start, end) {
+  if (!start || !end || start > end) return [];
+  return dateRange(start, end);
+}
+
+function reportDatesMatchPeriod(data = {}) {
+  const canonical = canonicalReportDates(data.start, data.end);
+  const stored = Array.isArray(data.dates) ? data.dates : [];
+  return stored.length === canonical.length && stored.every((date, index) => date === canonical[index]);
+}
+
 function normalizeReportData(data = {}) {
-  const dates = data.dates || dateRange(data.start, data.end);
-  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  const dates = canonicalReportDates(data.start, data.end);
+  const rawByDate = data.byDate || {};
+  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(rawByDate[date] || {})]));
   const storedTotal = normalizeNutrients(data.total || {});
   const derivedTotal = totalNutrientsFromByDate(byDate);
-  const total = nutrientsHaveValues(storedTotal) ? storedTotal : derivedTotal;
+  const total = nutrientsHaveValues(storedTotal) && reportDatesMatchPeriod(data) ? storedTotal : derivedTotal;
   const storedActiveDates = Array.isArray(data.activeDates) ? data.activeDates.filter(date => dates.includes(date)) : [];
   const derivedActiveDates = activeDatesFromByDate(byDate, dates);
   const entryActiveDates = reportActiveDates(data.entries || [], dates);
-  const activeDates = derivedActiveDates.length ? derivedActiveDates : (storedActiveDates.length ? storedActiveDates : entryActiveDates);
+  const activeDates = derivedActiveDates.length ? derivedActiveDates : (storedActiveDates.length && reportDatesMatchPeriod(data) ? storedActiveDates : entryActiveDates);
   return {
     ...data,
     dates,
     activeDates,
-    entries: data.entries || [],
+    entries: Array.isArray(data.entries) ? data.entries.filter(entry => !entry?.date || dates.includes(entry.date)) : [],
     byDate,
     total,
-    flatRows: data.flatRows || [],
-    foodRows: data.foodRows || null,
+    flatRows: Array.isArray(data.flatRows) ? data.flatRows.filter(row => !row?.entryDate || dates.includes(row.entryDate)) : [],
+    foodRows: Array.isArray(data.foodRows) ? data.foodRows : null,
     goalsByDate: data.goalsByDate || {}
   };
 }
@@ -3364,6 +3378,31 @@ function applyReportGoalsFromData(data = {}) {
     if (!dateISO || !goal) continue;
     state.dailyGoals[dateISO] = goal;
   }
+}
+
+function reportProgressHTML({ mode = state.reportMode || "week", current = 0, total = 1, label = "Calculating report", detail = "" } = {}) {
+  const safeTotal = Math.max(1, number(total, 1));
+  const pct = Math.max(0, Math.min(100, Math.round(number(current, 0) / safeTotal * 100)));
+  return `
+    <div class="card report-progress-card" aria-live="polite">
+      <div class="report-progress-head">
+        <div>
+          <strong>${safeText(label)}</strong>
+          <span>${safeText(`${mode[0].toUpperCase()}${mode.slice(1)} report`)}</span>
+        </div>
+        <span>${pct}%</span>
+      </div>
+      <div class="report-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+        <div class="report-progress-bar" style="width:${pct}%;"></div>
+      </div>
+      ${detail ? `<small>${safeText(detail)}</small>` : ""}
+    </div>
+  `;
+}
+
+function showReportProgress(progress = {}) {
+  const output = document.getElementById("reportOutput");
+  if (output) output.innerHTML = reportProgressHTML(progress);
 }
 
 function flatRowsFromReportEntries(entries = []) {
@@ -3458,10 +3497,10 @@ async function buildReportData(meta, options = {}) {
   const goalsByDate = {};
   const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
   const weekSummaries = [];
-  const output = document.getElementById("reportOutput");
   const weekMetas = weekMetasForRange(meta.start, meta.end);
+  if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: 0, total: weekMetas.length + 1, label: "Building report", detail: "Preparing weekly summaries." });
   for (let i = 0; i < weekMetas.length; i += 1) {
-    if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report... week ${i + 1} of ${weekMetas.length}</div>`;
+    if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: i + 1, total: weekMetas.length + 1, label: "Building report", detail: "Combining weekly diary summaries." });
     const week = await buildWeeklySummary(weekMetas[i], { force: !!options.forceWeekly });
     weekSummaries.push(week);
     for (const entry of week.entries || []) {
@@ -3483,6 +3522,7 @@ async function buildReportData(meta, options = {}) {
   const topFoodRows = [...foodRows].sort((a, b) => b.kcal - a.kcal).slice(0, REPORT_ROW_LIMIT);
   const total = totalNutrientsFromByDate(byDate);
   const activeDates = activeDatesFromByDate(byDate, dates);
+  if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: weekMetas.length + 1, total: weekMetas.length + 1, label: "Saving report", detail: "Writing the cleaned report cache." });
   return cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
@@ -3527,7 +3567,7 @@ async function recalculateCurrentReportFromDatabase(triggerButton = null) {
     triggerButton.textContent = "Recalculating...";
   }
   try {
-    if (output) output.innerHTML = `<div class="empty-state">Recalculating ${safeText(mode)} report from diary entries...</div>`;
+    showReportProgress({ mode, current: 0, total: 1, label: "Recalculating report", detail: "Ignoring old caches and reading diary entries again." });
     const pending = state.reportCacheJobs.get(meta.key);
     if (pending?.timeout) clearTimeout(pending.timeout);
     state.reportCacheJobs.delete(meta.key);
@@ -3580,7 +3620,7 @@ async function rebuildReportCacheInBackground(meta, token) {
   if (!current || current.token !== token) return;
   current.timeout = null;
   try {
-    const data = await buildReportData(meta);
+    const data = await buildReportData(meta, { showProgress: false });
     const latest = state.reportCacheJobs.get(meta.key);
     if (!latest || latest.token !== token) return;
     await setDoc(reportCacheDoc(meta.key), data, { merge: false });
@@ -3692,12 +3732,15 @@ function renderReportPagination(table, pageData) {
 function renderReportOutput(start, end, entries, reportData = null) {
   const sourceData = reportData ? normalizeReportData(reportData) : null;
   if (sourceData) applyReportGoalsFromData(sourceData);
-  const dates = sourceData?.dates || dateRange(start, end);
-  const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
-  if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const activeDates = sourceData?.activeDates?.length ? sourceData.activeDates : activeDatesFromByDate(byDate, dates);
+  const dates = canonicalReportDates(start, end);
+  const byDate = Object.fromEntries(dates.map(d => [d, normalizeNutrients(sourceData?.byDate?.[d] || {})]));
+  if (!sourceData) for (const entry of entries) {
+    if (entry.date && byDate[entry.date]) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  }
+  const activeDates = sourceData?.activeDates?.length ? sourceData.activeDates.filter(date => dates.includes(date)) : activeDatesFromByDate(byDate, dates);
   const activeDays = Math.max(1, activeDates.length);
-  const total = normalizeNutrients(sourceData?.total || totalNutrientsFromByDate(byDate) || addNutrients(entries));
+  const derivedTotal = totalNutrientsFromByDate(byDate);
+  const total = normalizeNutrients(nutrientsHaveValues(derivedTotal) ? derivedTotal : (sourceData?.total || addNutrients(entries)));
   const avg = scaleNutrients(total, 1 / activeDays);
   const macro = macroCalories(total);
   const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
@@ -3771,7 +3814,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
       </div>
     </div>
   `;
-  renderCharts(byDate);
+  renderCharts(byDate, dates, sourceData?.mode || state.reportMode, sourceData?.goalsByDate || {});
 }
 
 function foodNameFromReportItem(item) {
@@ -3968,17 +4011,20 @@ function renderMicroRows(total, days) {
   }).join("");
 }
 
-function reportChartData(byDate) {
-  const dates = Object.keys(byDate);
-  if (state.reportMode === "year") {
+function reportChartData(byDate, datesOverride = null, modeOverride = null, goalsByDate = {}) {
+  const mode = modeOverride || state.reportMode || "week";
+  const rangeDates = Array.isArray(datesOverride) && datesOverride.length ? datesOverride : Object.keys(byDate || {}).sort();
+  const dates = rangeDates.filter(Boolean).sort();
+  if (mode === "year") {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const buckets = monthNames.map(() => emptyNutrients());
     const targetBuckets = monthNames.map(() => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 }));
     for (const date of dates) {
       const month = new Date(`${date}T12:00:00`).getMonth();
-      const goals = effectiveGoalsForDate(date);
+      const dayNutrients = normalizeNutrients(byDate?.[date] || {});
+      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, dayNutrients]);
+      const goals = goalsByDate?.[date] || effectiveGoalsForDate(date);
       const macros = effectiveMacroGoals(goals);
-      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, byDate[date]]);
       targetBuckets[month].kcal += number(goals.calorieGoal);
       targetBuckets[month].protein += number(macros.proteinGoal);
       targetBuckets[month].carbs += number(macros.carbsGoal);
@@ -3988,11 +4034,11 @@ function reportChartData(byDate) {
   }
   const labels = dates.map(date => {
     const d = new Date(`${date}T12:00:00`);
-    if (state.reportMode === "month") return String(d.getDate()).padStart(2, "0");
+    if (mode === "month") return String(d.getDate()).padStart(2, "0");
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   });
   const targets = dates.map(date => {
-    const goals = effectiveGoalsForDate(date);
+    const goals = goalsByDate?.[date] || effectiveGoalsForDate(date);
     const macros = effectiveMacroGoals(goals);
     return {
       kcal: number(goals.calorieGoal),
@@ -4001,13 +4047,14 @@ function reportChartData(byDate) {
       fat: number(macros.fatGoal)
     };
   });
-  return { labels, values: dates.map(date => byDate[date]), targets };
+  return { labels, values: dates.map(date => normalizeNutrients(byDate?.[date] || {})), targets };
 }
 
-function renderCharts(byDate) {
+function renderCharts(byDate, dates = null, mode = state.reportMode, goalsByDate = {}) {
   if (!window.Chart) return;
   Object.values(state.charts).forEach(chart => chart?.destroy?.());
-  const chartData = reportChartData(byDate);
+  state.charts = {};
+  const chartData = reportChartData(byDate, dates, mode, goalsByDate);
   const labels = chartData.labels;
   const kcal = chartData.values.map(n => round(n.kcal, 0));
   const protein = chartData.values.map(n => round(n.protein, 1));
@@ -4019,17 +4066,29 @@ function renderCharts(byDate) {
   const fatTarget = chartData.targets.map(n => round(n.fat, 1));
   const calorieCtx = document.getElementById("calorieChart");
   const macroCtx = document.getElementById("macroChart");
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    normalized: true,
+    spanGaps: false,
+    animation: { duration: 180 },
+    scales: {
+      x: { ticks: { autoSkip: mode === "year" || mode === "month", maxRotation: 0 } },
+      y: { beginAtZero: true }
+    },
+    plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } }
+  };
   if (calorieCtx) {
     state.charts.calorie = new Chart(calorieCtx, {
       type: "line",
       data: {
         labels,
         datasets: [
-          { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .35 },
+          { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
           { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
+      options: commonOptions
     });
   }
   if (macroCtx) {
@@ -4038,20 +4097,20 @@ function renderCharts(byDate) {
       data: {
         labels,
         datasets: [
-          { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .35 },
+          { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
           { label: "Protein target", data: proteinTarget, borderColor: "#2563eb", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
-          { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .35 },
+          { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
           { label: "Carbs target", data: carbsTarget, borderColor: "#7c3aed", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
-          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .35 },
+          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
           { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
+      options: commonOptions
     });
   }
 }
 
-async function exportEntries(format, caloriesOnly = false) {
+function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
   if (!state.reportData && !state.reportEntries.length) await loadReport();
   const entries = state.reportEntries;

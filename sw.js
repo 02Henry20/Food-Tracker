@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v40";
+const CACHE_NAME = "nutripilot-v41";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
