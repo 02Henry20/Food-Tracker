@@ -41,7 +41,7 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 7;
+const REPORT_CACHE_VERSION = 8;
 const WEEK_SUMMARY_VERSION = 2;
 const REPORT_ROW_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
@@ -632,6 +632,18 @@ function addNutrients(items) {
     for (const key of NUTRIENT_KEYS) total[key] += number(n?.[key]);
   }
   return total;
+}
+
+function nutrientsHaveValues(nutrients = {}) {
+  return NUTRIENT_KEYS.some(key => Math.abs(number(nutrients?.[key])) > 1e-9);
+}
+
+function totalNutrientsFromByDate(byDate = {}) {
+  return addNutrients(Object.values(byDate || {}).map(nutrients => normalizeNutrients(nutrients)));
+}
+
+function activeDatesFromByDate(byDate = {}, dates = []) {
+  return dates.filter(date => nutrientsHaveValues(byDate?.[date]));
 }
 
 async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) {
@@ -3312,13 +3324,20 @@ async function readReportCache(meta) {
 function normalizeReportData(data = {}) {
   const dates = data.dates || dateRange(data.start, data.end);
   const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  const storedTotal = normalizeNutrients(data.total || {});
+  const derivedTotal = totalNutrientsFromByDate(byDate);
+  const total = nutrientsHaveValues(storedTotal) ? storedTotal : derivedTotal;
+  const storedActiveDates = Array.isArray(data.activeDates) ? data.activeDates.filter(date => dates.includes(date)) : [];
+  const derivedActiveDates = activeDatesFromByDate(byDate, dates);
+  const entryActiveDates = reportActiveDates(data.entries || [], dates);
+  const activeDates = derivedActiveDates.length ? derivedActiveDates : (storedActiveDates.length ? storedActiveDates : entryActiveDates);
   return {
     ...data,
     dates,
-    activeDates: data.activeDates || reportActiveDates(data.entries || [], dates),
+    activeDates,
     entries: data.entries || [],
     byDate,
-    total: normalizeNutrients(data.total || {}),
+    total,
     flatRows: data.flatRows || [],
     foodRows: data.foodRows || null,
     goalsByDate: data.goalsByDate || {}
@@ -3376,16 +3395,18 @@ async function buildWeeklySummary(meta, options = {}) {
   for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
   const flatRows = flatRowsFromReportEntries(entries);
   const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
+  const total = totalNutrientsFromByDate(byDate);
+  const activeDates = activeDatesFromByDate(byDate, dates);
   const data = cleanForFirestore({
     version: WEEK_SUMMARY_VERSION,
     key: meta.key,
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates: reportActiveDates(entries, dates),
+    activeDates,
     entries,
     byDate,
-    total: addNutrients(entries),
+    total,
     flatRows,
     foodRows,
     goalsByDate,
@@ -3418,6 +3439,7 @@ function mergeFoodRows(rowSets = []) {
 async function buildReportData(meta) {
   const dates = dateRange(meta.start, meta.end);
   const entries = [];
+  const reportFlatRows = [];
   const goalsByDate = {};
   const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
   const weekSummaries = [];
@@ -3433,13 +3455,19 @@ async function buildReportData(meta) {
     for (const [date, nutrients] of Object.entries(week.byDate || {})) {
       if (date >= meta.start && date <= meta.end) byDate[date] = normalizeNutrients(nutrients);
     }
+    for (const row of week.flatRows || []) {
+      const rowDate = row.entryDate || row.date || null;
+      if (!rowDate || (rowDate >= meta.start && rowDate <= meta.end)) reportFlatRows.push(row);
+    }
     for (const [date, goal] of Object.entries(week.goalsByDate || {})) {
       if (date >= meta.start && date <= meta.end) goalsByDate[date] = goal;
     }
   }
-  const flatRows = flatRowsFromReportEntries(entries);
+  const flatRows = reportFlatRows.length ? reportFlatRows : flatRowsFromReportEntries(entries);
   const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
   const topFoodRows = [...foodRows].sort((a, b) => b.kcal - a.kcal).slice(0, REPORT_ROW_LIMIT);
+  const total = totalNutrientsFromByDate(byDate);
+  const activeDates = activeDatesFromByDate(byDate, dates);
   return cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
@@ -3447,10 +3475,10 @@ async function buildReportData(meta) {
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates: reportActiveDates(entries, dates),
+    activeDates,
     entries: meta.mode === "week" ? entries : [],
     byDate,
-    total: addNutrients(entries),
+    total,
     flatRows: meta.mode === "week" ? flatRows : [],
     foodRows: topFoodRows,
     goalsByDate,
@@ -3619,13 +3647,13 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const sourceData = reportData ? normalizeReportData(reportData) : null;
   if (sourceData) applyReportGoalsFromData(sourceData);
   const dates = sourceData?.dates || dateRange(start, end);
-  const activeDates = sourceData?.activeDates || reportActiveDates(entries, dates);
-  const activeDays = Math.max(1, activeDates.length);
-  const total = normalizeNutrients(sourceData?.total || addNutrients(entries));
-  const avg = scaleNutrients(total, 1 / activeDays);
-  const macro = macroCalories(total);
   const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const activeDates = sourceData?.activeDates?.length ? sourceData.activeDates : activeDatesFromByDate(byDate, dates);
+  const activeDays = Math.max(1, activeDates.length);
+  const total = normalizeNutrients(sourceData?.total || totalNutrientsFromByDate(byDate) || addNutrients(entries));
+  const avg = scaleNutrients(total, 1 / activeDays);
+  const macro = macroCalories(total);
   const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
   const foodRows = sourceData?.foodRows || foodFrequencyRowsFromFlatRows(filteredFlatRows);
   const topRows = sortReportRows(foodRows, "topSources").slice(0, REPORT_ROW_LIMIT);
@@ -3979,12 +4007,13 @@ function renderCharts(byDate) {
 
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
-  if (!state.reportEntries.length) await loadReport();
+  if (!state.reportData && !state.reportEntries.length) await loadReport();
   const entries = state.reportEntries;
 
   if (caloriesOnly) {
+    const sourceData = state.reportData ? normalizeReportData(state.reportData) : null;
     const rows = dateRange(start, end).map(dateISO => {
-      const total = addNutrients(entries.filter(e => e.date === dateISO));
+      const total = sourceData?.byDate?.[dateISO] || addNutrients(entries.filter(e => e.date === dateISO));
       return { date: dateISO, totalKcal: round(total.kcal, 0) };
     });
     if (format === "json") {
