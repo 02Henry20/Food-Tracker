@@ -4110,7 +4110,7 @@ function renderCharts(byDate, dates = null, mode = state.reportMode, goalsByDate
   }
 }
 
-function exportEntries(format, caloriesOnly = false) {
+async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
   if (!state.reportData && !state.reportEntries.length) await loadReport();
   const entries = state.reportEntries;
