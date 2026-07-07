@@ -41,8 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 8;
-const WEEK_SUMMARY_VERSION = 2;
+const REPORT_CACHE_VERSION = 9;
+const WEEK_SUMMARY_VERSION = 3;
 const REPORT_ROW_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -1125,7 +1125,19 @@ function renderToday() {
     </div>
   `;
 
-  document.getElementById("currentDateInput")?.addEventListener("change", e => {
+  const currentDateInput = document.getElementById("currentDateInput");
+  const openDesktopDatePicker = event => {
+    if (!window.matchMedia("(min-width: 981px)").matches) return;
+    const input = event.currentTarget;
+    if (typeof input.showPicker === "function") {
+      try { input.showPicker(); } catch (_) { input.focus(); }
+    } else {
+      input.focus();
+    }
+  };
+  currentDateInput?.addEventListener("pointerdown", openDesktopDatePicker);
+  currentDateInput?.addEventListener("click", openDesktopDatePicker);
+  currentDateInput?.addEventListener("change", e => {
     state.currentDate = e.target.value || todayISO();
     state.defaultLogDate = state.currentDate;
     subscribeLogsForCurrentDate();
@@ -3262,7 +3274,10 @@ function renderReportsShell() {
       <div class="card report-period-card">
         <div class="report-period-head">
           <div class="report-period-title">
-            <h3>${safeText(label)}</h3>
+            <div class="report-title-row">
+              <h3>${safeText(label)}</h3>
+              <button class="tiny-btn report-recalc-btn desktop-only" type="button" data-action="report-recalc-period" title="Recalculate this report from diary entries">Recalc</button>
+            </div>
             <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
         </div>
@@ -3436,7 +3451,7 @@ function mergeFoodRows(rowSets = []) {
   return [...map.values()];
 }
 
-async function buildReportData(meta) {
+async function buildReportData(meta, options = {}) {
   const dates = dateRange(meta.start, meta.end);
   const entries = [];
   const reportFlatRows = [];
@@ -3447,7 +3462,7 @@ async function buildReportData(meta) {
   const weekMetas = weekMetasForRange(meta.start, meta.end);
   for (let i = 0; i < weekMetas.length; i += 1) {
     if (output) output.innerHTML = `<div class="empty-state">Calculating ${safeText(meta.mode)} report... week ${i + 1} of ${weekMetas.length}</div>`;
-    const week = await buildWeeklySummary(weekMetas[i]);
+    const week = await buildWeeklySummary(weekMetas[i], { force: !!options.forceWeekly });
     weekSummaries.push(week);
     for (const entry of week.entries || []) {
       if (entry.date >= meta.start && entry.date <= meta.end) entries.push(entry);
@@ -3490,14 +3505,45 @@ async function buildReportData(meta) {
 }
 
 async function calculateAndStoreReportCache(meta, options = {}) {
-  if (!state.user || !meta?.key) return buildReportData(meta);
+  if (!state.user || !meta?.key) return buildReportData(meta, options);
   if (!options.force) {
     const cached = await readReportCache(meta);
     if (cached) return cached;
   }
-  const data = await buildReportData(meta);
+  const data = await buildReportData(meta, options);
   await setDoc(reportCacheDoc(meta.key), data, { merge: false });
   return normalizeReportData(data);
+}
+
+async function recalculateCurrentReportFromDatabase(triggerButton = null) {
+  const [start, end] = state.reportRange || periodRange();
+  if (!start || !end || start > end) throw new Error("Choose a valid report range first.");
+  const mode = state.reportMode || "week";
+  const meta = { mode, start, end, key: reportCacheKey(mode, start, end) };
+  const output = document.getElementById("reportOutput");
+  const oldLabel = triggerButton?.textContent || "Recalc";
+  if (triggerButton) {
+    triggerButton.disabled = true;
+    triggerButton.textContent = "Recalculating...";
+  }
+  try {
+    if (output) output.innerHTML = `<div class="empty-state">Recalculating ${safeText(mode)} report from diary entries...</div>`;
+    const pending = state.reportCacheJobs.get(meta.key);
+    if (pending?.timeout) clearTimeout(pending.timeout);
+    state.reportCacheJobs.delete(meta.key);
+    const data = await calculateAndStoreReportCache(meta, { force: true, forceWeekly: true });
+    applyReportGoalsFromData(data);
+    state.reportEntries = data.entries || [];
+    state.reportData = data;
+    renderReportOutput(start, end, state.reportEntries, data);
+    showToast(`${mode[0].toUpperCase()}${mode.slice(1)} report recalculated.`);
+    return data;
+  } finally {
+    if (triggerButton) {
+      triggerButton.disabled = false;
+      triggerButton.textContent = oldLabel;
+    }
+  }
 }
 
 function scheduleReportRecalculationForDate(dateISO) {
@@ -5153,6 +5199,10 @@ async function handleClick(event) {
       }
       state.collapsedMeals[meal] = nextCollapsed;
       renderToday();
+    }
+    if (action === "report-recalc-period") {
+      await recalculateCurrentReportFromDatabase(btn);
+      return;
     }
     if (action === "create-recipe") await createRecipe();
     if (action === "create-mealset") await createMealset();
