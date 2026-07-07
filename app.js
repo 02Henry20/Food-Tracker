@@ -41,8 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 5;
-const WEEKLY_SUMMARY_VERSION = 1;
+const REPORT_CACHE_VERSION = 6;
+const WEEKLY_SUMMARY_VERSION = 2;
 const REPORT_TABLE_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -654,11 +654,28 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     entrySignature: logEntriesSignature(summaryEntries || []),
     updatedAt: Date.now()
   });
-  await setDoc(dailyCaloriesDoc(dateISO), dailySummary, { merge: true });
+  writeLocal(`dailySummary:${dateISO}`, dailySummary);
   if (options.invalidateReports !== false) {
-    await updateWeeklySummaryForDate(dateISO, summaryEntries || [], { goalsSnapshot }).catch(console.warn);
+    await updateWeeklySummaryForDate(dateISO, summaryEntries || [], { goalsSnapshot, dailySummary }).catch(console.warn);
+    await removeLegacyDailyCalorieSummary(dateISO).catch(console.warn);
     scheduleReportRecalculationForDate(dateISO, { markWeeklyDirty: false });
   }
+}
+
+async function removeLegacyDailyCalorieSummary(dateISO) {
+  if (!state.user || !dateISO) return;
+  try {
+    await deleteDoc(dailyCaloriesDoc(dateISO));
+  } catch (error) {
+    if (error?.code !== "not-found") console.warn("Legacy daily calorie summary cleanup failed.", error);
+  }
+}
+
+async function readDaySummaryFromWeekly(dateISO) {
+  if (!state.user || !dateISO) return readLocal(`dailySummary:${dateISO}`, null);
+  const meta = weekMetaForDate(dateISO);
+  const weekly = await readWeeklySummary(meta);
+  return weekly?.days?.[dateISO] || readLocal(`dailySummary:${dateISO}`, null);
 }
 
 function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
@@ -2229,6 +2246,7 @@ function bindServingAmountDefaults(form, food) {
     const serving = servingOptions[number(select?.value)] || servingOptions[0];
     if (!amountInput || document.activeElement === amountInput) return;
     amountInput.value = serving?.mode === "grams" ? number(food.defaultServing?.grams, 100) || 100 : 1;
+    if (serving?.mode !== "grams") amountInput.value = 1;
   };
   select?.addEventListener("change", applyDefault);
 }
@@ -3140,29 +3158,38 @@ function openLogRecipeModal(recipe, returnTarget = null) {
   `);
   document.getElementById("logRecipeForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    if (form.dataset.submitting === "true") return;
+    const data = new FormData(form);
     const amount = number(data.get("amount"), 1);
-    const createdAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(perPortion, amount);
-    const entry = {
-      itemType: "recipe",
-      itemId: recipe.id,
-      nameSnapshot: recipe.name,
-      amount,
-      unit: "portion",
-      meal: data.get("meal"),
-      date: data.get("date"),
-      nutrientsSnapshot,
-      itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
-      createdAt,
-      updatedAt: createdAt
-    };
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(recipe.ingredients || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
-    closeModal();
-    if (returnTarget) renderRecipes();
-    showToast("Recipe logged.");
+    const dateISO = data.get("date");
+    setSubmitButtonsBusy(form, true, "Logging...");
+    try {
+      const createdAt = Date.now();
+      const nutrientsSnapshot = scaleNutrients(perPortion, amount);
+      const entry = {
+        itemType: "recipe",
+        itemId: recipe.id,
+        nameSnapshot: recipe.name,
+        amount,
+        unit: "portion",
+        meal: data.get("meal"),
+        date: dateISO,
+        nutrientsSnapshot,
+        itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
+        createdAt,
+        updatedAt: createdAt
+      };
+      await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
+      await incrementFoodUsageForTargetItems(recipe.ingredients || []);
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      closeModal();
+      if (returnTarget) renderRecipes();
+      showToast("Recipe logged.");
+    } catch (error) {
+      setSubmitButtonsBusy(form, false);
+      showError(error);
+    }
   });
 }
 
@@ -3222,21 +3249,29 @@ function openLogMealsetModal(mealset, returnTarget = null) {
   `);
   document.getElementById("logMealsetForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    if (form.dataset.submitting === "true") return;
+    const data = new FormData(form);
     const amount = number(data.get("amount"), 1);
     const meal = data.get("meal");
     const dateISO = data.get("date");
     const items = mealset.items || [];
     if (!items.length) throw new Error("This mealset has no items to log.");
-    const createdAt = Date.now();
-    for (const [index, item] of items.entries()) {
-      await addDoc(entryCollection(dateISO), loggedMealsetItemEntry(item, amount, meal, dateISO, mealset, createdAt + index));
+    setSubmitButtonsBusy(form, true, "Logging...");
+    try {
+      const createdAt = Date.now();
+      for (const [index, item] of items.entries()) {
+        await addDoc(entryCollection(dateISO), loggedMealsetItemEntry(item, amount, meal, dateISO, mealset, createdAt + index));
+      }
+      await incrementFoodUsageForTargetItems(items);
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      closeModal();
+      if (returnTarget) renderRecipes();
+      showToast(`Mealset logged as ${items.length} separate item${items.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setSubmitButtonsBusy(form, false);
+      showError(error);
     }
-    await incrementFoodUsageForTargetItems(items);
-    await updateDailyCalorieSummary(dateISO).catch(console.warn);
-    closeModal();
-    if (returnTarget) renderRecipes();
-    showToast(`Mealset logged as ${items.length} separate item${items.length === 1 ? "" : "s"}.`);
   });
 }
 
@@ -4168,11 +4203,11 @@ async function fetchReportEntriesForRange(start, end) {
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
   if (!state.reportData) await loadReport();
-  const entries = state.reportEntries?.length ? state.reportEntries : await fetchReportEntriesForRange(start, end);
 
   if (caloriesOnly) {
+    const byDate = state.reportData?.byDate || {};
     const rows = dateRange(start, end).map(dateISO => {
-      const total = addNutrients(entries.filter(e => e.date === dateISO));
+      const total = normalizeNutrients(byDate[dateISO] || {});
       return { date: dateISO, totalKcal: round(total.kcal, 0) };
     });
     if (format === "json") {
@@ -4184,6 +4219,7 @@ async function exportEntries(format, caloriesOnly = false) {
     return;
   }
 
+  const entries = state.reportEntries?.length ? state.reportEntries : await fetchReportEntriesForRange(start, end);
   const header = ["date", "meal", "item_name", "brand", "amount", "unit", "grams", "kcal", "protein", "carbs", "sugar", "fat", "saturated_fat", "trans_fat", "fiber", "sodium", "source"];
   const rows = entries.map(e => {
     const n = normalizeNutrients(e.nutrientsSnapshot);
@@ -4299,6 +4335,28 @@ function settingLabel(label, info, inputHTML) {
   `;
 }
 
+function searchRegionPickerHTML(selectedValue = state.settings.searchRegions || state.settings.searchRegion) {
+  const selected = normalizeSearchRegions(selectedValue);
+  const selectedLabels = selected.map(region => SEARCH_REGIONS.find(([value]) => value === region)?.[1] || region);
+  return `
+    <details class="region-picker">
+      <summary>
+        <span class="region-picker-label">${safeText(selectedLabels.join(", "))}</span>
+        <span class="region-picker-count">${selected.length}/3</span>
+      </summary>
+      <div class="region-picker-menu">
+        ${SEARCH_REGIONS.map(([value, label]) => `
+          <label class="region-option">
+            <input type="checkbox" name="searchRegions" value="${safeText(value)}" ${selected.includes(value) ? "checked" : ""} />
+            <span>${safeText(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </details>
+    <span class="kicker">Choose up to 3 regions. Fewer/smaller regional APIs usually search faster.</span>
+  `;
+}
+
 function renderSettingsV2() {
   const s = effectiveGoalsForDate(state.currentDate);
   const appPrefs = state.settings;
@@ -4326,10 +4384,10 @@ function renderSettingsV2() {
   `;
 
   const preferenceControl = (label, inputHTML) => `
-    <label>
+    <div class="preference-control">
       <span class="label-row">${safeText(label)}</span>
       ${inputHTML}
-    </label>
+    </div>
   `;
 
   els.pages.settings.innerHTML = `
@@ -4364,12 +4422,7 @@ function renderSettingsV2() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${appPrefs.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${preferenceControl("Search regions", `
-            <select name="searchRegions" multiple size="6" data-max-selected="3">
-              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${normalizeSearchRegions(appPrefs.searchRegions || appPrefs.searchRegion).includes(value) ? "selected" : ""}>${label}</option>`).join("")}
-            </select>
-            <span class="kicker">Select up to 3. Smaller regional APIs are usually faster than global search.</span>
-          `)}
+          ${preferenceControl("Search regions", searchRegionPickerHTML(appPrefs.searchRegions || appPrefs.searchRegion))}
           ${preferenceControl("Database preference", `
             <select name="databasePreference">
               ${[
@@ -4439,17 +4492,26 @@ function renderSettingsV2() {
   });
   form?.addEventListener("input", queueSettingsAutosave);
   form?.addEventListener("change", event => {
-    if (event.target.matches('select[name="searchRegions"]')) enforceSearchRegionLimit(event.target);
+    if (event.target.matches('input[name="searchRegions"]')) enforceSearchRegionLimit(event.target);
     queueSettingsAutosave(event);
   });
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
 }
 
-function enforceSearchRegionLimit(select) {
-  const selected = [...select.selectedOptions];
-  if (selected.length <= 3) return;
-  selected.slice(3).forEach(option => { option.selected = false; });
-  showToast("Use at most 3 search regions.");
+function enforceSearchRegionLimit(changedInput) {
+  const picker = changedInput?.closest?.(".region-picker");
+  const inputs = [...(picker || document).querySelectorAll('input[name="searchRegions"]')];
+  const checked = inputs.filter(input => input.checked);
+  if (checked.length > 3) {
+    changedInput.checked = false;
+    showToast("Use at most 3 search regions.");
+  }
+  const current = inputs.filter(input => input.checked);
+  const labels = current.map(input => SEARCH_REGIONS.find(([value]) => value === input.value)?.[1] || input.value);
+  const labelNode = picker?.querySelector(".region-picker-label");
+  const countNode = picker?.querySelector(".region-picker-count");
+  if (labelNode) labelNode.textContent = labels.length ? labels.join(", ") : "World / global";
+  if (countNode) countNode.textContent = `${Math.max(1, labels.length)}/3`;
 }
 
 function syncMacroGoalInputs(form, changed = null) {
@@ -5127,6 +5189,22 @@ function closeModal() {
   document.body.classList.remove("modal-open");
 }
 
+function setSubmitButtonsBusy(form, busy, label = "Logging...") {
+  if (!form) return;
+  form.dataset.submitting = busy ? "true" : "";
+  form.querySelectorAll('button[type="submit"]').forEach(button => {
+    if (busy) {
+      if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+      button.textContent = label;
+      button.disabled = true;
+    } else {
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+      button.disabled = false;
+    }
+  });
+}
+
 async function handleDynamicSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -5134,18 +5212,18 @@ async function handleDynamicSubmit(event) {
     if (form.id === "logFoodForm") {
       event.preventDefault();
       if (form.dataset.submitting === "true") return;
-      form.dataset.submitting = "true";
       const data = new FormData(form);
       const key = form.dataset.foodKey;
       const food = key ? getFoodByKey(key) : state.activeLogFood;
       if (!food) throw new Error("Could not find this food anymore. Close the modal and open it again.");
       const { amount, unit, grams } = servingSelectionFromData(food, data);
+      setSubmitButtonsBusy(form, true, "Logging...");
       await logFood(food, amount, unit, grams, data.get("meal"), data.get("date"));
       closeModal();
       return;
     }
   } catch (error) {
-    form.dataset.submitting = "";
+    setSubmitButtonsBusy(form, false);
     showError(error);
   }
 }
