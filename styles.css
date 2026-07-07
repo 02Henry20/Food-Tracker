@@ -3358,3 +3358,44 @@ select[name="searchRegions"] {
     margin-top: 6px;
   }
 }
+
+
+/* NutriPilot v36: compact settings region dropdown and weekly-cache layering */
+#settingsForm,
+.preferences-card,
+.preferences-card.card {
+  overflow: visible;
+}
+.preferences-card {
+  position: relative;
+  z-index: 120;
+}
+.preference-control {
+  width: 100%;
+  max-width: 100%;
+}
+.preference-control .region-picker {
+  width: 100%;
+  max-width: 320px;
+  min-width: 0;
+}
+.region-picker summary {
+  width: 100%;
+  min-width: 0;
+}
+.region-picker-menu {
+  z-index: 2500;
+}
+@media (max-width: 980px) {
+  .preference-control .region-picker {
+    max-width: 100%;
+  }
+  .region-picker-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: 100%;
+    margin-top: 0;
+  }
+}

@@ -41,8 +41,8 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 6;
-const WEEKLY_SUMMARY_VERSION = 2;
+const REPORT_CACHE_VERSION = 7;
+const WEEKLY_SUMMARY_VERSION = 3;
 const REPORT_TABLE_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -3488,6 +3488,7 @@ function weeklySummaryFromDays(meta, days = {}) {
   const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
   const goalsByDate = {};
   const foodGroups = [];
+  const dayEntrySignatures = {};
   let entryCount = 0;
   for (const dateISO of dates) {
     const day = days?.[dateISO];
@@ -3501,10 +3502,12 @@ function weeklySummaryFromDays(meta, days = {}) {
     };
     byDate[dateISO] = total;
     goalsByDate[dateISO] = keptDays[dateISO].goalsSnapshot;
+    dayEntrySignatures[dateISO] = keptDays[dateISO].entrySignature || "";
     foodGroups.push(keptDays[dateISO].foodRows || []);
     entryCount += number(day.entryCount);
   }
   const activeDates = Object.keys(keptDays).sort();
+  const isEmpty = activeDates.length === 0;
   return cleanForFirestore({
     version: WEEKLY_SUMMARY_VERSION,
     key: meta.key,
@@ -3518,6 +3521,9 @@ function weeklySummaryFromDays(meta, days = {}) {
     total: addNutrients(activeDates.map(dateISO => ({ nutrientsSnapshot: keptDays[dateISO].total }))),
     foodRows: mergeReportFoodRows(foodGroups),
     goalsByDate,
+    dayEntrySignatures,
+    isEmpty,
+    empty: isEmpty,
     dirty: false,
     generatedAt: Date.now(),
     sourceEntryCount: entryCount
@@ -3556,7 +3562,7 @@ async function buildWeeklySummaryData(meta, options = {}) {
       current: number(options.baseProgress) + index + 1,
       total: number(options.totalProgress, dates.length),
       label: options.label || "Updating weekly summaries...",
-      detail: entries.length ? `Loaded ${dateISO}; ${entries.length} entries.` : `Skipped ${dateISO}; no entries.`
+      detail: entries.length ? `Loaded ${dateISO}; ${entries.length} entries.` : `Marked ${dateISO} as empty.`
     });
   }
   return weeklySummaryFromDays(meta, days);
@@ -3564,7 +3570,18 @@ async function buildWeeklySummaryData(meta, options = {}) {
 
 async function ensureWeeklySummary(meta, options = {}) {
   const cached = options.force ? null : await readWeeklySummary(meta);
-  if (cached) return cached;
+  if (cached) {
+    if (cached.isEmpty || cached.empty || !number(cached.sourceEntryCount)) {
+      options.onProgress?.({
+        mode: options.mode || meta.mode || "week",
+        current: number(options.baseProgress) + 7,
+        total: number(options.totalProgress, 7),
+        label: options.label || "Preparing report...",
+        detail: `Reused empty week ${meta.start} to ${meta.end}; no daily entry reads needed.`
+      });
+    }
+    return cached;
+  }
   const data = await buildWeeklySummaryData(meta, options);
   if (state.user) await setDoc(weeklySummaryDoc(meta.key), data, { merge: false });
   return data;
@@ -3581,7 +3598,10 @@ async function updateWeeklySummaryForDate(dateISO, entries = null, options = {})
   let current = null;
   try {
     const snap = await getDoc(weeklySummaryDoc(meta.key));
-    if (snap.exists() && snap.data()?.version === WEEKLY_SUMMARY_VERSION) current = snap.data();
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data?.version === WEEKLY_SUMMARY_VERSION && data?.days) current = data;
+    }
   } catch (error) {
     console.warn("Could not read weekly summary before updating one day.", error);
   }
@@ -3639,6 +3659,7 @@ function combineWeeklySummariesForReport(meta, weeklySummaries = []) {
     generatedAt: Date.now(),
     sourceEntryCount: entryCount,
     sourceWeekCount: weeklySummaries.length,
+    emptyWeekCount: weeklySummaries.filter(week => week?.isEmpty || week?.empty || !number(week?.sourceEntryCount)).length,
     storedRowLimit: REPORT_TABLE_LIMIT
   });
 }
@@ -4353,7 +4374,6 @@ function searchRegionPickerHTML(selectedValue = state.settings.searchRegions || 
         `).join("")}
       </div>
     </details>
-    <span class="kicker">Choose up to 3 regions. Fewer/smaller regional APIs usually search faster.</span>
   `;
 }
 
