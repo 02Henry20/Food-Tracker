@@ -280,7 +280,9 @@ const state = {
   },
   installPrompt: null,
   settingsSaveTimer: null,
-  dayGoalSaveTimer: null
+  dayGoalSaveTimer: null,
+  latestSettingsWriteAt: 0,
+  latestDailyGoalWriteAt: {}
 };
 
 function todayISO() {
@@ -861,10 +863,14 @@ function subscribeUserData() {
 
   state.unsubs.push(onSnapshot(settingsRef, { includeMetadataChanges: true }, snap => {
     noteSnapshotMetadata(snap.metadata);
-    state.settings = mergeSettings(snap.data() || state.settings);
+    const incoming = mergeSettings(snap.data() || state.settings);
+    const incomingUpdatedAt = number(incoming.updatedAt);
+    const localUpdatedAt = number(state.settings?.updatedAt);
+    if (state.latestSettingsWriteAt && localUpdatedAt && incomingUpdatedAt < localUpdatedAt) return;
+    state.settings = incoming;
     writeLocal("settings", state.settings);
     setTheme();
-    if (state.route !== "settings") renderCurrentRoute();
+    if (!snap.metadata.hasPendingWrites) renderCurrentRoute();
   }, error => {
     console.warn("Settings snapshot failed; local cache remains active.", error);
     updateSyncStatus({ fromCache: true });
@@ -912,9 +918,13 @@ function subscribeLogsForCurrentDate() {
   if (state.route === "today") renderToday();
   state.unsubDailyGoal = onSnapshot(dailyGoalDoc(dateISO), { includeMetadataChanges: true }, snap => {
     if (snap.exists()) {
-      state.dailyGoals[dateISO] = snap.data();
+      const incoming = snap.data();
+      const incomingUpdatedAt = number(incoming?.updatedAt);
+      const localUpdatedAt = number(state.dailyGoals?.[dateISO]?.updatedAt);
+      if (state.latestDailyGoalWriteAt?.[dateISO] && localUpdatedAt && incomingUpdatedAt < localUpdatedAt) return;
+      state.dailyGoals[dateISO] = incoming;
       writeLocal(`dailyGoal:${dateISO}`, state.dailyGoals[dateISO]);
-      if (state.route === "today" && state.currentDate === dateISO) renderCurrentRoute();
+      if (!snap.metadata.hasPendingWrites && (state.route === "today" || state.route === "settings") && state.currentDate === dateISO) renderCurrentRoute();
     }
   }, error => console.warn("Daily goal snapshot failed; using local settings.", error));
   state.unsubLogs = onSnapshot(entryCollection(dateISO), { includeMetadataChanges: true }, snap => {
@@ -4080,6 +4090,10 @@ function renderSettingsV2() {
     </label>
   `;
 
+  const saveMacroButton = placement => `
+    <button class="primary-btn macro-save-normalize-btn ${placement}-macro-save" type="button" data-action="save-normalize-macro-goals">Save + balance macros</button>
+  `;
+
   els.pages.settings.innerHTML = `
     <form id="settingsForm" class="stack">
       <div class="card macro-settings-card">
@@ -4088,9 +4102,12 @@ function renderSettingsV2() {
             <h3>Macro goals</h3>
             <p>Targets are saved for the selected Diary date, so older days keep their original goal.</p>
           </div>
-          <div class="segmented" aria-label="Macro input mode">
-            <button type="button" class="tiny-btn ${macroMode === "manual" ? "active" : ""}" data-action="set-macro-mode" data-mode="manual">grams</button>
-            <button type="button" class="tiny-btn ${macroMode === "percent" ? "active" : ""}" data-action="set-macro-mode" data-mode="percent">percent</button>
+          <div class="macro-mode-actions">
+            <div class="segmented" aria-label="Macro input mode">
+              <button type="button" class="tiny-btn ${macroMode === "manual" ? "active" : ""}" data-action="set-macro-mode" data-mode="manual">grams</button>
+              <button type="button" class="tiny-btn ${macroMode === "percent" ? "active" : ""}" data-action="set-macro-mode" data-mode="percent">percent</button>
+            </div>
+            ${saveMacroButton("desktop")}
           </div>
         </div>
         <input type="hidden" name="macroGoalMode" value="${macroMode}" />
@@ -4102,6 +4119,7 @@ function renderSettingsV2() {
           ${macroGoalCard("carbs", "Carbs", macroGoals.carbsGoal, macroPercents.carbs, "carbs") }
           ${macroGoalCard("fat", "Fat", macroGoals.fatGoal, macroPercents.fat, "fat") }
         </div>
+        ${saveMacroButton("mobile")}
       </div>
 
       <div class="card preferences-card">
@@ -4147,11 +4165,6 @@ function renderSettingsV2() {
         </div>
       </div>
 
-      <div class="form-actions settings-save-actions">
-        <button class="primary-btn" type="submit">Save + normalize macros</button>
-        <p class="form-message" id="settingsSaveMessage"></p>
-      </div>
-
       <div class="card stack sync-panel">
         <div class="meal-head">
           <div>
@@ -4168,6 +4181,7 @@ function renderSettingsV2() {
           <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>
         </div>
         <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
+        <p class="form-message" id="settingsSaveMessage"></p>
       </div>
 
       <div class="card stack export-panel">
@@ -4190,7 +4204,10 @@ function renderSettingsV2() {
   });
   form?.addEventListener("input", queueSettingsAutosave);
   form?.addEventListener("change", queueSettingsAutosave);
-  form?.addEventListener("submit", saveSettingsV2);
+  form?.addEventListener("submit", event => {
+    event.preventDefault();
+    saveNormalizedSettingsFromForm(form).catch(showError);
+  });
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
 }
 
@@ -4230,8 +4247,8 @@ function syncMacroGoalInputs(form, changed = null) {
   }
 }
 
-function collectSettingsFromForm(form) {
-  syncMacroGoalInputs(form);
+function collectSettingsFromForm(form, options = {}) {
+  if (options.sync !== false) syncMacroGoalInputs(form);
   const data = new FormData(form);
   const next = {
     ...state.settings,
@@ -4270,76 +4287,73 @@ function collectSettingsFromForm(form) {
 function normalizeMacroGoalsToCalories(settings) {
   const next = mergeSettings(settings);
   const calories = Math.max(0, number(next.calorieGoal, DEFAULT_SETTINGS.calorieGoal));
+  if (!calories) return next;
   const kcalPerGram = { protein: 4, carbs: 4, fat: 9 };
 
   if (next.macroGoalMode === "percent") {
-    const rawPercents = {
-      protein: Math.max(0, number(next.macroPercentProtein)),
-      carbs: Math.max(0, number(next.macroPercentCarbs)),
-      fat: Math.max(0, number(next.macroPercentFat))
-    };
-    const percentTotal = rawPercents.protein + rawPercents.carbs + rawPercents.fat;
-    if (!calories || !percentTotal) return next;
-
-    const factor = 100 / percentTotal;
-    next.macroPercentProtein = round(rawPercents.protein * factor, 2);
-    next.macroPercentCarbs = round(rawPercents.carbs * factor, 2);
-    next.macroPercentFat = round(rawPercents.fat * factor, 2);
-    next.macroPercentFat = round(next.macroPercentFat + (100 - next.macroPercentProtein - next.macroPercentCarbs - next.macroPercentFat), 2);
-    next.proteinGoal = round(calories * next.macroPercentProtein / 100 / kcalPerGram.protein, 2);
-    next.carbsGoal = round(calories * next.macroPercentCarbs / 100 / kcalPerGram.carbs, 2);
-    next.fatGoal = round(calories * next.macroPercentFat / 100 / kcalPerGram.fat, 2);
-    return mergeSettings(next);
+    const percentSum = number(next.macroPercentProtein) + number(next.macroPercentCarbs) + number(next.macroPercentFat);
+    if (percentSum <= 0) return next;
+    const factor = 100 / percentSum;
+    next.macroPercentProtein = round(number(next.macroPercentProtein) * factor, 1);
+    next.macroPercentCarbs = round(number(next.macroPercentCarbs) * factor, 1);
+    next.macroPercentFat = round(Math.max(0, 100 - next.macroPercentProtein - next.macroPercentCarbs), 1);
+    next.proteinGoal = round(calories * next.macroPercentProtein / 100 / kcalPerGram.protein, 1);
+    next.carbsGoal = round(calories * next.macroPercentCarbs / 100 / kcalPerGram.carbs, 1);
+    next.fatGoal = round(calories * next.macroPercentFat / 100 / kcalPerGram.fat, 1);
+    return next;
   }
 
-  const rawGoals = {
-    protein: Math.max(0, number(next.proteinGoal)),
-    carbs: Math.max(0, number(next.carbsGoal)),
-    fat: Math.max(0, number(next.fatGoal))
-  };
-  const macroKcal = rawGoals.protein * kcalPerGram.protein + rawGoals.carbs * kcalPerGram.carbs + rawGoals.fat * kcalPerGram.fat;
-  if (!calories || !macroKcal) return next;
-
+  const macroKcal = number(next.proteinGoal) * kcalPerGram.protein
+    + number(next.carbsGoal) * kcalPerGram.carbs
+    + number(next.fatGoal) * kcalPerGram.fat;
+  if (macroKcal <= 0) return next;
   const factor = calories / macroKcal;
-  next.proteinGoal = round(rawGoals.protein * factor, 2);
-  next.carbsGoal = round(rawGoals.carbs * factor, 2);
-  next.fatGoal = round(rawGoals.fat * factor, 2);
-  next.macroPercentProtein = round(next.proteinGoal * kcalPerGram.protein / calories * 100, 2);
-  next.macroPercentCarbs = round(next.carbsGoal * kcalPerGram.carbs / calories * 100, 2);
-  next.macroPercentFat = round(next.fatGoal * kcalPerGram.fat / calories * 100, 2);
-  next.macroPercentFat = round(next.macroPercentFat + (100 - next.macroPercentProtein - next.macroPercentCarbs - next.macroPercentFat), 2);
-  return mergeSettings(next);
+  next.proteinGoal = round(number(next.proteinGoal) * factor, 1);
+  next.carbsGoal = round(number(next.carbsGoal) * factor, 1);
+  next.fatGoal = round(Math.max(0, (calories - next.proteinGoal * kcalPerGram.protein - next.carbsGoal * kcalPerGram.carbs) / kcalPerGram.fat), 1);
+  next.macroPercentProtein = round(next.proteinGoal * kcalPerGram.protein / calories * 100, 1);
+  next.macroPercentCarbs = round(next.carbsGoal * kcalPerGram.carbs / calories * 100, 1);
+  next.macroPercentFat = round(Math.max(0, 100 - next.macroPercentProtein - next.macroPercentCarbs), 1);
+  return next;
 }
 
-async function persistSettingsForCurrentDay(next, message) {
+async function persistSettingsAndDayGoal(settings, options = {}) {
+  const now = Date.now();
+  const next = mergeSettings({ ...settings, updatedAt: now });
+  state.latestSettingsWriteAt = now;
   state.settings = next;
   setTheme();
+
   const dayGoal = goalSnapshotFromSettings(next);
   dayGoal.savedForDate = state.currentDate;
+  dayGoal.updatedAt = now;
+  state.latestDailyGoalWriteAt[state.currentDate] = now;
   state.dailyGoals[state.currentDate] = dayGoal;
-  writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
+
   writeLocal("settings", next);
+  writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
+
   await Promise.all([
     setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
     setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
   ]);
-  const messageEl = document.getElementById("settingsSaveMessage");
-  if (messageEl) messageEl.textContent = message;
+
+  if (options.updateDailySummary !== false) {
+    queueDailySummaryUpdate(state.currentDate, state.logs, 50, { invalidateReports: true });
+  }
+  return { settings: next, dayGoal };
 }
 
-async function saveSettingsV2(event) {
-  event.preventDefault();
+async function saveNormalizedSettingsFromForm(form) {
+  if (!form) return;
   clearTimeout(state.settingsSaveTimer);
-  try {
-    const next = normalizeMacroGoalsToCalories(collectSettingsFromForm(event.currentTarget));
-    await persistSettingsForCurrentDay(next, "Saved. Macro calories match the calorie target.");
-    renderSettingsV2();
-    const messageEl = document.getElementById("settingsSaveMessage");
-    if (messageEl) messageEl.textContent = "Saved. Macro calories match the calorie target.";
-    showToast("Settings saved.");
-  } catch (error) {
-    showError(error, "Could not save settings.");
-  }
+  syncMacroGoalInputs(form);
+  const next = normalizeMacroGoalsToCalories(collectSettingsFromForm(form, { sync: false }));
+  await persistSettingsAndDayGoal(next);
+  renderSettingsV2();
+  const message = document.getElementById("settingsSaveMessage");
+  if (message) message.textContent = "Saved and balanced to calorie target.";
+  showToast("Macro goals saved and balanced.");
 }
 
 function queueSettingsAutosave(event) {
@@ -4348,7 +4362,9 @@ function queueSettingsAutosave(event) {
   state.settingsSaveTimer = setTimeout(async () => {
     try {
       const next = collectSettingsFromForm(form);
-      await persistSettingsForCurrentDay(next, "Saved automatically.");
+      await persistSettingsAndDayGoal(next, { updateDailySummary: false });
+      const message = document.getElementById("settingsSaveMessage");
+      if (message) message.textContent = "Saved automatically.";
     } catch (error) {
       showError(error, "Could not save settings.");
     }
@@ -5205,22 +5221,18 @@ async function handleClick(event) {
     if (action === "export-calories-csv") await exportEntries("csv", true);
     if (action === "export-calories-json") await exportEntries("json", true);
     if (action === "set-macro-mode") {
+      clearTimeout(state.settingsSaveTimer);
       const form = document.getElementById("settingsForm");
       const nextMode = btn.dataset.mode || "manual";
       if (form?.elements.macroGoalMode) form.elements.macroGoalMode.value = nextMode;
       syncMacroGoalInputs(form);
-      if (form) state.settings = collectSettingsFromForm(form);
-      state.settings.macroGoalMode = nextMode;
-      const dayGoal = goalSnapshotFromSettings(state.settings);
-      dayGoal.savedForDate = state.currentDate;
-      state.dailyGoals[state.currentDate] = dayGoal;
-      writeLocal("settings", state.settings);
-      writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
-      await Promise.all([
-        setDoc(userDoc("private", "settings"), cleanForFirestore(state.settings), { merge: true }),
-        setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
-      ]);
+      const next = form ? collectSettingsFromForm(form) : state.settings;
+      next.macroGoalMode = nextMode;
+      await persistSettingsAndDayGoal(next, { updateDailySummary: false });
       renderSettingsV2();
+    }
+    if (action === "save-normalize-macro-goals") {
+      await saveNormalizedSettingsFromForm(document.getElementById("settingsForm"));
     }
     if (action === "export-backup-json") exportBackupJson();
     if (action === "trigger-import") document.getElementById("backupImportInput")?.click();

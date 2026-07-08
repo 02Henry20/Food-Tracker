@@ -3274,3 +3274,42 @@ input[type="number"]::-webkit-inner-spin-button {
     display: none;
   }
 }
+
+/* Macro settings save/balance placement */
+.macro-mode-actions {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  width: min(260px, 100%);
+  margin-left: auto;
+}
+
+.macro-mode-actions .segmented,
+.macro-save-normalize-btn {
+  width: 100%;
+}
+
+.macro-save-normalize-btn {
+  justify-content: center;
+  min-height: 40px;
+}
+
+.mobile-macro-save {
+  display: none;
+  margin-top: 2px;
+}
+
+@media (max-width: 980px) {
+  .macro-mode-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .desktop-macro-save {
+    display: none;
+  }
+
+  .mobile-macro-save {
+    display: inline-flex;
+  }
+}
