@@ -16,6 +16,7 @@ import {
   addDoc,
   getDocs,
   onSnapshot,
+  writeBatch,
   enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
@@ -41,7 +42,9 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 13;
+const DATA_MODEL_VERSION = 2;
+const DAILY_SUMMARY_VERSION = 2;
+const REPORT_CACHE_VERSION = 14;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
@@ -595,13 +598,199 @@ function normalizeNutrients(nutrients = {}) {
   return out;
 }
 
+function nutrientsToVector(nutrients = {}) {
+  const n = normalizeNutrients(nutrients);
+  return NUTRIENT_KEYS.map(key => round(n[key], key === "kcal" || key === "sodium" ? 0 : 2));
+}
+
+function vectorToNutrients(vector = []) {
+  const out = emptyNutrients();
+  if (!Array.isArray(vector)) return out;
+  NUTRIENT_KEYS.forEach((key, index) => {
+    out[key] = number(vector[index]);
+  });
+  return out;
+}
+
+function nutrientsFromSnapshot(value = {}) {
+  if (Array.isArray(value)) return vectorToNutrients(value);
+  if (Array.isArray(value?.nutrientVector)) return vectorToNutrients(value.nutrientVector);
+  if (Array.isArray(value?.nv)) return vectorToNutrients(value.nv);
+  return normalizeNutrients(value);
+}
+
+function compactNutrients(nutrients = {}) {
+  return normalizeNutrients(nutrients);
+}
+
 function addNutrients(items) {
   const total = emptyNutrients();
   for (const item of items) {
-    const n = item.nutrientsSnapshot || item.totalNutrients || item.nutrients || item;
+    const n = nutrientsFromSnapshot(item.nutrientsSnapshot || item.totalNutrients || item.nutrients || item);
     for (const key of NUTRIENT_KEYS) total[key] += number(n?.[key]);
   }
   return total;
+}
+
+function compactReportItem(item = {}, fallback = {}) {
+  const directNutrients = normalizeNutrients({
+    ...fallback.nutrientsSnapshot,
+    ...item.nutrientsSnapshot,
+    kcal: item.kcal ?? item.nutrientsSnapshot?.kcal ?? fallback.nutrientsSnapshot?.kcal,
+    protein: item.protein ?? item.nutrientsSnapshot?.protein ?? fallback.nutrientsSnapshot?.protein,
+    carbs: item.carbs ?? item.nutrientsSnapshot?.carbs ?? fallback.nutrientsSnapshot?.carbs,
+    fat: item.fat ?? item.nutrientsSnapshot?.fat ?? fallback.nutrientsSnapshot?.fat
+  });
+  const nutrientsSnapshot = {
+    kcal: round(directNutrients.kcal, 1),
+    protein: round(directNutrients.protein, 2),
+    carbs: round(directNutrients.carbs, 2),
+    fat: round(directNutrients.fat, 2)
+  };
+  return cleanForFirestore({
+    name: String(item.name || item.nameSnapshot || fallback.name || fallback.nameSnapshot || "Unnamed"),
+    brand: String(item.brand || item.brandSnapshot || fallback.brand || fallback.brandSnapshot || ""),
+    grams: round(number(item.grams ?? item.gramsEquivalent ?? fallback.grams ?? fallback.gramsEquivalent), 2),
+    meal: item.meal || fallback.meal || "",
+    entryDate: item.entryDate || fallback.entryDate || fallback.date || null,
+    source: item.source || fallback.source || fallback.itemType || "",
+    itemType: item.itemType || fallback.itemType || "food",
+    itemId: item.itemId || fallback.itemId || null,
+    nutrientsSnapshot,
+    nutrientVector: nutrientsToVector(nutrientsSnapshot),
+    kcal: nutrientsSnapshot.kcal,
+    protein: nutrientsSnapshot.protein,
+    carbs: nutrientsSnapshot.carbs,
+    fat: nutrientsSnapshot.fat
+  });
+}
+
+function normalizeReportRow(row = {}) {
+  const n = nutrientsFromSnapshot(row.nutrientsSnapshot || row);
+  return {
+    ...row,
+    name: row.name || row.nameSnapshot || "Unnamed",
+    brand: row.brand || row.brandSnapshot || "",
+    grams: number(row.grams ?? row.gramsEquivalent),
+    kcal: number(row.kcal ?? n.kcal),
+    protein: number(row.protein ?? n.protein),
+    carbs: number(row.carbs ?? n.carbs),
+    fat: number(row.fat ?? n.fat),
+    entryDate: row.entryDate || row.date || null,
+    nutrientsSnapshot: normalizeNutrients({ ...n, kcal: row.kcal ?? n.kcal, protein: row.protein ?? n.protein, carbs: row.carbs ?? n.carbs, fat: row.fat ?? n.fat })
+  };
+}
+
+function compactReportItemsFromEntry(entry = {}) {
+  const rows = flattenReportEntry(entry);
+  return rows.map(row => compactReportItem(row, entry));
+}
+
+function compactLoggedEntry(entry = {}, id = null, dateISO = state.currentDate) {
+  const now = Date.now();
+  const itemType = entry.itemType || entry.itemSnapshot?.itemType || "food";
+  const nutrientsSnapshot = compactNutrients(entry.nutrientsSnapshot || entry.itemSnapshot?.nutrientsSnapshot || emptyNutrients());
+  const reportItems = Array.isArray(entry.reportItems) && entry.reportItems.length
+    ? entry.reportItems.map(item => compactReportItem(item, entry))
+    : compactReportItemsFromEntry({ ...entry, itemType, nutrientsSnapshot });
+  const gramsEquivalent = entry.gramsEquivalent ?? entry.itemSnapshot?.gramsEquivalent ?? null;
+  const createdAt = number(entry.createdAt) || now;
+  const updatedAt = now;
+  const compact = {
+    dataModelVersion: DATA_MODEL_VERSION,
+    itemType,
+    itemId: entry.itemId || entry.itemSnapshot?.itemId || null,
+    itemRef: {
+      type: itemType,
+      id: entry.itemId || entry.itemSnapshot?.itemId || null,
+      source: entry.source || entry.itemSnapshot?.source || null,
+      sourceUpdatedAt: entry.sourceUpdatedAt || entry.itemSnapshot?.sourceUpdatedAt || null
+    },
+    source: entry.source || entry.itemSnapshot?.source || itemType,
+    originalSource: entry.originalSource || entry.itemSnapshot?.originalSource || null,
+    sourceId: entry.sourceId || entry.itemSnapshot?.sourceId || null,
+    barcode: entry.barcode || entry.itemSnapshot?.barcode || null,
+    nameSnapshot: entry.nameSnapshot || entry.itemSnapshot?.displayName || entry.itemSnapshot?.name || "Unnamed food",
+    brandSnapshot: entry.brandSnapshot || entry.itemSnapshot?.brand || null,
+    amount: number(entry.amount, 1),
+    unit: entry.unit || entry.itemSnapshot?.unit || (itemType === "recipe" ? "portion" : itemType === "mealset" ? "mealset" : "g"),
+    gramsEquivalent,
+    meal: entry.meal || "snack",
+    date: dateISO || entry.date || state.currentDate,
+    nutrientsSnapshot,
+    nutrientVector: nutrientsToVector(nutrientsSnapshot),
+    reportItems,
+    snapshotSummary: {
+      itemType,
+      name: entry.nameSnapshot || entry.itemSnapshot?.displayName || entry.itemSnapshot?.name || "Unnamed food",
+      brand: entry.brandSnapshot || entry.itemSnapshot?.brand || null,
+      amount: number(entry.amount, 1),
+      unit: entry.unit || entry.itemSnapshot?.unit || null,
+      gramsEquivalent,
+      nutrientsSnapshot,
+      nutrientVector: nutrientsToVector(nutrientsSnapshot),
+      reportItemCount: reportItems.length,
+      loggedAt: createdAt
+    },
+    createdAt,
+    updatedAt
+  };
+  if (id || entry.id) compact.id = id || entry.id;
+  return cleanForFirestore(compact);
+}
+
+function scaledReportItems(items = [], factor = 1) {
+  return (items || []).map(item => {
+    const n = scaleNutrients(item.nutrientsSnapshot || item, factor);
+    return compactReportItem({
+      ...item,
+      grams: number(item.grams) * factor,
+      nutrientsSnapshot: n,
+      kcal: n.kcal,
+      protein: n.protein,
+      carbs: n.carbs,
+      fat: n.fat
+    }, item);
+  });
+}
+
+function reportItemAmountText(item = {}) {
+  if (item.amount && item.unit) return itemAmountText(item);
+  const grams = number(item.grams ?? item.gramsEquivalent);
+  return grams ? `${round(grams, 1)} g` : "saved amount";
+}
+
+function dailySummaryNutrients(summary = {}) {
+  return nutrientsFromSnapshot(summary.nutrients || summary.nutrientVector || {
+    kcal: summary.totalKcal,
+    protein: summary.protein,
+    carbs: summary.carbs,
+    fat: summary.fat,
+    fiber: summary.fiber
+  });
+}
+
+function isUsableDailySummary(summary = {}) {
+  return number(summary.summaryVersion) >= DAILY_SUMMARY_VERSION
+    && (summary.nutrients || Array.isArray(summary.nutrientVector))
+    && Array.isArray(summary.flatRows);
+}
+
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length || 1) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) {
@@ -612,12 +801,23 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
   }
   await ensureDailyGoalSnapshot(dateISO);
-  const total = addNutrients(summaryEntries || []);
+  const normalizedEntries = (summaryEntries || []).map(entry => ({ ...entry, date: entry.date || dateISO }));
+  const total = addNutrients(normalizedEntries);
   const goalsSnapshot = goalSnapshotFromSettings(effectiveGoalsForDate(dateISO));
   goalsSnapshot.savedForDate = dateISO;
+
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
-  for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
-  await setDoc(dailyCaloriesDoc(dateISO), cleanForFirestore({
+  const byMealNutrients = Object.fromEntries(MEALS.map(([id]) => [id, emptyNutrients()]));
+  for (const entry of normalizedEntries) {
+    const meal = MEALS.some(([id]) => id === entry.meal) ? entry.meal : "snack";
+    byMeal[meal] = round(number(byMeal[meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
+    byMealNutrients[meal] = addNutrients([{ nutrientsSnapshot: byMealNutrients[meal] }, entry]);
+  }
+
+  const flatRows = flatRowsFromReportEntries(normalizedEntries).map(row => compactReportItem(row, { date: dateISO }));
+  const summary = cleanForFirestore({
+    summaryVersion: DAILY_SUMMARY_VERSION,
+    dataModelVersion: DATA_MODEL_VERSION,
     date: dateISO,
     uid: state.user.uid,
     app: "NutriPilot",
@@ -626,12 +826,20 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     carbs: round(total.carbs, 1),
     fat: round(total.fat, 1),
     fiber: round(total.fiber, 1),
+    nutrients: total,
+    nutrientVector: nutrientsToVector(total),
     meals: byMeal,
+    byMealNutrients,
+    flatRows,
     goalsSnapshot,
-    itemCount: summaryEntries?.length || 0,
+    itemCount: normalizedEntries.length,
+    entryIds: normalizedEntries.map(entry => entry.id).filter(Boolean),
     updatedAt: Date.now()
-  }), { merge: true });
+  });
+
+  await setDoc(dailyCaloriesDoc(dateISO), summary, { merge: true });
   if (options.invalidateReports !== false) scheduleReportRecalculationForDate(dateISO);
+  return summary;
 }
 
 function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
@@ -2251,10 +2459,13 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
 async function logFood(food, amount, unit, grams, meal, dateISO) {
   const createdAt = Date.now();
   const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
-  const entry = {
+  const entry = compactLoggedEntry({
     itemType: "food",
     itemId: food.id || food.sourceId || null,
     source: food.source,
+    originalSource: food.originalSource || null,
+    sourceId: food.sourceId || food.id || null,
+    barcode: food.barcode || null,
     nameSnapshot: displayFoodName(food),
     brandSnapshot: food.brand || null,
     amount,
@@ -2266,7 +2477,7 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     itemSnapshot: loggedFoodSnapshot(food, grams, amount, unit, nutrientsSnapshot, createdAt),
     createdAt,
     updatedAt: createdAt
-  };
+  }, null, dateISO);
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
   showToast("Food logged.");
   ensureFoodInPersonalLibrary(food, { incrementUsage: true }).catch(console.warn);
@@ -3066,9 +3277,10 @@ function openLogRecipeModal(recipe, returnTarget = null) {
     const amount = number(data.get("amount"), 1);
     const createdAt = Date.now();
     const nutrientsSnapshot = scaleNutrients(perPortion, amount);
-    const entry = {
+    const entry = compactLoggedEntry({
       itemType: "recipe",
       itemId: recipe.id,
+      source: "recipe",
       nameSnapshot: recipe.name,
       amount,
       unit: "portion",
@@ -3078,7 +3290,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
       itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
       createdAt,
       updatedAt: createdAt
-    };
+    }, null, data.get("date"));
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
     await incrementFoodUsageForTargetItems(recipe.ingredients || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
@@ -3111,9 +3323,10 @@ function openLogMealsetModal(mealset, returnTarget = null) {
     const amount = number(data.get("amount"), 1);
     const createdAt = Date.now();
     const nutrientsSnapshot = scaleNutrients(total, amount);
-    const entry = {
+    const entry = compactLoggedEntry({
       itemType: "mealset",
       itemId: mealset.id,
+      source: "mealset",
       nameSnapshot: mealset.name,
       amount,
       unit: "mealset",
@@ -3123,7 +3336,7 @@ function openLogMealsetModal(mealset, returnTarget = null) {
       itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
       createdAt,
       updatedAt: createdAt
-    };
+    }, null, data.get("date"));
     await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
     await incrementFoodUsageForTargetItems(mealset.items || []);
     await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
@@ -3298,13 +3511,17 @@ function normalizeReportData(data = {}, meta = null) {
   const start = meta?.start || data.start;
   const end = meta?.end || data.end;
   const dates = start && end ? dateRange(start, end) : (data.dates || []);
-  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  const byDate = Object.fromEntries(dates.map(date => [date, nutrientsFromSnapshot(data.byDate?.[date] || {})]));
   const recoveredTotal = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
-  const storedTotal = normalizeNutrients(data.total || {});
+  const storedTotal = nutrientsFromSnapshot(data.total || data.nutrientVector || {});
   const total = number(recoveredTotal.kcal) || !number(storedTotal.kcal) ? recoveredTotal : storedTotal;
   const entries = Array.isArray(data.entries) ? data.entries.filter(entry => !entry.date || dates.includes(entry.date)) : [];
-  const activeDates = dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
-  const flatRows = Array.isArray(data.flatRows) && data.flatRows.length ? data.flatRows : flatRowsFromReportEntries(entries);
+  const activeDates = Array.isArray(data.activeDates) && data.activeDates.length
+    ? data.activeDates.filter(date => dates.includes(date))
+    : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+  const flatRows = Array.isArray(data.flatRows) && data.flatRows.length
+    ? data.flatRows.map(row => normalizeReportRow(row))
+    : flatRowsFromReportEntries(entries);
   return {
     ...data,
     start,
@@ -3327,58 +3544,119 @@ function applyReportGoalsFromData(data = {}) {
 }
 
 function flatRowsFromReportEntries(entries = []) {
-  return entries.flatMap(entry => flattenReportEntry(entry).map(item => ({
-    ...item,
-    entryDate: entry.date || null,
-    meal: entry.meal || "",
-    source: entry.source || entry.itemType || "",
-    brand: item.brand || entry.brandSnapshot || entry.itemSnapshot?.brand || ""
-  })));
+  return entries.flatMap(entry => flattenReportEntry(entry).map(item => {
+    const row = normalizeReportRow(item);
+    return {
+      ...row,
+      entryDate: entry.date || item.entryDate || null,
+      meal: item.meal || entry.meal || "",
+      source: item.source || entry.source || entry.itemType || "",
+      brand: item.brand || entry.brandSnapshot || entry.itemSnapshot?.brand || ""
+    };
+  }));
+}
+
+async function readDailySummaryForReport(dateISO) {
+  try {
+    const snap = await getDoc(dailyCaloriesDoc(dateISO));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    if (!isUsableDailySummary(data)) return null;
+    const nutrients = dailySummaryNutrients(data);
+    return {
+      date: dateISO,
+      nutrients,
+      flatRows: (data.flatRows || []).map(row => compactReportItem({
+        ...row,
+        entryDate: row.entryDate || dateISO
+      }, { date: dateISO })),
+      goalsSnapshot: data.goalsSnapshot || null,
+      itemCount: number(data.itemCount),
+      updatedAt: number(data.updatedAt)
+    };
+  } catch (error) {
+    console.warn(`Daily summary read failed for ${dateISO}; falling back to entries.`, error);
+    return null;
+  }
+}
+
+async function buildReportDayData(dateISO, options = {}) {
+  assertReportCalculationActive(options.signal);
+  const summary = await readDailySummaryForReport(dateISO);
+  assertReportCalculationActive(options.signal);
+  if (summary) {
+    const goal = summary.goalsSnapshot || state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
+    return {
+      date: dateISO,
+      nutrients: summary.nutrients,
+      flatRows: summary.flatRows.map(row => ({ ...row, entryDate: dateISO })),
+      goal,
+      entryCount: summary.itemCount,
+      usedSummary: true
+    };
+  }
+
+  await loadDailyGoalForDate(dateISO);
+  assertReportCalculationActive(options.signal);
+  const goal = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
+  const snap = await getDocs(entryCollection(dateISO));
+  assertReportCalculationActive(options.signal);
+  const entries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
+  const nutrients = addNutrients(entries);
+  const flatRows = flatRowsFromReportEntries(entries);
+  if (entries.length) {
+    updateDailyCalorieSummary(dateISO, entries, { invalidateReports: false }).catch(console.warn);
+  }
+  return { date: dateISO, nutrients, flatRows, goal, entryCount: entries.length, usedSummary: false };
 }
 
 async function buildReportData(meta, options = {}) {
   const dates = dateRange(meta.start, meta.end);
-  const entries = [];
-  const goalsByDate = {};
-  const totalSteps = Math.max(dates.length, 1);
-  for (let index = 0; index < dates.length; index += 1) {
-    assertReportCalculationActive(options.signal);
-    const dateISO = dates[index];
-    await loadDailyGoalForDate(dateISO);
-    assertReportCalculationActive(options.signal);
-    goalsByDate[dateISO] = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
-    const snap = await getDocs(entryCollection(dateISO));
-    assertReportCalculationActive(options.signal);
-    snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
-    options.onProgress?.({
-      percent: ((index + 1) / totalSteps) * 92,
-      message: "Building report from diary data"
-    });
-  }
-  assertReportCalculationActive(options.signal);
   const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  for (const entry of entries) {
-    if (!byDate[entry.date]) byDate[entry.date] = emptyNutrients();
-    byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const goalsByDate = {};
+  const flatRows = [];
+  let sourceEntryCount = 0;
+  let completed = 0;
+  const totalSteps = Math.max(dates.length, 1);
+
+  const dayResults = await mapWithConcurrency(dates, 8, async dateISO => {
+    const result = await buildReportDayData(dateISO, options);
+    completed += 1;
+    options.onProgress?.({
+      percent: (completed / totalSteps) * 92,
+      message: result.usedSummary ? "Building report from daily summaries" : "Repairing missing daily summary"
+    });
+    return result;
+  });
+
+  assertReportCalculationActive(options.signal);
+  for (const result of dayResults) {
+    if (!result) continue;
+    byDate[result.date] = normalizeNutrients(result.nutrients);
+    goalsByDate[result.date] = result.goal;
+    sourceEntryCount += number(result.entryCount);
+    flatRows.push(...(result.flatRows || []).map(row => ({ ...row, entryDate: result.date })));
   }
+
   const total = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
-  const flatRows = flatRowsFromReportEntries(entries);
   const data = cleanForFirestore({
     version: REPORT_CACHE_VERSION,
+    dataModelVersion: DATA_MODEL_VERSION,
     key: meta.key,
     mode: meta.mode,
     start: meta.start,
     end: meta.end,
     dates,
     activeDates: dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)),
-    entries,
+    entries: [],
     byDate,
     total,
-    flatRows,
+    nutrientVector: nutrientsToVector(total),
+    flatRows: flatRows.map(row => compactReportItem(row, row)),
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
-    sourceEntryCount: entries.length
+    sourceEntryCount
   });
   options.onProgress?.({ percent: 96, message: "Saving completed report" });
   return data;
@@ -3663,6 +3941,20 @@ function recipeSnapshotFromItem(item) {
 
 function flattenReportItem(item, factor = 1) {
   if (!item) return [];
+  if (Array.isArray(item.reportItems) && item.reportItems.length) {
+    return item.reportItems.map(row => {
+      const nutrients = scaleNutrients(row.nutrientsSnapshot || row, factor);
+      return normalizeReportRow({
+        ...row,
+        grams: number(row.grams) * factor,
+        nutrientsSnapshot: nutrients,
+        kcal: nutrients.kcal,
+        protein: nutrients.protein,
+        carbs: nutrients.carbs,
+        fat: nutrients.fat
+      });
+    });
+  }
   if (item.itemType === "recipe") {
     const snapshot = recipeSnapshotFromItem(item);
     const ingredients = snapshot?.ingredients || [];
@@ -3676,7 +3968,7 @@ function flattenReportItem(item, factor = 1) {
     const items = snapshot.items || [];
     if (items.length) return items.flatMap(child => flattenReportItem(child, factor * number(item.amount, 1)));
   }
-  const nutrients = scaleNutrients(item.nutrientsSnapshot, factor);
+  const nutrients = scaleNutrients(item.nutrientsSnapshot || item, factor);
   return [{
     name: foodNameFromReportItem(item),
     brand: item.brandSnapshot || item.brand || "",
@@ -3684,11 +3976,22 @@ function flattenReportItem(item, factor = 1) {
     kcal: nutrients.kcal,
     protein: nutrients.protein,
     carbs: nutrients.carbs,
-    fat: nutrients.fat
+    fat: nutrients.fat,
+    nutrientsSnapshot: normalizeNutrients(nutrients),
+    itemType: item.itemType || "food",
+    itemId: item.itemId || null,
+    source: item.source || item.itemType || ""
   }];
 }
 
 function flattenReportEntry(entry) {
+  if (Array.isArray(entry.reportItems) && entry.reportItems.length) {
+    return entry.reportItems.map(row => normalizeReportRow({
+      ...row,
+      meal: row.meal || entry.meal || "",
+      source: row.source || entry.source || entry.itemType || ""
+    }));
+  }
   if (entry.itemType === "recipe") {
     const snapshot = entry.itemSnapshot || recipeSnapshotFromItem(entry);
     const ingredients = snapshot?.ingredients || [];
@@ -3925,12 +4228,12 @@ function renderCharts(byDate) {
 
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
-  if (!state.reportEntries.length) await loadReport();
-  const entries = state.reportEntries;
 
   if (caloriesOnly) {
+    if (!state.reportData || state.reportData.start !== start || state.reportData.end !== end) await loadReport();
+    const reportData = normalizeReportData(state.reportData || {}, { mode: state.reportMode, start, end, key: reportCacheKey(state.reportMode, start, end) });
     const rows = dateRange(start, end).map(dateISO => {
-      const total = addNutrients(entries.filter(e => e.date === dateISO));
+      const total = normalizeNutrients(reportData.byDate?.[dateISO] || {});
       return { date: dateISO, totalKcal: round(total.kcal, 0) };
     });
     if (format === "json") {
@@ -3942,6 +4245,7 @@ async function exportEntries(format, caloriesOnly = false) {
     return;
   }
 
+  const entries = await fetchEntriesForRange(start, end);
   const header = ["date", "meal", "item_name", "brand", "amount", "unit", "grams", "kcal", "protein", "carbs", "sugar", "fat", "saturated_fat", "trans_fat", "fiber", "sodium", "source"];
   const rows = entries.map(e => {
     const n = normalizeNutrients(e.nutrientsSnapshot);
@@ -3952,6 +4256,7 @@ async function exportEntries(format, caloriesOnly = false) {
   });
   downloadFile(`nutripilot_full_${start}_to_${end}.csv`, [header.join(","), ...rows].join("\n"), "text/csv");
 }
+
 
 function csvCell(value) {
   const text = String(value ?? "");
@@ -4177,10 +4482,21 @@ function renderSettingsV2() {
           <button class="secondary-btn sync-diff-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
           <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
           <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
+          <button class="secondary-btn desktop-maintenance-btn" type="button" data-action="optimize-data-model">Optimize data model</button>
           <button class="ghost-btn" type="button" data-action="settings-sign-out">Sign out</button>
           <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>
         </div>
         <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
+        <div id="dataModelMigrationProgress" class="delete-progress data-model-progress hidden" aria-live="polite">
+          <div class="delete-progress-head">
+            <strong id="dataModelMigrationText">Preparing optimization...</strong>
+            <span id="dataModelMigrationCount">0%</span>
+          </div>
+          <div class="delete-progress-track">
+            <div id="dataModelMigrationBar" class="delete-progress-bar" style="width:0%;"></div>
+          </div>
+          <small id="dataModelMigrationDetail">This keeps nutrient snapshots but removes bulky duplicate item snapshots.</small>
+        </div>
         <p class="form-message" id="settingsSaveMessage"></p>
       </div>
 
@@ -4371,19 +4687,249 @@ function queueSettingsAutosave(event) {
   }, 450);
 }
 
-function exportBackupJson() {
-  const payload = {
+async function fetchCollectionWithIds(collectionRef) {
+  const snap = await getDocs(collectionRef);
+  return snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+}
+
+async function discoverKnownDiaryDates(progress = () => {}) {
+  const knownDates = new Set([
+    state.currentDate,
+    ...state.logs.map(entry => entry.date).filter(Boolean),
+    ...state.reportEntries.map(entry => entry.date).filter(Boolean),
+    ...Object.keys(state.dailyGoals || {})
+  ]);
+
+  const uid = state.user?.uid || "guest";
+  const logsPrefix = `${APP_STORAGE_PREFIX}:${uid}:logs:`;
+  const goalsPrefix = `${APP_STORAGE_PREFIX}:${uid}:dailyGoal:`;
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(logsPrefix)) knownDates.add(key.slice(logsPrefix.length));
+    if (key.startsWith(goalsPrefix)) knownDates.add(key.slice(goalsPrefix.length));
+  }
+
+  for (const collectionName of ["dailyCalories", "dailyGoals", "dailyLogs"]) {
+    try {
+      progress({ current: 0, total: 1, label: `Scanning ${collectionName}...`, detail: `${knownDates.size} diary day${knownDates.size === 1 ? "" : "s"} found so far.` });
+      await nextPaint();
+      const snap = await getDocs(userCollection(collectionName));
+      snap.docs.forEach(docSnap => knownDates.add(docSnap.id));
+    } catch (error) {
+      console.warn(`Could not enumerate ${collectionName}.`, error);
+    }
+  }
+
+  return [...knownDates].filter(Boolean).sort();
+}
+
+async function fetchEntriesForDate(dateISO) {
+  const snap = await getDocs(entryCollection(dateISO));
+  return snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data(), date: dateISO }));
+}
+
+async function fetchEntriesForRange(start, end, progress = () => {}) {
+  const dates = dateRange(start, end);
+  const entries = [];
+  let completed = 0;
+  await mapWithConcurrency(dates, 8, async dateISO => {
+    const dayEntries = await fetchEntriesForDate(dateISO);
+    entries.push(...dayEntries);
+    completed += 1;
+    progress({ current: completed, total: dates.length, label: `Loading ${dateISO}...`, detail: `${entries.length} entries loaded.` });
+  });
+  return entries.sort((a, b) => String(a.date).localeCompare(String(b.date)) || number(a.createdAt) - number(b.createdAt));
+}
+
+async function buildFullBackupPayload(progress = () => {}) {
+  if (!state.user) throw new Error("You need to be signed in to export a full backup.");
+  progress({ current: 0, total: 1, label: "Preparing full backup...", detail: "Reading settings and saved libraries." });
+  await nextPaint();
+
+  const settingsSnap = await getDoc(userDoc("private", "settings"));
+  const [customFoods, recipes, mealsets, dailyGoals, dailyCalories, reportCaches] = await Promise.all([
+    fetchCollectionWithIds(userCollection("customFoods")),
+    fetchCollectionWithIds(userCollection("recipes")),
+    fetchCollectionWithIds(userCollection("mealsets")),
+    fetchCollectionWithIds(userCollection("dailyGoals")),
+    fetchCollectionWithIds(userCollection("dailyCalories")),
+    fetchCollectionWithIds(userCollection("reportCaches")).catch(() => [])
+  ]);
+
+  const dates = await discoverKnownDiaryDates(progress);
+  const dailyLogs = {};
+  let completed = 0;
+  for (const dateISO of dates) {
+    dailyLogs[dateISO] = await fetchEntriesForDate(dateISO);
+    completed += 1;
+    progress({ current: completed, total: Math.max(1, dates.length), label: `Exporting diary ${dateISO}...`, detail: `${dailyLogs[dateISO].length} entries on this day.` });
+    if (completed % 4 === 0) await nextPaint();
+  }
+
+  return cleanForFirestore({
+    backupVersion: 2,
     exportedAt: new Date().toISOString(),
-    settings: state.settings,
-    customFoods: state.customFoods,
-    recipes: state.recipes,
-    mealsets: state.mealsets,
-    dailyGoals: state.dailyGoals,
+    app: "NutriPilot",
+    dataModelVersion: DATA_MODEL_VERSION,
+    settings: settingsSnap.exists() ? mergeSettings(settingsSnap.data()) : state.settings,
+    customFoods,
+    recipes,
+    mealsets,
+    dailyGoals: Object.fromEntries(dailyGoals.map(item => [item.id, (() => { const copy = { ...item }; delete copy.id; return copy; })()])),
+    dailyCalories: Object.fromEntries(dailyCalories.map(item => [item.id, (() => { const copy = { ...item }; delete copy.id; return copy; })()])),
+    reportCaches: Object.fromEntries(reportCaches.map(item => [item.id, (() => { const copy = { ...item }; delete copy.id; return copy; })()])),
+    dailyLogs,
     currentDate: state.currentDate,
-    currentLogs: state.logs,
+    currentLogs: dailyLogs[state.currentDate] || state.logs,
     reportEntries: state.reportEntries
+  });
+}
+
+async function exportBackupJson() {
+  try {
+    const message = document.getElementById("settingsSaveMessage");
+    if (message) message.textContent = "Creating full Firebase backup...";
+    const payload = await buildFullBackupPayload(({ label, detail }) => {
+      if (message) message.textContent = `${label}${detail ? ` ${detail}` : ""}`;
+    });
+    downloadFile(`nutripilot_full_backup_${todayISO()}.json`, JSON.stringify(payload, null, 2), "application/json");
+    if (message) message.textContent = "Full backup exported.";
+  } catch (error) {
+    showError(error, "Backup export failed.");
+  }
+}
+
+
+function uniqueReportPeriodsForDates(dates = []) {
+  const map = new Map();
+  for (const dateISO of dates.length ? dates : [state.currentDate]) {
+    for (const meta of affectedReportPeriods(dateISO)) map.set(meta.key, meta);
+  }
+  return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function updateDataModelMigrationProgress({ current = 0, total = 1, label = "Optimizing data model...", detail = "" } = {}) {
+  const box = document.getElementById("dataModelMigrationProgress");
+  if (box) box.classList.remove("hidden");
+  const safeTotal = Math.max(1, number(total, 1));
+  const safeCurrent = Math.max(0, Math.min(safeTotal, number(current, 0)));
+  const pct = Math.max(0, Math.min(100, Math.round(safeCurrent / safeTotal * 100)));
+  const bar = document.getElementById("dataModelMigrationBar");
+  const text = document.getElementById("dataModelMigrationText");
+  const count = document.getElementById("dataModelMigrationCount");
+  const detailEl = document.getElementById("dataModelMigrationDetail");
+  if (bar) bar.style.width = `${pct}%`;
+  if (text) text.textContent = label;
+  if (count) count.textContent = `${pct}%`;
+  if (detailEl) detailEl.textContent = detail || `${safeCurrent} of ${safeTotal} optimization steps finished.`;
+}
+
+async function migrateAccountDataToEfficientModel(progress = () => {}) {
+  if (!state.user) throw new Error("You need to be signed in to optimize data.");
+  progress({ current: 0, total: 1, label: "Discovering diary days...", detail: "Scanning summaries, goals, logs, and local cache." });
+  const dates = await discoverKnownDiaryDates(progress);
+  const periods = uniqueReportPeriodsForDates(dates);
+  const total = Math.max(1, dates.length * 3 + periods.length + 3);
+  let current = 0;
+
+  let batch = writeBatch(db);
+  let batchCount = 0;
+  const queueSet = (ref, data, options = {}) => {
+    batch.set(ref, cleanForFirestore(data), options);
+    batchCount += 1;
   };
-  downloadFile(`nutripilot_backup_${todayISO()}.json`, JSON.stringify(payload, null, 2), "application/json");
+  const commitBatch = async force => {
+    if (!batchCount || (!force && batchCount < 420)) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    batchCount = 0;
+  };
+
+  const migratedDates = [];
+  for (const dateISO of dates) {
+    progress({ current, total, label: `Reading diary ${dateISO}...`, detail: "Loading logged entries." });
+    const entries = await fetchEntriesForDate(dateISO);
+    current += 1;
+
+    const compactEntries = [];
+    let migratedEntries = 0;
+    for (const entry of entries) {
+      const compact = compactLoggedEntry(entry, entry.id, dateISO);
+      const id = compact.id || entry.id || crypto.randomUUID();
+      delete compact.id;
+      queueSet(entryDoc(id, dateISO), compact, { merge: false });
+      compactEntries.push({ id, ...compact, date: dateISO });
+      migratedEntries += 1;
+      if (batchCount >= 420) await commitBatch(true);
+    }
+    await commitBatch(true);
+    migratedDates.push(dateISO);
+    if (dateISO === state.currentDate) {
+      state.logs = compactEntries.sort((a, b) => number(a.createdAt) - number(b.createdAt));
+      writeLocal(`logs:${dateISO}`, state.logs);
+    }
+    current += 1;
+    progress({ current, total, label: `Compacted diary ${dateISO}...`, detail: `${migratedEntries} entr${migratedEntries === 1 ? "y" : "ies"} rewritten without bulky item snapshots.` });
+    await nextPaint();
+
+    await updateDailyCalorieSummary(dateISO, compactEntries, { invalidateReports: false });
+    current += 1;
+    progress({ current, total, label: `Rebuilt daily summary ${dateISO}...`, detail: "Saved compact nutrient totals and report rows." });
+    if (current % 6 === 0) await nextPaint();
+  }
+
+  progress({ current, total, label: "Saving model version...", detail: "Marking settings as migrated." });
+  const migratedSettings = mergeSettings({ ...state.settings, dataModelVersion: DATA_MODEL_VERSION, dataModelMigratedAt: Date.now(), updatedAt: Date.now() });
+  state.settings = migratedSettings;
+  writeLocal("settings", migratedSettings);
+  await setDoc(userDoc("private", "settings"), cleanForFirestore(migratedSettings), { merge: true });
+  current += 1;
+
+  progress({ current, total, label: "Rebuilding report caches...", detail: `${periods.length} affected week/month/year cache${periods.length === 1 ? "" : "s"}.` });
+  await nextPaint();
+  for (const meta of periods) {
+    await calculateAndStoreReportCache(meta, {
+      force: true,
+      onProgress: sub => {
+        progress({
+          current,
+          total,
+          label: `Rebuilding ${meta.mode} cache...`,
+          detail: `${meta.start} to ${meta.end} · ${Math.round(number(sub.percent))}%`
+        });
+      }
+    });
+    current += 1;
+    progress({ current, total, label: `Saved ${meta.mode} cache...`, detail: `${meta.start} to ${meta.end}` });
+    if (current % 3 === 0) await nextPaint();
+  }
+
+  current += 1;
+  progress({ current, total, label: "Refreshing local view...", detail: "Reloading the current route from compact data." });
+  await loadDailyGoalForDate(state.currentDate).catch(console.warn);
+  queueDailySummaryUpdate(state.currentDate, state.logs, 50, { invalidateReports: false });
+  current = total;
+  progress({ current, total, label: "Optimization complete.", detail: `${migratedDates.length} diary day${migratedDates.length === 1 ? "" : "s"} compacted and ${periods.length} report cache${periods.length === 1 ? "" : "s"} rebuilt.` });
+  return { dates: migratedDates, periods };
+}
+
+async function runDataModelOptimizationFromSettings() {
+  if (!confirm("Optimize all diary data now? This rewrites log entries into the compact model, keeps nutrient snapshots, and rebuilds daily summaries/report caches. Export a full JSON backup first if you have not done so with this version.")) return;
+  const button = document.querySelector('[data-action="optimize-data-model"]');
+  if (button) button.disabled = true;
+  try {
+    updateDataModelMigrationProgress({ current: 0, total: 1, label: "Starting optimization...", detail: "Preparing data migration." });
+    const result = await migrateAccountDataToEfficientModel(updateDataModelMigrationProgress);
+    renderCurrentRoute();
+    updateDataModelMigrationProgress({
+      current: 1,
+      total: 1,
+      label: "Optimization complete.",
+      detail: `${result.dates.length} diary day${result.dates.length === 1 ? "" : "s"} compacted and ${result.periods.length} report cache${result.periods.length === 1 ? "" : "s"} rebuilt.`
+    });
+    showToast("Data model optimized and report caches rebuilt.");
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function importBackupFile(event) {
@@ -4399,39 +4945,51 @@ async function importBackupFile(event) {
 
     for (const [dateISO, goal] of Object.entries(payload.dailyGoals || {})) {
       if (!dateISO || !goal) continue;
-      state.dailyGoals[dateISO] = goal;
-      writeLocal(`dailyGoal:${dateISO}`, goal);
-      await setDoc(dailyGoalDoc(dateISO), cleanForFirestore(goal), { merge: true });
+      const copy = { ...goal, savedForDate: goal.savedForDate || dateISO, updatedAt: goal.updatedAt || Date.now() };
+      state.dailyGoals[dateISO] = copy;
+      writeLocal(`dailyGoal:${dateISO}`, copy);
+      await setDoc(dailyGoalDoc(dateISO), cleanForFirestore(copy), { merge: true });
     }
 
     for (const [collectionName, items] of [["customFoods", payload.customFoods], ["recipes", payload.recipes], ["mealsets", payload.mealsets]]) {
       for (const item of items || []) {
         const id = item.id || crypto.randomUUID();
-        const copy = { ...item, updatedAt: Date.now() };
+        const copy = { ...item, updatedAt: item.updatedAt || Date.now() };
         delete copy.id;
         await setDoc(userDoc(collectionName, id), cleanForFirestore(copy), { merge: true });
       }
     }
 
     const entriesByKey = new Map();
+    if (payload.dailyLogs && typeof payload.dailyLogs === "object") {
+      for (const [dateISO, entries] of Object.entries(payload.dailyLogs)) {
+        for (const entry of entries || []) {
+          const id = entry.id || crypto.randomUUID();
+          entriesByKey.set(`${dateISO}:${id}`, { ...entry, id, date: dateISO });
+        }
+      }
+    }
     for (const entry of [...(payload.currentLogs || []), ...(payload.reportEntries || [])]) {
       const dateISO = entry.date || payload.currentDate || state.currentDate;
       const id = entry.id || crypto.randomUUID();
-      entriesByKey.set(`${dateISO}:${id}`, { ...entry, id, date: dateISO });
+      if (!entriesByKey.has(`${dateISO}:${id}`)) entriesByKey.set(`${dateISO}:${id}`, { ...entry, id, date: dateISO });
     }
 
     const importedDates = new Set();
     for (const entry of entriesByKey.values()) {
       const id = entry.id;
-      const copy = { ...entry, updatedAt: Date.now() };
-      delete copy.id;
-      await setDoc(entryDoc(id, entry.date), cleanForFirestore(copy), { merge: true });
+      const compact = compactLoggedEntry(entry, id, entry.date);
+      delete compact.id;
+      await setDoc(entryDoc(id, entry.date), cleanForFirestore(compact), { merge: false });
       importedDates.add(entry.date);
     }
 
     for (const dateISO of importedDates) {
-      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      await updateDailyCalorieSummary(dateISO, null, { invalidateReports: false }).catch(console.warn);
     }
+
+    const periods = uniqueReportPeriodsForDates([...importedDates]);
+    for (const meta of periods) await calculateAndStoreReportCache(meta, { force: true }).catch(console.warn);
 
     showToast(`Backup imported. ${entriesByKey.size} log entries written.`);
   } catch (error) {
@@ -4440,6 +4998,7 @@ async function importBackupFile(event) {
     event.target.value = "";
   }
 }
+
 
 async function clearCurrentLogs() {
   if (!confirm(`Delete all logs for ${state.currentDate}?`)) return;
@@ -4524,10 +5083,6 @@ function updateDeleteProgress({ current = 0, total = 1, label = "Deleting data..
   if (detailEl) detailEl.textContent = detail || `${safeCurrent} of ${safeTotal} delete steps finished.`;
 }
 
-function nextPaint() {
-  return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
-
 async function deleteCollectionDocs(collectionName, progress = () => {}, counter = { current: 0, total: 1 }) {
   progress({ current: counter.current, total: counter.total, label: `Scanning ${collectionName}...`, detail: "Finding saved documents." });
   await nextPaint();
@@ -4587,7 +5142,7 @@ async function discoverLoggedDatesForDelete(progress = () => {}) {
 
 async function estimateDeleteWork(datesToDelete) {
   let total = 1; // settings reset
-  const topLevelCollections = ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals"];
+  const topLevelCollections = ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals", "reportCaches"];
   const collectionCounts = {};
 
   for (const collectionName of topLevelCollections) {
@@ -4662,7 +5217,7 @@ async function deleteAllAccountData(progress = () => {}) {
     progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily goal snapshot cleared." });
   }
 
-  for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals"]) {
+  for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals", "reportCaches"]) {
     await deleteCollectionDocs(collectionName, progress, counter).catch(error => console.warn(`Could not fully clear ${collectionName}.`, error));
   }
 
@@ -4848,27 +5403,36 @@ async function repeatYesterday() {
 
 function openEntrySnapshotModal(id) {
   const entry = state.logs.find(e => e.id === id);
-  const snapshot = entry?.itemSnapshot;
-  if (!entry || !snapshot) return;
+  if (!entry) return;
+  const snapshot = entry.itemSnapshot || entry.snapshotSummary || {
+    itemType: entry.itemType,
+    name: entry.nameSnapshot,
+    brand: entry.brandSnapshot,
+    nutrientsSnapshot: entry.nutrientsSnapshot,
+    loggedAt: entry.createdAt
+  };
   const n = normalizeNutrients(snapshot.nutrientsSnapshot || entry.nutrientsSnapshot);
-  const ingredientRows = snapshot.itemType === "recipe" ? snapshot.ingredients || [] : snapshot.items || [];
+  const legacyRows = snapshot.itemType === "recipe" ? snapshot.ingredients || [] : snapshot.items || [];
+  const compactRows = Array.isArray(entry.reportItems) ? entry.reportItems : [];
+  const ingredientRows = compactRows.length ? compactRows : legacyRows;
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>${safeText(entry.nameSnapshot)}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <div class="modal-body">
-        <p class="kicker">Logged ${entry.createdAt ? new Date(number(entry.createdAt)).toLocaleString() : "at this entry time"}. This is the saved version, independent of later recipe or mealset edits.</p>
+        <p class="kicker">Logged ${entry.createdAt ? new Date(number(entry.createdAt)).toLocaleString() : "at this entry time"}. This saved snapshot remains independent of deleted or edited foods, recipes, and mealsets.</p>
         ${nutrientSummaryHTML(n)}
         ${ingredientRows.length ? `
           <div class="detail-table">
             ${ingredientRows.map(item => `
-              <div class="detail-row"><span>${safeText(item.nameSnapshot || item.name || "Item")}</span><strong>${itemAmountText(item)} · ${round(item.nutrientsSnapshot?.kcal, 0)} kcal</strong></div>
+              <div class="detail-row"><span>${safeText(item.nameSnapshot || item.name || "Item")}</span><strong>${reportItemAmountText(item)} · ${round((item.nutrientsSnapshot?.kcal ?? item.kcal), 0)} kcal</strong></div>
             `).join("")}
           </div>
-        ` : `<div class="empty-state">No ingredient snapshot stored for this entry.</div>`}
+        ` : `<div class="empty-state">No ingredient breakdown stored for this entry.</div>`}
       </div>
     </div>
   `);
 }
+
 
 async function editEntry(id) {
   const entry = state.logs.find(e => e.id === id);
@@ -4890,11 +5454,14 @@ async function editEntry(id) {
     const factor = entry.amount ? newAmount / entry.amount : 1;
     const updatedAt = Date.now();
     const nutrientsSnapshot = scaleNutrients(entry.nutrientsSnapshot, factor);
-    const itemSnapshot = entry.itemSnapshot ? {
-      ...entry.itemSnapshot,
+    const reportItems = scaledReportItems(entry.reportItems || [], factor);
+    const snapshotSummary = entry.snapshotSummary ? {
+      ...entry.snapshotSummary,
       amount: newAmount,
-      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.itemSnapshot.gramsEquivalent,
+      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.snapshotSummary.gramsEquivalent,
       nutrientsSnapshot,
+      nutrientVector: nutrientsToVector(nutrientsSnapshot),
+      reportItemCount: reportItems.length,
       updatedAt
     } : null;
     await updateDoc(entryDoc(id), cleanForFirestore({
@@ -4902,7 +5469,9 @@ async function editEntry(id) {
       gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.gramsEquivalent,
       meal: data.get("meal"),
       nutrientsSnapshot,
-      ...(itemSnapshot ? { itemSnapshot } : {}),
+      nutrientVector: nutrientsToVector(nutrientsSnapshot),
+      reportItems,
+      ...(snapshotSummary ? { snapshotSummary } : {}),
       updatedAt
     }));
     await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
@@ -4923,8 +5492,13 @@ async function duplicateEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
   const createdAt = Date.now();
-  const copy = { ...entry, createdAt, updatedAt: createdAt };
-  if (copy.itemSnapshot) copy.itemSnapshot = { ...copy.itemSnapshot, loggedAt: createdAt, duplicatedFrom: entry.createdAt || null };
+  const copy = compactLoggedEntry({
+    ...entry,
+    date: state.currentDate,
+    createdAt,
+    updatedAt: createdAt,
+    snapshotSummary: entry.snapshotSummary ? { ...entry.snapshotSummary, loggedAt: createdAt, duplicatedFrom: entry.createdAt || null } : entry.snapshotSummary
+  }, null, state.currentDate);
   delete copy.id;
   await addDoc(entryCollection(state.currentDate), cleanForFirestore(copy));
   await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
@@ -5234,8 +5808,9 @@ async function handleClick(event) {
     if (action === "save-normalize-macro-goals") {
       await saveNormalizedSettingsFromForm(document.getElementById("settingsForm"));
     }
-    if (action === "export-backup-json") exportBackupJson();
+    if (action === "export-backup-json") await exportBackupJson();
     if (action === "trigger-import") document.getElementById("backupImportInput")?.click();
+    if (action === "optimize-data-model") await runDataModelOptimizationFromSettings();
     if (action === "clear-current-logs") await clearCurrentLogs();
     if (action === "clear-custom-foods") await clearCustomFoods();
     if (action === "open-delete-all-data") openDeleteAllDataModal();

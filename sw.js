@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v45-macro-settings";
+const CACHE_NAME = "nutripilot-v46-data-model";
 const STATIC_ASSETS = [
   "./",
   "./index.html",

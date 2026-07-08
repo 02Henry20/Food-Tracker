@@ -3313,3 +3313,17 @@ input[type="number"]::-webkit-inner-spin-button {
     display: inline-flex;
   }
 }
+
+/* Data model maintenance */
+.desktop-maintenance-btn {
+  display: inline-flex;
+}
+.data-model-progress {
+  margin-top: 4px;
+}
+@media (max-width: 980px) {
+  .desktop-maintenance-btn,
+  .data-model-progress {
+    display: none !important;
+  }
+}
