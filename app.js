@@ -44,7 +44,7 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 16;
+const REPORT_CACHE_VERSION = 17;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -620,6 +620,19 @@ function nutrientsFromSnapshot(value = {}) {
   return normalizeNutrients(value);
 }
 
+function foodNutrientsPer100g(food = {}) {
+  if (!food) return emptyNutrients();
+  if (food.source === "recipe") {
+    return nutrientsFromSnapshot(food.nutrientsPerPortion || food.nutrientsPer100g || food.nutrientsSnapshot || food.nutrientVector || food.nv);
+  }
+  return nutrientsFromSnapshot(food.nutrientsPer100g || food.nutrients || food.nutrientsSnapshot || food.nutrientVector || food.nv);
+}
+
+function foodHasUsableNutrients(food = {}) {
+  const n = foodNutrientsPer100g(food);
+  return NUTRIENT_KEYS.some(key => number(n[key]) > 0);
+}
+
 function compactNutrients(nutrients = {}) {
   return normalizeNutrients(nutrients);
 }
@@ -768,6 +781,26 @@ function limitReportFlatRows(rows = [], limit = REPORT_FOOD_LIMIT) {
   return aggregateReportRows(normalizedRows.filter(row => keptIdentities.has(reportFoodIdentity(row))));
 }
 
+function reportCacheRows(rows = [], limit = REPORT_FOOD_LIMIT) {
+  return limitReportFlatRows(rows, limit).map(row => {
+    const normalized = normalizeReportRow(row);
+    return cleanForFirestore({
+      name: String(normalized.name || "Unnamed"),
+      brand: String(normalized.brand || ""),
+      grams: round(normalized.grams, 1),
+      meal: normalized.meal || "",
+      source: normalized.source || "",
+      itemType: normalized.itemType || "food",
+      itemId: normalized.itemId || null,
+      count: Math.max(1, number(normalized.count, 1)),
+      kcal: round(normalized.kcal, 1),
+      protein: round(normalized.protein, 2),
+      carbs: round(normalized.carbs, 2),
+      fat: round(normalized.fat, 2)
+    });
+  });
+}
+
 function reportGoalTargets(goal = state.settings) {
   const merged = mergeSettings(goal || state.settings);
   const macros = effectiveMacroGoals(merged);
@@ -864,7 +897,7 @@ function compactReportCacheData(data = {}, meta = null) {
     chartData: compactReportChartData(chartData),
     total,
     nutrientVector: nutrientsToVector(total),
-    flatRows: limitReportFlatRows(data.flatRows || []),
+    flatRows: reportCacheRows(data.flatRows || []),
     reportFoodLimit: REPORT_FOOD_LIMIT,
     activeDayCount,
     avgGoals,
@@ -898,18 +931,18 @@ function saveReportCacheInBackground(meta, data, options = {}) {
   const promise = storeCompactReportCache(meta, cacheData)
     .then(saved => {
       removeLocal(pendingReportCacheLocalKey(meta.key));
-      if (options.toast) showToast("Report cache saved in the background.");
+      if (options.toast) showToast("Report cache saved successfully.");
       return saved;
     })
     .catch(error => {
       console.warn("Report cache background save failed.", error);
-      if (options.toast) showToast("Report is shown, but the cache save did not finish. It will retry next time you open the app.");
+      if (options.toast) showToast("Report is shown, but the cache save did not finish. It will retry automatically.");
       return null;
     });
   return promise;
 }
 
-async function flushPendingReportCacheSaves() {
+async function flushPendingReportCacheSaves(options = {}) {
   if (!state.user) return;
   const prefix = storageKey("pendingReportCache:", state.user.uid);
   const keys = [];
@@ -917,6 +950,7 @@ async function flushPendingReportCacheSaves() {
     const key = localStorage.key(index);
     if (key?.startsWith(prefix)) keys.push(key);
   }
+  let savedCount = 0;
   for (const key of keys) {
     try {
       const cacheData = JSON.parse(localStorage.getItem(key) || "null");
@@ -926,9 +960,13 @@ async function flushPendingReportCacheSaves() {
       }
       await storeCompactReportCache({ key: cacheData.key, mode: cacheData.mode, start: cacheData.start, end: cacheData.end }, cacheData);
       localStorage.removeItem(key);
+      savedCount += 1;
     } catch (error) {
       console.warn("Pending report cache retry failed.", error);
     }
+  }
+  if (savedCount && options.toast !== false) {
+    showToast(`${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved successfully.`);
   }
 }
 
@@ -1179,8 +1217,9 @@ function displayFoodName(food) {
 }
 
 function caloriesText(food) {
-  const kcal100 = round(food.nutrientsPer100g?.kcal || 0, 0);
-  const serving = food.defaultServing?.grams ? ` · ${round(kcal100 * food.defaultServing.grams / 100, 0)} kcal / ${food.defaultServing.label}` : "";
+  const nutrients = foodNutrientsPer100g(food);
+  const kcal100 = round(nutrients.kcal || 0, 0);
+  const serving = food?.defaultServing?.grams ? ` · ${round(kcal100 * number(food.defaultServing.grams) / 100, 0)} kcal / ${food.defaultServing.label}` : "";
   return `${kcal100} kcal / 100 g${serving}`;
 }
 
@@ -1837,16 +1876,16 @@ function applySearchFilters(results) {
     const brand = normalizeSearchText(filters.brand);
     if (brand && !normalizeSearchText(food.brand).includes(brand)) return false;
     if (filters.source !== "all" && food.resultKind !== filters.source && food.source !== filters.source) return false;
-    const kcal = number(food.nutrientsPer100g?.kcal);
+    const kcal = number(foodNutrientsPer100g(food).kcal);
     if (filters.kcalMin !== "" && kcal < number(filters.kcalMin)) return false;
     if (filters.kcalMax !== "" && kcal > number(filters.kcalMax)) return false;
-    if (filters.lowSugar && number(food.nutrientsPer100g?.sugar) > 5) return false;
+    if (filters.lowSugar && number(foodNutrientsPer100g(food).sugar) > 5) return false;
     return true;
   });
 }
 
 function foodDataWarnings(food) {
-  const n = normalizeNutrients(food.nutrientsPer100g);
+  const n = foodNutrientsPer100g(food);
   const warnings = [];
   if (!n.kcal) warnings.push("Missing calories");
   if (!n.protein && !n.carbs && !n.fat) warnings.push("Missing macros");
@@ -2146,7 +2185,7 @@ function renderMealsetSearchCard(mealset) {
 }
 
 function renderEatenFoodCard(food, key) {
-  const n = normalizeNutrients(food.nutrientsPer100g);
+  const n = foodNutrientsPer100g(food);
   const count = searchRankForFood(food);
   return `
     <div class="result-card eaten ${food.favorite ? "favorite" : ""}">
@@ -2171,7 +2210,7 @@ function renderFoodResultCard(food, key) {
       <div>
         <h4>${safeText(displayFoodName(food))}</h4>
         <p>${safeText(caloriesText(food))}</p>
-        ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
+        ${nutrientSummaryHTML(foodNutrientsPer100g(food))}
         <div class="badges">
           ${food.favorite ? `<span class="badge green">Favorite</span>` : ""}
           ${warnings.length ? `<span class="badge red">${warnings.length} warning${warnings.length === 1 ? "" : "s"}</span>` : ""}
@@ -2207,7 +2246,7 @@ function openFoodDetailModal(food) {
         ${warnings.length ? `<div class="empty-state">${warnings.map(safeText).join(", ")}</div>` : ""}
         <div class="detail-table">
           ${NUTRIENT_KEYS.filter(key => nutrientVisible(key) || ["kcal", "protein", "carbs", "fat"].includes(key)).map(key => `
-            <div class="detail-row"><span>${safeText(NUTRIENT_LABELS[key])}</span><strong>${round(food.nutrientsPer100g?.[key], key === "kcal" || key === "sodium" ? 0 : 2)} ${safeText(NUTRIENT_UNITS[key])} / 100 g</strong></div>
+            <div class="detail-row"><span>${safeText(NUTRIENT_LABELS[key])}</span><strong>${round(foodNutrientsPer100g(food)?.[key], key === "kcal" || key === "sodium" ? 0 : 2)} ${safeText(NUTRIENT_UNITS[key])} / 100 g</strong></div>
           `).join("")}
         </div>
         <div>
@@ -2235,7 +2274,7 @@ function openCustomFoodEditor(food, duplicate = false) {
           ${servingUnitSelectHTML(servingUnits().includes(normalizeSearchText(unit)) ? normalizeSearchText(unit) : "custom")}
           <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
         </div>
-        ${customFoodNutrientFieldsHTML(food.nutrientsPer100g)}
+        ${customFoodNutrientFieldsHTML(foodNutrientsPer100g(food))}
         <div class="form-actions"><button class="primary-btn" type="submit">${duplicate ? "Create copy" : "Save changes"}</button></div>
       </form>
     </div>
@@ -2297,7 +2336,7 @@ function renderFoodResult(food, key) {
       <div>
         <h4>${safeText(displayFoodName(food))}</h4>
         <p>${safeText(caloriesText(food))}</p>
-        ${nutrientSummaryHTML(scaleNutrients(food.nutrientsPer100g, 1))}
+        ${nutrientSummaryHTML(foodNutrientsPer100g(food))}
         <div class="badges"></div>
       </div>
       <div class="inline-actions">
@@ -2326,7 +2365,7 @@ async function searchOpenFoodFacts(queryText) {
   state.searchResults = (data.products || [])
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
-    .filter(food => food.nutrientsPer100g.kcal > 0)
+    .filter(food => foodHasUsableNutrients(food))
     .slice(0, API_SEARCH_RESULT_LIMIT);
   renderSearch();
 }
@@ -2362,7 +2401,7 @@ async function fetchOpenFoodFacts(queryText) {
   return (data.products || [])
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
-    .filter(food => food.nutrientsPer100g.kcal > 0)
+    .filter(food => foodHasUsableNutrients(food))
     .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
@@ -2678,7 +2717,7 @@ function loggedFoodSnapshot(food, grams, amount, unit, nutrientsSnapshot, create
     gramsEquivalent: grams,
     defaultServing: food.defaultServing || null,
     servingOptions: food.servingOptions || [],
-    nutrientsPer100g: normalizeNutrients(food.nutrientsPer100g),
+    nutrientsPer100g: foodNutrientsPer100g(food),
     nutrientsSnapshot,
     sourceCreatedAt: food.createdAt || null,
     sourceUpdatedAt: food.updatedAt || null,
@@ -2715,7 +2754,7 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
 
 async function logFood(food, amount, unit, grams, meal, dateISO) {
   const createdAt = Date.now();
-  const nutrientsSnapshot = scaleNutrients(food.nutrientsPer100g, grams / 100);
+  const nutrientsSnapshot = scaleNutrients(foodNutrientsPer100g(food), grams / 100);
   const entry = compactLoggedEntry({
     itemType: "food",
     itemId: food.id || food.sourceId || null,
@@ -3139,7 +3178,7 @@ function renderIngredientResult(food, key, kind, id) {
     : caloriesText(food);
   const nutrients = food.source === "recipe"
     ? normalizeNutrients(food.nutrientsPerPortion)
-    : normalizeNutrients(food.nutrientsPer100g);
+    : foodNutrientsPer100g(food);
   return `
     <div class="result-card">
       <div>
@@ -3155,7 +3194,7 @@ function renderIngredientResult(food, key, kind, id) {
 function nutrientsForIngredientAmount(food, amount, grams = null) {
   if (food?.source === "recipe") return scaleNutrients(food.nutrientsPerPortion, amount);
   const gramAmount = grams === null ? amount : grams;
-  return scaleNutrients(food?.nutrientsPer100g, gramAmount / 100);
+  return scaleNutrients(foodNutrientsPer100g(food), gramAmount / 100);
 }
 
 function targetTotalAbsoluteNutrients(kind, target) {
@@ -3231,14 +3270,18 @@ function openIngredientAmountModal(food, kind, id) {
   form.addEventListener("submit", event => {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
-    form.dataset.submitting = "true";
-    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), defaultAmount);
     const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
     const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
     const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
-    addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
+    form.dataset.submitting = "true";
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
+    addIngredientToTarget(food, amount, unit, grams, kind, id).catch(error => {
+      form.dataset.submitting = "";
+      form.querySelectorAll("button, input, select").forEach(el => el.disabled = false);
+      showError(error);
+    });
     resetIngredientSearch(kind, id);
     openIngredientModal(kind, id, { restore: false });
   });
@@ -3248,7 +3291,7 @@ async function addIngredientToTarget(food, amount, unit, grams, kind, id) {
   const isRecipePortion = food?.source === "recipe";
   const nutrientsSnapshot = isRecipePortion
     ? scaleNutrients(food.nutrientsPerPortion, amount)
-    : scaleNutrients(food.nutrientsPer100g, number(grams) / 100);
+    : scaleNutrients(foodNutrientsPer100g(food), number(grams) / 100);
   const ingredient = isRecipePortion
     ? recipeReferenceItem(state.recipes.find(recipe => recipe.id === food.id) || food, amount, { createdAt: Date.now() })
     : {

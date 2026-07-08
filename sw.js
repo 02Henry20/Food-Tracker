@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v49-compact-report-cache";
+const CACHE_NAME = "nutripilot-v50-report-toast-mealset-fix";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
