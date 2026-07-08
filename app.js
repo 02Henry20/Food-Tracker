@@ -864,7 +864,7 @@ function subscribeUserData() {
     state.settings = mergeSettings(snap.data() || state.settings);
     writeLocal("settings", state.settings);
     setTheme();
-    renderCurrentRoute();
+    if (state.route !== "settings") renderCurrentRoute();
   }, error => {
     console.warn("Settings snapshot failed; local cache remains active.", error);
     updateSyncStatus({ fromCache: true });
@@ -914,7 +914,7 @@ function subscribeLogsForCurrentDate() {
     if (snap.exists()) {
       state.dailyGoals[dateISO] = snap.data();
       writeLocal(`dailyGoal:${dateISO}`, state.dailyGoals[dateISO]);
-      if ((state.route === "today" || state.route === "settings") && state.currentDate === dateISO) renderCurrentRoute();
+      if (state.route === "today" && state.currentDate === dateISO) renderCurrentRoute();
     }
   }, error => console.warn("Daily goal snapshot failed; using local settings.", error));
   state.unsubLogs = onSnapshot(entryCollection(dateISO), { includeMetadataChanges: true }, snap => {
@@ -4147,6 +4147,11 @@ function renderSettingsV2() {
         </div>
       </div>
 
+      <div class="form-actions settings-save-actions">
+        <button class="primary-btn" type="submit">Save + normalize macros</button>
+        <p class="form-message" id="settingsSaveMessage"></p>
+      </div>
+
       <div class="card stack sync-panel">
         <div class="meal-head">
           <div>
@@ -4163,7 +4168,6 @@ function renderSettingsV2() {
           <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>
         </div>
         <input id="backupImportInput" class="hidden" type="file" accept="application/json" />
-        <p class="form-message" id="settingsSaveMessage"></p>
       </div>
 
       <div class="card stack export-panel">
@@ -4186,6 +4190,7 @@ function renderSettingsV2() {
   });
   form?.addEventListener("input", queueSettingsAutosave);
   form?.addEventListener("change", queueSettingsAutosave);
+  form?.addEventListener("submit", saveSettingsV2);
   document.getElementById("backupImportInput")?.addEventListener("change", importBackupFile);
 }
 
@@ -4262,25 +4267,88 @@ function collectSettingsFromForm(form) {
   return mergeSettings(next);
 }
 
+function normalizeMacroGoalsToCalories(settings) {
+  const next = mergeSettings(settings);
+  const calories = Math.max(0, number(next.calorieGoal, DEFAULT_SETTINGS.calorieGoal));
+  const kcalPerGram = { protein: 4, carbs: 4, fat: 9 };
+
+  if (next.macroGoalMode === "percent") {
+    const rawPercents = {
+      protein: Math.max(0, number(next.macroPercentProtein)),
+      carbs: Math.max(0, number(next.macroPercentCarbs)),
+      fat: Math.max(0, number(next.macroPercentFat))
+    };
+    const percentTotal = rawPercents.protein + rawPercents.carbs + rawPercents.fat;
+    if (!calories || !percentTotal) return next;
+
+    const factor = 100 / percentTotal;
+    next.macroPercentProtein = round(rawPercents.protein * factor, 2);
+    next.macroPercentCarbs = round(rawPercents.carbs * factor, 2);
+    next.macroPercentFat = round(rawPercents.fat * factor, 2);
+    next.macroPercentFat = round(next.macroPercentFat + (100 - next.macroPercentProtein - next.macroPercentCarbs - next.macroPercentFat), 2);
+    next.proteinGoal = round(calories * next.macroPercentProtein / 100 / kcalPerGram.protein, 2);
+    next.carbsGoal = round(calories * next.macroPercentCarbs / 100 / kcalPerGram.carbs, 2);
+    next.fatGoal = round(calories * next.macroPercentFat / 100 / kcalPerGram.fat, 2);
+    return mergeSettings(next);
+  }
+
+  const rawGoals = {
+    protein: Math.max(0, number(next.proteinGoal)),
+    carbs: Math.max(0, number(next.carbsGoal)),
+    fat: Math.max(0, number(next.fatGoal))
+  };
+  const macroKcal = rawGoals.protein * kcalPerGram.protein + rawGoals.carbs * kcalPerGram.carbs + rawGoals.fat * kcalPerGram.fat;
+  if (!calories || !macroKcal) return next;
+
+  const factor = calories / macroKcal;
+  next.proteinGoal = round(rawGoals.protein * factor, 2);
+  next.carbsGoal = round(rawGoals.carbs * factor, 2);
+  next.fatGoal = round(rawGoals.fat * factor, 2);
+  next.macroPercentProtein = round(next.proteinGoal * kcalPerGram.protein / calories * 100, 2);
+  next.macroPercentCarbs = round(next.carbsGoal * kcalPerGram.carbs / calories * 100, 2);
+  next.macroPercentFat = round(next.fatGoal * kcalPerGram.fat / calories * 100, 2);
+  next.macroPercentFat = round(next.macroPercentFat + (100 - next.macroPercentProtein - next.macroPercentCarbs - next.macroPercentFat), 2);
+  return mergeSettings(next);
+}
+
+async function persistSettingsForCurrentDay(next, message) {
+  state.settings = next;
+  setTheme();
+  const dayGoal = goalSnapshotFromSettings(next);
+  dayGoal.savedForDate = state.currentDate;
+  state.dailyGoals[state.currentDate] = dayGoal;
+  writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
+  writeLocal("settings", next);
+  await Promise.all([
+    setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
+    setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
+  ]);
+  const messageEl = document.getElementById("settingsSaveMessage");
+  if (messageEl) messageEl.textContent = message;
+}
+
+async function saveSettingsV2(event) {
+  event.preventDefault();
+  clearTimeout(state.settingsSaveTimer);
+  try {
+    const next = normalizeMacroGoalsToCalories(collectSettingsFromForm(event.currentTarget));
+    await persistSettingsForCurrentDay(next, "Saved. Macro calories match the calorie target.");
+    renderSettingsV2();
+    const messageEl = document.getElementById("settingsSaveMessage");
+    if (messageEl) messageEl.textContent = "Saved. Macro calories match the calorie target.";
+    showToast("Settings saved.");
+  } catch (error) {
+    showError(error, "Could not save settings.");
+  }
+}
+
 function queueSettingsAutosave(event) {
   const form = event.currentTarget;
   clearTimeout(state.settingsSaveTimer);
   state.settingsSaveTimer = setTimeout(async () => {
     try {
       const next = collectSettingsFromForm(form);
-      state.settings = next;
-      setTheme();
-      const dayGoal = goalSnapshotFromSettings(next);
-      dayGoal.savedForDate = state.currentDate;
-      state.dailyGoals[state.currentDate] = dayGoal;
-      writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
-      writeLocal("settings", next);
-      await Promise.all([
-        setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
-        setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
-      ]);
-      const message = document.getElementById("settingsSaveMessage");
-      if (message) message.textContent = "Saved automatically.";
+      await persistSettingsForCurrentDay(next, "Saved automatically.");
     } catch (error) {
       showError(error, "Could not save settings.");
     }
