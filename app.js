@@ -44,7 +44,7 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 18;
+const REPORT_CACHE_VERSION = 19;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -455,18 +455,24 @@ async function loadDailyGoalForDate(dateISO = state.currentDate) {
 }
 
 async function ensureDailyGoalSnapshot(dateISO = state.currentDate) {
-  if (!state.user || !dateISO) return;
+  if (!state.user || !dateISO) return null;
   try {
     const snap = await getDoc(dailyGoalDoc(dateISO));
-    if (!snap.exists()) {
-      const snapshot = goalSnapshotFromSettings(state.settings);
-      snapshot.savedForDate = dateISO;
-      state.dailyGoals[dateISO] = snapshot;
-      writeLocal(`dailyGoal:${dateISO}`, snapshot);
-      await setDoc(dailyGoalDoc(dateISO), cleanForFirestore(snapshot), { merge: true });
+    if (snap.exists()) {
+      const existing = snap.data();
+      state.dailyGoals[dateISO] = existing;
+      writeLocal(`dailyGoal:${dateISO}`, existing);
+      return existing;
     }
+    const snapshot = goalSnapshotFromSettings(state.settings);
+    snapshot.savedForDate = dateISO;
+    state.dailyGoals[dateISO] = snapshot;
+    writeLocal(`dailyGoal:${dateISO}`, snapshot);
+    await setDoc(dailyGoalDoc(dateISO), cleanForFirestore(snapshot), { merge: true });
+    return snapshot;
   } catch (error) {
     console.warn("Daily goal snapshot could not be stored.", error);
+    return state.dailyGoals?.[dateISO] || null;
   }
 }
 
@@ -821,8 +827,14 @@ function reportTargetCaloriesTotalForDates(dates = [], goalsByDate = {}) {
   }, 0);
 }
 
-function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}) {
+function reportTargetCaloriesTotalFromChart(chartData = {}) {
+  const normalized = normalizeReportChartData(chartData) || chartData;
+  return (normalized.targets || []).reduce((sum, target) => sum + number(target.kcal), 0);
+}
+
+function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}, targetDates = null) {
   const mode = meta?.mode || state.reportMode || "week";
+  const targetDateSet = Array.isArray(targetDates) ? new Set(targetDates) : null;
   if (mode === "year") {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const values = monthNames.map(() => emptyNutrients());
@@ -830,12 +842,14 @@ function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}) {
     for (const date of dates) {
       const month = new Date(`${date}T12:00:00`).getMonth();
       const nutrients = normalizeNutrients(byDate[date] || {});
-      const target = reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date));
       values[month] = addNutrients([{ nutrientsSnapshot: values[month] }, nutrients]);
-      targets[month].kcal += target.kcal;
-      targets[month].protein += target.protein;
-      targets[month].carbs += target.carbs;
-      targets[month].fat += target.fat;
+      if (!targetDateSet || targetDateSet.has(date)) {
+        const target = reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date));
+        targets[month].kcal += target.kcal;
+        targets[month].protein += target.protein;
+        targets[month].carbs += target.carbs;
+        targets[month].fat += target.fat;
+      }
     }
     return { mode, labels: monthNames, values, targets };
   }
@@ -846,7 +860,9 @@ function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}) {
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   });
   const values = dates.map(date => normalizeNutrients(byDate[date] || {}));
-  const targets = dates.map(date => reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date)));
+  const targets = dates.map(date => targetDateSet && !targetDateSet.has(date)
+    ? { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+    : reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date)));
   return { mode, labels, values, targets };
 }
 
@@ -854,7 +870,9 @@ function compactReportChartData(chartData = {}) {
   return cleanForFirestore({
     mode: chartData.mode || state.reportMode || "week",
     labels: Array.isArray(chartData.labels) ? chartData.labels.map(label => String(label)) : [],
-    values: (chartData.values || []).map(nutrients => nutrientsToVector(nutrients)),
+    // Firestore does not accept arrays directly inside arrays. Store each
+    // nutrient vector in a small object so report caches can actually save.
+    values: (chartData.values || []).map(nutrients => ({ nv: nutrientsToVector(nutrientsFromSnapshot(nutrients)) })),
     targets: (chartData.targets || []).map(target => ({
       kcal: round(number(target.kcal), 0),
       protein: round(number(target.protein), 1),
@@ -866,7 +884,12 @@ function compactReportChartData(chartData = {}) {
 
 function normalizeReportChartData(chartData = null) {
   if (!chartData || !Array.isArray(chartData.labels)) return null;
-  const values = (chartData.values || []).map(value => nutrientsFromSnapshot(value));
+  const values = (chartData.values || []).map(value => {
+    if (Array.isArray(value)) return vectorToNutrients(value);
+    if (Array.isArray(value?.nv)) return vectorToNutrients(value.nv);
+    if (Array.isArray(value?.nutrientVector)) return vectorToNutrients(value.nutrientVector);
+    return nutrientsFromSnapshot(value);
+  });
   const targets = (chartData.targets || []).map(target => ({
     kcal: number(target.kcal),
     protein: number(target.protein),
@@ -888,11 +911,11 @@ function compactReportCacheData(data = {}, meta = null) {
   const dates = start && end ? dateRange(start, end) : (data.dates || []);
   const byDate = data.byDate || Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
   const goalsByDate = data.goalsByDate || {};
-  const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate);
   const activeDates = Array.isArray(data.activeDates) && data.activeDates.length
     ? data.activeDates.filter(date => dates.includes(date))
     : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
   const activeDayCount = number(data.activeDayCount) || activeDates.length;
+  const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate, activeDates);
   const avgGoals = data.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, goalsByDate);
   const hasStoredTargetCaloriesTotal = data.targetCaloriesTotal !== undefined && data.targetCaloriesTotal !== null;
   const targetCaloriesTotal = hasStoredTargetCaloriesTotal
@@ -923,10 +946,16 @@ function compactReportCacheData(data = {}, meta = null) {
   });
 }
 
+function firestoreSafeCompactReportCache(meta, cacheData = {}) {
+  const normalized = normalizeReportData(cacheData, meta || cacheData);
+  return compactReportCacheData(normalized, meta || cacheData);
+}
+
 async function storeCompactReportCache(meta, cacheData) {
-  if (!state.user || !meta?.key) return normalizeReportData(cacheData, meta);
-  await setDoc(reportCacheDoc(meta.key), cleanForFirestore(cacheData), { merge: false });
-  return normalizeReportData(cacheData, meta);
+  const safeCacheData = firestoreSafeCompactReportCache(meta, cacheData);
+  if (!state.user || !meta?.key) return normalizeReportData(safeCacheData, meta);
+  await setDoc(reportCacheDoc(meta.key), cleanForFirestore(safeCacheData), { merge: false });
+  return normalizeReportData(safeCacheData, meta);
 }
 
 async function storeReportCache(meta, data) {
@@ -941,7 +970,7 @@ function pendingReportCacheLocalKey(key) {
 
 function saveReportCacheInBackground(meta, data, options = {}) {
   if (!state.user || !meta?.key) return Promise.resolve(null);
-  const cacheData = compactReportCacheData(data, meta);
+  const cacheData = firestoreSafeCompactReportCache(meta, compactReportCacheData(data, meta));
   setReportCacheUploadStatus({
     key: meta.key,
     mode: meta.mode,
@@ -985,9 +1014,12 @@ function saveReportCacheInBackground(meta, data, options = {}) {
       return saved;
     } catch (error) {
       console.warn("Report cache background save failed.", error);
+      const detail = error?.message
+        ? `Firebase save did not finish: ${error.message}. A local retry copy is stored and will retry next app open.`
+        : "Firebase save did not finish. A local retry copy is stored and will retry next app open.";
       setReportCacheUploadStatus({
         label: "Report cache upload pending",
-        detail: "Firebase save did not finish. A local retry copy is stored and will retry next app open.",
+        detail,
         percent: 100,
         status: "pending"
       });
@@ -1042,9 +1074,12 @@ async function flushPendingReportCacheSaves(options = {}) {
       savedCount += 1;
     } catch (error) {
       console.warn("Pending report cache retry failed.", error);
+      const detail = error?.message
+        ? `A pending cache save still could not be uploaded: ${error.message}. It will retry next app open.`
+        : "A pending cache save still could not be uploaded. It will retry next app open.";
       setReportCacheUploadStatus({
         label: "Report cache upload pending",
-        detail: "A pending cache save still could not be uploaded. It will retry next app open.",
+        detail,
         percent: 100,
         status: "pending"
       });
@@ -1180,10 +1215,10 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     const snap = await getDocs(entryCollection(dateISO));
     summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
   }
-  await ensureDailyGoalSnapshot(dateISO);
+  const ensuredGoal = await ensureDailyGoalSnapshot(dateISO);
   const normalizedEntries = (summaryEntries || []).map(entry => ({ ...entry, date: entry.date || dateISO }));
   const total = addNutrients(normalizedEntries);
-  const goalsSnapshot = goalSnapshotFromSettings(effectiveGoalsForDate(dateISO));
+  const goalsSnapshot = goalSnapshotFromSettings(ensuredGoal || effectiveGoalsForDate(dateISO));
   goalsSnapshot.savedForDate = dateISO;
 
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
@@ -4199,12 +4234,48 @@ async function readDailySummaryForReport(dateISO) {
   }
 }
 
+function hasReportFoodData(day = {}) {
+  const nutrients = normalizeNutrients(day.nutrients || {});
+  return number(day.entryCount ?? day.itemCount) > 0
+    || (Array.isArray(day.flatRows) && day.flatRows.length > 0)
+    || NUTRIENT_KEYS.some(key => number(nutrients[key]) > 0);
+}
+
+async function reportGoalForDate(dateISO, fallbackGoal = null, options = {}) {
+  if (!dateISO) return fallbackGoal || goalSnapshotFromSettings(state.settings);
+  const localGoal = state.dailyGoals?.[dateISO] || readLocal(`dailyGoal:${dateISO}`, null);
+  if (!options.forceFirestore && localGoal) {
+    state.dailyGoals[dateISO] = localGoal;
+    return localGoal;
+  }
+  if (state.user && (options.forceFirestore || !localGoal)) {
+    try {
+      const snap = await getDoc(dailyGoalDoc(dateISO));
+      if (snap.exists()) {
+        const storedGoal = snap.data();
+        state.dailyGoals[dateISO] = storedGoal;
+        writeLocal(`dailyGoal:${dateISO}`, storedGoal);
+        return storedGoal;
+      }
+    } catch (error) {
+      console.warn(`Daily goal read failed for ${dateISO}; using summary/settings fallback.`, error);
+    }
+  }
+  // For old summaries, the summary snapshot is usually more faithful than a
+  // current settings fallback when no per-day goal document exists.
+  return fallbackGoal || localGoal || goalSnapshotFromSettings(state.settings);
+}
+
 async function buildReportDayData(dateISO, options = {}) {
   assertReportCalculationActive(options.signal);
   const summary = await readDailySummaryForReport(dateISO);
   assertReportCalculationActive(options.signal);
   if (summary) {
-    const goal = summary.goalsSnapshot || state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
+    const dayHasFood = hasReportFoodData(summary);
+    const goal = dayHasFood
+      ? await reportGoalForDate(dateISO, summary.goalsSnapshot, { forceFirestore: options.mode === "year" || options.forceGoalReload })
+      : (summary.goalsSnapshot || state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings));
+    assertReportCalculationActive(options.signal);
     return {
       date: dateISO,
       nutrients: summary.nutrients,
@@ -4215,9 +4286,8 @@ async function buildReportDayData(dateISO, options = {}) {
     };
   }
 
-  await loadDailyGoalForDate(dateISO);
+  const goal = await reportGoalForDate(dateISO, null, { forceFirestore: true });
   assertReportCalculationActive(options.signal);
-  const goal = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
   const snap = await getDocs(entryCollection(dateISO));
   assertReportCalculationActive(options.signal);
   const entries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
@@ -4239,7 +4309,7 @@ async function buildReportData(meta, options = {}) {
   const totalSteps = Math.max(dates.length, 1);
 
   const dayResults = await mapWithConcurrency(dates, 8, async dateISO => {
-    const result = await buildReportDayData(dateISO, options);
+    const result = await buildReportDayData(dateISO, { ...options, mode: meta.mode });
     completed += 1;
     options.onProgress?.({
       percent: (completed / totalSteps) * 92,
@@ -4259,7 +4329,7 @@ async function buildReportData(meta, options = {}) {
 
   const total = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
   const loggedDates = dayResults
-    .filter(result => number(result?.entryCount) > 0)
+    .filter(result => hasReportFoodData(result))
     .map(result => result.date)
     .filter(date => dates.includes(date));
   const activeDates = loggedDates.length
@@ -4267,8 +4337,10 @@ async function buildReportData(meta, options = {}) {
     : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
   const activeDayCount = activeDates.length;
   const avgGoals = reportGoalAverages(meta.start, meta.end, activeDates.length ? activeDates : dates, goalsByDate);
-  const targetCaloriesTotal = reportTargetCaloriesTotalForDates(activeDates, goalsByDate);
-  const chartData = buildReportChartData(meta, dates, byDate, goalsByDate);
+  const chartData = buildReportChartData(meta, dates, byDate, goalsByDate, meta.mode === "year" ? activeDates : null);
+  const targetCaloriesTotal = meta.mode === "year"
+    ? reportTargetCaloriesTotalFromChart(chartData)
+    : reportTargetCaloriesTotalForDates(activeDates, goalsByDate);
   const data = cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     dataModelVersion: DATA_MODEL_VERSION,
@@ -4497,7 +4569,9 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const targetDatesForDeficit = activeDates.length ? activeDates : [];
   const targetCaloriesTotal = hasStoredTargetCaloriesTotal
     ? number(sourceData.targetCaloriesTotal)
-    : reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {});
+    : (sourceData?.mode === "year" && sourceData?.chartData
+      ? reportTargetCaloriesTotalFromChart(sourceData.chartData)
+      : reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {}));
   const calorieDeficit = targetCaloriesTotal - total.kcal;
   const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}`;
   const output = document.getElementById("reportOutput");
