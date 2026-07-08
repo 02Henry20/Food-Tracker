@@ -882,7 +882,10 @@ function compactReportCacheData(data = {}, meta = null) {
   const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate);
   const activeDayCount = number(data.activeDayCount) || (Array.isArray(data.activeDates) ? data.activeDates.length : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)).length);
   const avgGoals = data.avgGoals || reportGoalAverages(start, end, null, goalsByDate, activeDayCount || dates.length);
-  const targetCaloriesTotal = number(data.targetCaloriesTotal) || number(avgGoals.calorieGoal) * Math.max(1, activeDayCount || dates.length);
+  const hasStoredTargetCaloriesTotal = data.targetCaloriesTotal !== undefined && data.targetCaloriesTotal !== null;
+  const targetCaloriesTotal = hasStoredTargetCaloriesTotal
+    ? number(data.targetCaloriesTotal)
+    : (activeDayCount ? number(avgGoals.calorieGoal) * activeDayCount : 0);
   const total = nutrientsFromSnapshot(data.total || data.nutrientVector || addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] }))));
 
   return cleanForFirestore({
@@ -931,7 +934,7 @@ function saveReportCacheInBackground(meta, data, options = {}) {
   const promise = storeCompactReportCache(meta, cacheData)
     .then(saved => {
       removeLocal(pendingReportCacheLocalKey(meta.key));
-      if (options.toast) showToast("Report cache saved successfully.");
+      if (options.toast) showToast("Report cache saved to Firebase successfully.", 5200);
       return saved;
     })
     .catch(error => {
@@ -966,7 +969,7 @@ async function flushPendingReportCacheSaves(options = {}) {
     }
   }
   if (savedCount && options.toast !== false) {
-    showToast(`${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved successfully.`);
+    showToast(`${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved to Firebase successfully.`, 5200);
   }
 }
 
@@ -1279,11 +1282,11 @@ function getFoodByKey(key) {
   return null;
 }
 
-function showToast(message) {
+function showToast(message, duration = 3200) {
   els.toast.textContent = message;
   els.toast.classList.remove("hidden");
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => els.toast.classList.add("hidden"), 3200);
+  showToast.timer = setTimeout(() => els.toast.classList.add("hidden"), Math.max(1200, number(duration, 3200)));
 }
 
 function showError(error, fallback = "Something went wrong.") {
@@ -1620,7 +1623,7 @@ function macroCircleCard(label, value, goal, color, calorieShare = 0) {
   return `
     <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
-        <div class="macro-circle-inner-text macro-calorie-share-text" aria-label="${safeText(label)} calorie share ${circleNumber} percent"><span class="macro-circle-number">${safeText(circleNumber)}</span><span class="macro-circle-status">share</span></div>
+        <div class="macro-circle-inner-text macro-calorie-share-text" aria-label="${safeText(label)} calorie share ${circleNumber} percent"><span class="macro-circle-number">${safeText(circleNumber)}</span></div>
       </div>
       <div>
         <h3>${safeText(label)}</h3>
@@ -1929,7 +1932,7 @@ function renderSearch() {
               <label>Name<input name="name" required placeholder="Name of the food" /></label>
               <label>Brand<input name="brand" placeholder="Brand name" /></label>
               <label>Serving label<input name="servingLabel" value="100 g" /></label>
-              <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+              <label>Serving grams<input name="servingGrams" type="number" step="0.01" min="0" value="100" /></label>
             </div>
             <div class="form-grid">
               ${["kcal", "protein", "carbs", "fat", "fiber", "sugar", "saturatedFat", "salt", "sodium"].map(key => `
@@ -2111,7 +2114,7 @@ function openCustomFoodCreateModal() {
             <label>Name<input name="name" required placeholder="Name of the food" /></label>
             <label>Brand<input name="brand" placeholder="Brand name" /></label>
             ${servingUnitSelectHTML("g")}
-            <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="100" /></label>
+            <label>Serving grams<input name="servingGrams" type="number" step="0.01" min="0" value="100" /></label>
           </div>
         </section>
         ${customFoodNutrientFieldsHTML()}
@@ -2272,7 +2275,7 @@ function openCustomFoodEditor(food, duplicate = false) {
           <label>Name<input name="name" required value="${safeText(duplicate ? `${food.name} copy` : food.name)}" /></label>
           <label>Brand<input name="brand" value="${safeText(food.brand || "")}" /></label>
           ${servingUnitSelectHTML(servingUnits().includes(normalizeSearchText(unit)) ? normalizeSearchText(unit) : "custom")}
-          <label>Serving grams<input name="servingGrams" type="number" step="0.1" min="0" value="${round(serving.grams || 100, 2)}" /></label>
+          <label>Serving grams<input name="servingGrams" type="number" step="0.01" min="0" value="${round(serving.grams || 100, 2)}" /></label>
         </div>
         ${customFoodNutrientFieldsHTML(foodNutrientsPer100g(food))}
         <div class="form-actions"><button class="primary-btn" type="submit">${duplicate ? "Create copy" : "Save changes"}</button></div>
@@ -2874,7 +2877,7 @@ async function createRecipe() {
       <div class="modal-head"><h3>Create recipe</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="createRecipeForm" class="modal-body">
         <label>Name<input name="name" required placeholder="Name of the recipe" /></label>
-        <label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="1" required /></label>
+        <label>Portions<input name="portions" type="number" step="0.01" min="0.1" value="1" required /></label>
         <label>Notes<textarea name="notes" placeholder="Notes"></textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Create</button></div>
       </form>
@@ -3232,7 +3235,7 @@ function openIngredientAmountModal(food, kind, id) {
       </div>
       <form id="ingredientAmountForm" class="modal-body">
         <div class="form-grid two">
-          <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
+          <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
               ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
@@ -3424,7 +3427,7 @@ function openTargetEditor(kind, id) {
       <div class="modal-head"><h3>Edit ${isRecipe ? "recipe" : "mealset"}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetEditForm" class="modal-body">
         <label>Name<input name="name" required value="${safeText(target.name)}" /></label>
-        ${isRecipe ? `<label>Portions<input name="portions" type="number" step="0.1" min="0.1" value="${target.portions || 1}" /></label>` : ""}
+        ${isRecipe ? `<label>Portions<input name="portions" type="number" step="0.01" min="0.1" value="${target.portions || 1}" /></label>` : ""}
         <label>Notes<textarea name="notes">${safeText(target.notes || "")}</textarea></label>
         <div class="form-actions"><button class="primary-btn" type="submit">Save changes</button></div>
       </form>
@@ -3471,22 +3474,143 @@ function targetItemEditPreviewHTML(kind, target, items, index, nextDisplayNutrie
   return `${nutrientSummaryHTML(nextDisplayNutrients)}${targetItemContributionHTML(nextDisplayNutrients, adjustedTotal)}`;
 }
 
+function targetItemIsRecipeReference(item = {}) {
+  return item?.itemType === "recipe" || item?.source === "recipe";
+}
+
+function targetItemSourceFood(item = {}) {
+  if (!item || targetItemIsRecipeReference(item)) return null;
+  const id = String(item.itemId || item.sourceId || "").trim();
+  const barcode = String(item.barcode || "").trim();
+  const name = normalizeSearchText(item.nameSnapshot || item.name);
+  const brand = normalizeSearchText(item.brandSnapshot || item.brand);
+  const existing = state.customFoods.find(food => {
+    if (id && (food.id === id || food.sourceId === id || food.barcode === id)) return true;
+    if (barcode && food.barcode === barcode) return true;
+    return name && normalizeSearchText(food.name) === name && (!brand || normalizeSearchText(food.brand) === brand);
+  });
+  if (existing) return existing;
+
+  const snapshot = item.itemSnapshot || item.foodSnapshot || null;
+  if (snapshot && (snapshot.nutrientsPer100g || snapshot.nutrientVector || snapshot.nv || snapshot.nutrients)) {
+    return {
+      ...snapshot,
+      name: snapshot.name || item.nameSnapshot || "Food",
+      brand: snapshot.brand || item.brandSnapshot || null,
+      nutrientsPer100g: foodNutrientsPer100g(snapshot),
+      servingOptions: snapshot.servingOptions || item.servingOptions || [],
+      defaultServing: snapshot.defaultServing || item.defaultServing || null
+    };
+  }
+
+  const grams = number(item.grams);
+  const nutrients = normalizeNutrients(item.nutrientsSnapshot);
+  if (grams > 0 && NUTRIENT_KEYS.some(key => number(nutrients[key]) > 0)) {
+    const currentUnit = String(item.unit || "g").trim() || "g";
+    const currentAmount = Math.max(0, number(item.amount));
+    const servingGrams = currentUnit !== "g" && currentAmount > 0 ? grams / currentAmount : 0;
+    const serving = servingGrams > 0 ? { label: currentUnit, grams: servingGrams, unit: currentUnit } : null;
+    return {
+      source: item.source || "snapshot",
+      id: item.itemId || item.sourceId || null,
+      name: item.nameSnapshot || item.name || "Food",
+      brand: item.brandSnapshot || item.brand || null,
+      nutrientsPer100g: scaleNutrients(nutrients, 100 / grams),
+      defaultServing: serving,
+      servingOptions: serving ? [serving] : []
+    };
+  }
+  return null;
+}
+
+function targetItemServingOptions(item = {}) {
+  if (targetItemIsRecipeReference(item)) return [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }];
+  const sourceFood = targetItemSourceFood(item);
+  const options = sourceFood
+    ? buildServingOptions(sourceFood)
+    : [{ label: "grams", grams: 1, mode: "grams", unit: "g" }, { label: "100 g", grams: 100, mode: "serving", unit: "g" }];
+  const currentUnit = String(item.unit || "g").trim() || "g";
+  const currentAmount = Math.max(0, number(item.amount));
+  const currentGrams = number(item.grams);
+  if (currentUnit !== "g" && currentAmount > 0 && currentGrams > 0) {
+    const currentLabel = normalizeSearchText(currentUnit);
+    const exists = options.some(option => normalizeSearchText(servingDisplayName(option)) === currentLabel || normalizeSearchText(option.unit) === currentLabel);
+    if (!exists) options.push({ label: currentUnit, grams: currentGrams / currentAmount, mode: "serving", unit: currentUnit });
+  }
+  return options;
+}
+
+function targetItemSelectedUnitIndex(item = {}, servingOptions = []) {
+  const currentUnit = normalizeSearchText(item.unit || "g");
+  if (currentUnit === "g") {
+    const gramsIndex = servingOptions.findIndex(option => option.mode === "grams");
+    return gramsIndex >= 0 ? gramsIndex : 0;
+  }
+  const index = servingOptions.findIndex(option => normalizeSearchText(servingDisplayName(option)) === currentUnit || normalizeSearchText(option.unit) === currentUnit);
+  return index >= 0 ? index : 0;
+}
+
+function targetItemGramsForSelection(item = {}, amount = 0, selected = {}) {
+  if (targetItemIsRecipeReference(item)) return null;
+  return selected?.mode === "grams" ? number(amount) : number(amount) * number(selected?.grams, 1);
+}
+
+function targetItemEditData(kind, target, item, amount, selected) {
+  const safeAmount = Math.max(0, number(amount));
+  const oldAmount = Math.max(0.000001, number(item.amount ?? item.grams, 1));
+  const isRecipeReference = targetItemIsRecipeReference(item);
+  const grams = targetItemGramsForSelection(item, safeAmount, selected);
+  const unit = isRecipeReference ? "portion" : (selected?.mode === "grams" ? "g" : servingDisplayName(selected));
+  let nutrientsSnapshot;
+
+  if (isRecipeReference) {
+    nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, safeAmount / oldAmount);
+  } else {
+    const sourceFood = targetItemSourceFood(item);
+    if (sourceFood && grams !== null && grams >= 0) {
+      nutrientsSnapshot = scaleNutrients(foodNutrientsPer100g(sourceFood), grams / 100);
+    } else {
+      const oldGrams = number(item.grams) || (item.unit === "g" ? oldAmount : 0);
+      const factor = oldGrams > 0 && grams !== null ? grams / oldGrams : safeAmount / oldAmount;
+      nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, factor);
+    }
+  }
+
+  const previewItem = { ...item, amount: safeAmount, unit, grams, nutrientsSnapshot };
+  return {
+    amount: safeAmount,
+    unit,
+    grams,
+    nutrientsSnapshot,
+    displayNutrients: targetItemDisplayNutrients(kind, target, previewItem)
+  };
+}
+
 function openTargetItemAmountEditor(kind, id, index) {
   const isRecipe = kind === "recipe";
   const target = targetForKind(kind, id);
   const items = [...(isRecipe ? target?.ingredients || [] : target?.items || [])];
   const item = items[number(index)];
   if (!target || !item) return;
-  const currentAmount = round(item.amount ?? item.grams, 2);
-  const oldAmount = number(item.amount ?? item.grams, 1) || 1;
-  const displayNutrients = targetItemDisplayNutrients(kind, target, item);
+  const servingOptions = targetItemServingOptions(item);
+  const selectedIndex = targetItemSelectedUnitIndex(item, servingOptions);
+  const initialSelected = servingOptions[selectedIndex] || servingOptions[0];
+  const currentAmount = round(item.amount ?? item.grams ?? (targetItemIsRecipeReference(item) ? 1 : 100), 2);
+  const initialData = targetItemEditData(kind, target, item, currentAmount, initialSelected);
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head"><h3>Edit ${safeText(item.nameSnapshot)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <form id="targetItemEditForm" class="modal-body">
-        <label>Amount (${safeText(item.unit || "g")})<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${currentAmount}" /></label>
+        <div class="form-grid two">
+          <label>${targetItemIsRecipeReference(item) ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${currentAmount}" /></label>
+          <label>Unit
+            <select name="unitIndex" ${targetItemIsRecipeReference(item) ? "disabled" : ""}>
+              ${servingOptions.map((serving, optionIndex) => `<option value="${optionIndex}" ${optionIndex === selectedIndex ? "selected" : ""}>${safeText(servingDisplayName(serving))}</option>`).join("")}
+            </select>
+          </label>
+        </div>
         <div id="targetItemAmountPreview" class="amount-preview">
-          ${targetItemStatsHTML(kind, target, item, displayNutrients)}
+          ${targetItemEditPreviewHTML(kind, target, items, number(index), initialData.displayNutrients)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save amount</button></div>
       </form>
@@ -3494,9 +3618,19 @@ function openTargetItemAmountEditor(kind, id, index) {
   `);
   const form = document.getElementById("targetItemEditForm");
   const preview = document.getElementById("targetItemAmountPreview");
-  form?.elements.amount?.addEventListener("input", event => {
-    const factor = number(event.currentTarget.value) / oldAmount;
-    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), scaleNutrients(displayNutrients, factor));
+  const updatePreview = () => {
+    const data = new FormData(form);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const editData = targetItemEditData(kind, target, item, data.get("amount"), selected);
+    preview.innerHTML = targetItemEditPreviewHTML(kind, target, items, number(index), editData.displayNutrients);
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", () => {
+    if (!targetItemIsRecipeReference(item) && form.elements.amount) {
+      const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
+      form.elements.amount.value = selected.mode === "grams" ? round(number(item.grams) || 100, 2) : 1;
+    }
+    updatePreview();
   });
   requestAnimationFrame(() => {
     form?.elements.amount?.focus();
@@ -3504,13 +3638,15 @@ function openTargetItemAmountEditor(kind, id, index) {
   });
   form.addEventListener("submit", event => {
     event.preventDefault();
-    const newAmount = number(new FormData(event.currentTarget).get("amount"), item.amount ?? item.grams);
-    const factor = newAmount / oldAmount;
+    const data = new FormData(event.currentTarget);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const editData = targetItemEditData(kind, target, item, data.get("amount"), selected);
     items[number(index)] = {
       ...item,
-      amount: newAmount,
-      grams: item.grams ? number(item.grams) * factor : (item.unit === "g" ? newAmount : item.grams),
-      nutrientsSnapshot: scaleNutrients(item.nutrientsSnapshot, factor),
+      amount: editData.amount,
+      unit: editData.unit,
+      grams: editData.grams,
+      nutrientsSnapshot: editData.nutrientsSnapshot,
       updatedAt: Date.now()
     };
     const patch = recalculateTarget(kind, target, items);
@@ -3562,7 +3698,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
       <div class="modal-head"><h3>Log ${safeText(recipe.name)}</h3><button class="close-btn" type="button" ${closeAction}>x</button></div>
       <form id="logRecipeForm" class="modal-body">
         <div class="form-grid two">
-          <label>Portions<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
+          <label>Portions<input name="amount" type="number" step="0.01" min="0" value="1" required /></label>
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
@@ -3608,7 +3744,7 @@ function openLogMealsetModal(mealset, returnTarget = null) {
       <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" type="button" ${closeAction}>x</button></div>
       <form id="logMealsetForm" class="modal-body">
         <div class="form-grid two">
-          <label>Quantity<input name="amount" type="number" step="0.1" min="0" value="1" required /></label>
+          <label>Quantity<input name="amount" type="number" step="0.01" min="0" value="1" required /></label>
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
@@ -3833,6 +3969,7 @@ function normalizeReportData(data = {}, meta = null) {
     : flatRowsFromReportEntries(entries));
   const chartData = normalizeReportChartData(data.chartData)
     || (hasByDate ? buildReportChartData(meta || data, dates, byDate, data.goalsByDate || {}) : null);
+  const hasTargetCaloriesTotal = data.targetCaloriesTotal !== undefined && data.targetCaloriesTotal !== null;
   return {
     ...data,
     start,
@@ -3847,7 +3984,7 @@ function normalizeReportData(data = {}, meta = null) {
     flatRows,
     goalsByDate: data.goalsByDate || {},
     avgGoals: data.avgGoals || null,
-    targetCaloriesTotal: number(data.targetCaloriesTotal)
+    targetCaloriesTotal: hasTargetCaloriesTotal ? number(data.targetCaloriesTotal) : null
   };
 }
 
@@ -3977,7 +4114,7 @@ async function buildReportData(meta, options = {}) {
     reportFoodLimit: REPORT_FOOD_LIMIT,
     goalsByDate,
     avgGoals,
-    targetCaloriesTotal: number(avgGoals.calorieGoal) * Math.max(1, activeDayCount),
+    targetCaloriesTotal: activeDayCount ? number(avgGoals.calorieGoal) * activeDayCount : 0,
     dirty: false,
     generatedAt: Date.now(),
     sourceEntryCount
@@ -4181,8 +4318,10 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
   const avgGoals = sourceData?.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, sourceData?.goalsByDate || null);
-  const targetCaloriesTotal = number(sourceData?.targetCaloriesTotal) || avgGoals.calorieGoal * activeDays;
   const loggedDayCount = number(sourceData?.activeDayCount) || activeDates.length;
+  const hasStoredTargetCaloriesTotal = sourceData?.targetCaloriesTotal !== undefined && sourceData?.targetCaloriesTotal !== null;
+  const targetCaloriesTotal = hasStoredTargetCaloriesTotal ? number(sourceData.targetCaloriesTotal) : (loggedDayCount ? avgGoals.calorieGoal * loggedDayCount : 0);
+  const calorieDeficit = targetCaloriesTotal - total.kcal;
   const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}`;
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
@@ -4190,7 +4329,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
       ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"), `target ${round(avgGoals.calorieGoal, 0)}`)}
       ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
       ${metricCardHTML("Macro split", `<span class="macro-split-metric"><span class="split-segment ${avg.protein > avgGoals.proteinGoal ? "over" : ""}">${round(macro.proteinPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.carbs > avgGoals.carbsGoal ? "over" : ""}">${round(macro.carbsPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.fat > avgGoals.fatGoal ? "over" : ""}">${round(macro.fatPct, 0)}</span><span class="split-unit">%</span></span>`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, "neutral", `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
-      ${metricCard("Target difference", `${round(total.kcal - targetCaloriesTotal, 0)} kcal`, `vs ${round(targetCaloriesTotal, 0)} kcal target - ${loggedDayLabel}`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `vs ${round(targetCaloriesTotal, 0)}`)}
+      ${metricCard("Kcal deficit", `${round(calorieDeficit, 0)} kcal`, `target ${round(targetCaloriesTotal, 0)} kcal - eaten ${round(total.kcal, 0)} kcal - ${loggedDayLabel}`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `target ${round(targetCaloriesTotal, 0)}`)}
     </div>
 
     <div class="grid-2">
@@ -4693,9 +4832,9 @@ function renderSettingsV2() {
         <small data-macro-preview="${key}"></small>
       </div>
       ${macroMode === "percent"
-        ? `<label>Percent<input name="macroPercent${label}" data-macro-percent="${key}" type="number" step="0.1" min="0" max="100" value="${round(percentValue, 1)}" /></label>
+        ? `<label>Percent<input name="macroPercent${label}" data-macro-percent="${key}" type="number" step="0.01" min="0" max="100" value="${round(percentValue, 1)}" /></label>
            <input name="${key}Goal" data-macro-gram="${key}" type="hidden" value="${round(gramsValue, 1)}" />`
-        : `<label>Grams<input name="${key}Goal" data-macro-gram="${key}" type="number" step="1" min="0" value="${round(gramsValue, 1)}" /></label>
+        : `<label>Grams<input name="${key}Goal" data-macro-gram="${key}" type="number" step="0.01" min="0" value="${round(gramsValue, 1)}" /></label>
            <input name="macroPercent${label}" data-macro-percent="${key}" type="hidden" value="${round(percentValue, 1)}" />`}
     </article>
   `;
