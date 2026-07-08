@@ -44,7 +44,8 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 14;
+const REPORT_CACHE_VERSION = 15;
+const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
@@ -656,6 +657,7 @@ function compactReportItem(item = {}, fallback = {}) {
     source: item.source || fallback.source || fallback.itemType || "",
     itemType: item.itemType || fallback.itemType || "food",
     itemId: item.itemId || fallback.itemId || null,
+    count: Math.max(1, number(item.count ?? fallback.count, 1)),
     nutrientsSnapshot,
     nutrientVector: nutrientsToVector(nutrientsSnapshot),
     kcal: nutrientsSnapshot.kcal,
@@ -676,9 +678,94 @@ function normalizeReportRow(row = {}) {
     protein: number(row.protein ?? n.protein),
     carbs: number(row.carbs ?? n.carbs),
     fat: number(row.fat ?? n.fat),
+    count: Math.max(1, number(row.count, 1)),
     entryDate: row.entryDate || row.date || null,
     nutrientsSnapshot: normalizeNutrients({ ...n, kcal: row.kcal ?? n.kcal, protein: row.protein ?? n.protein, carbs: row.carbs ?? n.carbs, fat: row.fat ?? n.fat })
   };
+}
+
+
+function reportFoodIdentity(row = {}) {
+  const normalized = normalizeReportRow(row);
+  const idPart = normalized.itemId ? `id:${normalized.itemId}` : `name:${normalizeSearchText(normalized.name)}|brand:${normalizeSearchText(normalized.brand)}`;
+  return `${normalized.itemType || "food"}|${idPart}`;
+}
+
+function aggregateReportRows(rows = []) {
+  const map = new Map();
+  for (const raw of rows || []) {
+    const row = normalizeReportRow(raw);
+    const identity = reportFoodIdentity(row);
+    const meal = row.meal || "";
+    const source = row.source || "";
+    const bucketKey = `${identity}|meal:${meal}|source:${source}`;
+    const current = map.get(bucketKey) || {
+      name: row.name,
+      brand: row.brand || "",
+      grams: 0,
+      kcal: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      count: 0,
+      meal,
+      source,
+      itemType: row.itemType || "food",
+      itemId: row.itemId || null,
+      entryDate: row.entryDate || null
+    };
+    const rowCount = Math.max(1, number(row.count, 1));
+    current.grams += number(row.grams);
+    current.kcal += number(row.kcal);
+    current.protein += number(row.protein);
+    current.carbs += number(row.carbs);
+    current.fat += number(row.fat);
+    current.count += rowCount;
+    if (!current.entryDate && row.entryDate) current.entryDate = row.entryDate;
+    map.set(bucketKey, current);
+  }
+  return [...map.values()].map(row => compactReportItem({
+    ...row,
+    nutrientsSnapshot: {
+      kcal: row.kcal,
+      protein: row.protein,
+      carbs: row.carbs,
+      fat: row.fat
+    }
+  }, row));
+}
+
+function limitReportFlatRows(rows = [], limit = REPORT_FOOD_LIMIT) {
+  const normalizedRows = (rows || []).map(row => normalizeReportRow(row));
+  if (!limit || normalizedRows.length <= limit) return aggregateReportRows(normalizedRows);
+
+  const totalsByFood = new Map();
+  for (const row of normalizedRows) {
+    const identity = reportFoodIdentity(row);
+    const current = totalsByFood.get(identity) || {
+      identity,
+      kcal: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      grams: 0,
+      count: 0
+    };
+    current.kcal += number(row.kcal);
+    current.protein += number(row.protein);
+    current.carbs += number(row.carbs);
+    current.fat += number(row.fat);
+    current.grams += number(row.grams);
+    current.count += Math.max(1, number(row.count, 1));
+    totalsByFood.set(identity, current);
+  }
+
+  const keptIdentities = new Set([...totalsByFood.values()]
+    .sort((a, b) => number(b.kcal) - number(a.kcal) || normalizeSearchText(a.identity).localeCompare(normalizeSearchText(b.identity)))
+    .slice(0, limit)
+    .map(row => row.identity));
+
+  return aggregateReportRows(normalizedRows.filter(row => keptIdentities.has(reportFoodIdentity(row))));
 }
 
 function compactReportItemsFromEntry(entry = {}) {
@@ -1255,10 +1342,16 @@ function renderToday() {
   const offset = circumference - (kcalPct / 100) * circumference;
   const overCircumference = 2 * Math.PI * 68;
   const overOffset = overCircumference - (kcalOverPct / 100) * overCircumference;
+  const eatenCalories = Math.max(0, number(total.kcal));
+  const macroCalorieShares = {
+    protein: eatenCalories ? total.protein * 4 / eatenCalories * 100 : 0,
+    carbs: eatenCalories ? total.carbs * 4 / eatenCalories * 100 : 0,
+    fat: eatenCalories ? total.fat * 9 / eatenCalories * 100 : 0
+  };
   const macroRings = [
-    macroCircleCard("Protein", total.protein, macroGoals.proteinGoal, "var(--protein)"),
-    macroCircleCard("Carbs", total.carbs, macroGoals.carbsGoal, "var(--carbs)"),
-    macroCircleCard("Fat", total.fat, macroGoals.fatGoal, "var(--fat)")
+    macroCircleCard("Protein", total.protein, macroGoals.proteinGoal, "var(--protein)", macroCalorieShares.protein),
+    macroCircleCard("Carbs", total.carbs, macroGoals.carbsGoal, "var(--carbs)", macroCalorieShares.carbs),
+    macroCircleCard("Fat", total.fat, macroGoals.fatGoal, "var(--fat)", macroCalorieShares.fat)
   ].join("");
 
   els.pages.today.innerHTML = `
@@ -1315,16 +1408,14 @@ function renderToday() {
   });
 }
 
-function macroCircleCard(label, value, goal, color) {
+function macroCircleCard(label, value, goal, color, calorieShare = 0) {
   const pct = Math.max(0, Math.min(100, goal ? value / goal * 100 : 0));
   const overPct = Math.max(0, Math.min(100, goal && value > goal ? (value - goal) / goal * 100 : 0));
-  const remaining = goal - value;
-  const circleNumber = remaining >= 0 ? round(remaining) : round(Math.abs(remaining));
-  const circleStatus = remaining >= 0 ? "left" : "over";
+  const circleNumber = round(Math.max(0, calorieShare), 0);
   return `
     <article class="macro-circle-card ${overPct ? "is-over" : ""}" style="--pct:${pct}%; --over-pct:${overPct}%; --ring-color:${color};">
       <div class="macro-circle">
-        <div class="macro-circle-inner-text"><span class="macro-circle-number">${safeText(circleNumber)}</span><span class="macro-circle-status">${safeText(circleStatus)}</span></div>
+        <div class="macro-circle-inner-text macro-calorie-share-text" aria-label="${safeText(label)} calorie share ${circleNumber} percent"><span class="macro-circle-number">${safeText(circleNumber)}</span><span class="macro-circle-status">share</span></div>
       </div>
       <div>
         <h3>${safeText(label)}</h3>
@@ -3519,9 +3610,9 @@ function normalizeReportData(data = {}, meta = null) {
   const activeDates = Array.isArray(data.activeDates) && data.activeDates.length
     ? data.activeDates.filter(date => dates.includes(date))
     : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
-  const flatRows = Array.isArray(data.flatRows) && data.flatRows.length
+  const flatRows = limitReportFlatRows(Array.isArray(data.flatRows) && data.flatRows.length
     ? data.flatRows.map(row => normalizeReportRow(row))
-    : flatRowsFromReportEntries(entries);
+    : flatRowsFromReportEntries(entries));
   return {
     ...data,
     start,
@@ -3652,7 +3743,8 @@ async function buildReportData(meta, options = {}) {
     byDate,
     total,
     nutrientVector: nutrientsToVector(total),
-    flatRows: flatRows.map(row => compactReportItem(row, row)),
+    flatRows: limitReportFlatRows(flatRows),
+    reportFoodLimit: REPORT_FOOD_LIMIT,
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
@@ -4013,7 +4105,7 @@ function foodFrequencyRows(entries) {
     for (const item of flattenReportEntry(entry)) {
       const key = normalizeSearchText(`${item.name}|${item.brand}`);
       const current = map.get(key) || { name: item.name, count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: item.brand || "" };
-      current.count += 1;
+      current.count += Math.max(1, number(item.count, 1));
       current.grams += number(item.grams);
       current.kcal += number(item.kcal);
       current.protein += number(item.protein);
@@ -4030,7 +4122,7 @@ function foodFrequencyRowsFromFlatRows(rows = []) {
   for (const item of rows || []) {
     const key = normalizeSearchText(`${item.name}|${item.brand}`);
     const current = map.get(key) || { name: item.name, count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: item.brand || "" };
-    current.count += 1;
+    current.count += Math.max(1, number(item.count, 1));
     current.grams += number(item.grams);
     current.kcal += number(item.kcal);
     current.protein += number(item.protein);
@@ -4303,7 +4395,7 @@ function renderSettings() {
           </label>
           <label>Search region
             <select name="searchRegion">
-              ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
+              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${s.searchRegion === value ? "selected" : ""}>${label}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -4482,6 +4574,7 @@ function renderSettingsV2() {
           <button class="secondary-btn sync-diff-btn" type="button" data-action="resolve-sync-conflict">Check local/Firebase difference</button>
           <button class="secondary-btn" type="button" data-action="export-backup-json">Export backup JSON</button>
           <button class="secondary-btn" type="button" data-action="trigger-import">Import backup JSON</button>
+          <span class="desktop-maintenance-break" aria-hidden="true"></span>
           <button class="secondary-btn desktop-maintenance-btn" type="button" data-action="optimize-data-model">Optimize data model</button>
           <button class="ghost-btn" type="button" data-action="settings-sign-out">Sign out</button>
           <button class="danger-btn" type="button" data-action="open-delete-all-data">Delete all data</button>

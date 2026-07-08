@@ -3315,6 +3315,14 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 /* Data model maintenance */
+.sync-panel .inline-actions {
+  flex-wrap: wrap;
+}
+.desktop-maintenance-break {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 0;
+}
 .desktop-maintenance-btn {
   display: inline-flex;
 }
@@ -3322,8 +3330,38 @@ input[type="number"]::-webkit-inner-spin-button {
   margin-top: 4px;
 }
 @media (max-width: 980px) {
+  .desktop-maintenance-break,
   .desktop-maintenance-btn,
   .data-model-progress {
     display: none !important;
+  }
+}
+
+/* Diary macro circles now show calorie-share integers instead of grams left */
+.macro-calorie-share-text .macro-circle-number {
+  font-size: 1.12rem;
+  line-height: .9;
+  color: var(--ring-color);
+}
+.macro-calorie-share-text .macro-circle-status {
+  font-size: .58rem;
+  letter-spacing: .01em;
+  line-height: .9;
+  color: var(--muted);
+}
+@media (max-width: 980px) {
+  .dashboard-hero .macro-calorie-share-text .macro-circle-number {
+    font-size: 1rem;
+  }
+  .dashboard-hero .macro-calorie-share-text .macro-circle-status {
+    font-size: .54rem;
+  }
+}
+@media (max-width: 560px) {
+  .dashboard-hero .macro-calorie-share-text .macro-circle-number {
+    font-size: .9rem;
+  }
+  .dashboard-hero .macro-calorie-share-text .macro-circle-status {
+    font-size: .48rem;
   }
 }
