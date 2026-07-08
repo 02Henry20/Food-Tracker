@@ -44,7 +44,7 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 15;
+const REPORT_CACHE_VERSION = 16;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -768,6 +768,170 @@ function limitReportFlatRows(rows = [], limit = REPORT_FOOD_LIMIT) {
   return aggregateReportRows(normalizedRows.filter(row => keptIdentities.has(reportFoodIdentity(row))));
 }
 
+function reportGoalTargets(goal = state.settings) {
+  const merged = mergeSettings(goal || state.settings);
+  const macros = effectiveMacroGoals(merged);
+  return {
+    kcal: number(merged.calorieGoal, DEFAULT_SETTINGS.calorieGoal),
+    protein: number(macros.proteinGoal),
+    carbs: number(macros.carbsGoal),
+    fat: number(macros.fatGoal)
+  };
+}
+
+function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}) {
+  const mode = meta?.mode || state.reportMode || "week";
+  if (mode === "year") {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const values = monthNames.map(() => emptyNutrients());
+    const targets = monthNames.map(() => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 }));
+    for (const date of dates) {
+      const month = new Date(`${date}T12:00:00`).getMonth();
+      const nutrients = normalizeNutrients(byDate[date] || {});
+      const target = reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date));
+      values[month] = addNutrients([{ nutrientsSnapshot: values[month] }, nutrients]);
+      targets[month].kcal += target.kcal;
+      targets[month].protein += target.protein;
+      targets[month].carbs += target.carbs;
+      targets[month].fat += target.fat;
+    }
+    return { mode, labels: monthNames, values, targets };
+  }
+
+  const labels = dates.map(date => {
+    const d = new Date(`${date}T12:00:00`);
+    if (mode === "month") return String(d.getDate()).padStart(2, "0");
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  });
+  const values = dates.map(date => normalizeNutrients(byDate[date] || {}));
+  const targets = dates.map(date => reportGoalTargets(goalsByDate[date] || effectiveGoalsForDate(date)));
+  return { mode, labels, values, targets };
+}
+
+function compactReportChartData(chartData = {}) {
+  return cleanForFirestore({
+    mode: chartData.mode || state.reportMode || "week",
+    labels: Array.isArray(chartData.labels) ? chartData.labels.map(label => String(label)) : [],
+    values: (chartData.values || []).map(nutrients => nutrientsToVector(nutrients)),
+    targets: (chartData.targets || []).map(target => ({
+      kcal: round(number(target.kcal), 0),
+      protein: round(number(target.protein), 1),
+      carbs: round(number(target.carbs), 1),
+      fat: round(number(target.fat), 1)
+    }))
+  });
+}
+
+function normalizeReportChartData(chartData = null) {
+  if (!chartData || !Array.isArray(chartData.labels)) return null;
+  const values = (chartData.values || []).map(value => nutrientsFromSnapshot(value));
+  const targets = (chartData.targets || []).map(target => ({
+    kcal: number(target.kcal),
+    protein: number(target.protein),
+    carbs: number(target.carbs),
+    fat: number(target.fat)
+  }));
+  return {
+    mode: chartData.mode || state.reportMode || "week",
+    labels: chartData.labels.map(label => String(label)),
+    values,
+    targets
+  };
+}
+
+function compactReportCacheData(data = {}, meta = null) {
+  const sourceMeta = meta || data;
+  const start = sourceMeta?.start || data.start;
+  const end = sourceMeta?.end || data.end;
+  const dates = start && end ? dateRange(start, end) : (data.dates || []);
+  const byDate = data.byDate || Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const goalsByDate = data.goalsByDate || {};
+  const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate);
+  const activeDayCount = number(data.activeDayCount) || (Array.isArray(data.activeDates) ? data.activeDates.length : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)).length);
+  const avgGoals = data.avgGoals || reportGoalAverages(start, end, null, goalsByDate, activeDayCount || dates.length);
+  const targetCaloriesTotal = number(data.targetCaloriesTotal) || number(avgGoals.calorieGoal) * Math.max(1, activeDayCount || dates.length);
+  const total = nutrientsFromSnapshot(data.total || data.nutrientVector || addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] }))));
+
+  return cleanForFirestore({
+    version: REPORT_CACHE_VERSION,
+    dataModelVersion: DATA_MODEL_VERSION,
+    key: sourceMeta?.key || data.key,
+    mode: sourceMeta?.mode || data.mode || state.reportMode || "week",
+    start,
+    end,
+    cacheShape: "compact-v2",
+    entries: [],
+    chartData: compactReportChartData(chartData),
+    total,
+    nutrientVector: nutrientsToVector(total),
+    flatRows: limitReportFlatRows(data.flatRows || []),
+    reportFoodLimit: REPORT_FOOD_LIMIT,
+    activeDayCount,
+    avgGoals,
+    targetCaloriesTotal,
+    dirty: false,
+    generatedAt: number(data.generatedAt) || Date.now(),
+    sourceEntryCount: number(data.sourceEntryCount)
+  });
+}
+
+async function storeCompactReportCache(meta, cacheData) {
+  if (!state.user || !meta?.key) return normalizeReportData(cacheData, meta);
+  await setDoc(reportCacheDoc(meta.key), cleanForFirestore(cacheData), { merge: false });
+  return normalizeReportData(cacheData, meta);
+}
+
+async function storeReportCache(meta, data) {
+  if (!state.user || !meta?.key) return normalizeReportData(data, meta);
+  const cacheData = compactReportCacheData(data, meta);
+  return storeCompactReportCache(meta, cacheData);
+}
+
+function pendingReportCacheLocalKey(key) {
+  return `pendingReportCache:${key}`;
+}
+
+function saveReportCacheInBackground(meta, data, options = {}) {
+  if (!state.user || !meta?.key) return Promise.resolve(null);
+  const cacheData = compactReportCacheData(data, meta);
+  writeLocal(pendingReportCacheLocalKey(meta.key), cacheData);
+  const promise = storeCompactReportCache(meta, cacheData)
+    .then(saved => {
+      removeLocal(pendingReportCacheLocalKey(meta.key));
+      if (options.toast) showToast("Report cache saved in the background.");
+      return saved;
+    })
+    .catch(error => {
+      console.warn("Report cache background save failed.", error);
+      if (options.toast) showToast("Report is shown, but the cache save did not finish. It will retry next time you open the app.");
+      return null;
+    });
+  return promise;
+}
+
+async function flushPendingReportCacheSaves() {
+  if (!state.user) return;
+  const prefix = storageKey("pendingReportCache:", state.user.uid);
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  for (const key of keys) {
+    try {
+      const cacheData = JSON.parse(localStorage.getItem(key) || "null");
+      if (!cacheData?.key || !cacheData?.start || !cacheData?.end) {
+        localStorage.removeItem(key);
+        continue;
+      }
+      await storeCompactReportCache({ key: cacheData.key, mode: cacheData.mode, start: cacheData.start, end: cacheData.end }, cacheData);
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn("Pending report cache retry failed.", error);
+    }
+  }
+}
+
 function compactReportItemsFromEntry(entry = {}) {
   const rows = flattenReportEntry(entry);
   return rows.map(row => compactReportItem(row, entry));
@@ -1155,6 +1319,8 @@ function subscribeUserData() {
     console.warn("Settings preflight failed; using local settings.", error);
     updateSyncStatus({ fromCache: true });
   });
+
+  flushPendingReportCacheSaves().catch(console.warn);
 
   state.unsubs.push(onSnapshot(settingsRef, { includeMetadataChanges: true }, snap => {
     noteSnapshotMetadata(snap.metadata);
@@ -3558,7 +3724,7 @@ async function loadReport(options = {}) {
     }
 
     renderReportProgress(meta, 0, options.force ? "Recalculating report from diary data" : "Building report from diary data");
-    const data = await calculateAndStoreReportCache(meta, {
+    const data = await buildReportData(meta, {
       force: true,
       signal,
       onProgress: progress => {
@@ -3567,12 +3733,15 @@ async function loadReport(options = {}) {
       }
     });
     if (!isReportCalculationActive(token, meta)) return null;
-    applyReportGoalsFromData(data);
-    state.reportEntries = data.entries || [];
-    state.reportData = data;
-    renderReportOutput(start, end, state.reportEntries, data);
+    const normalizedData = normalizeReportData(data, meta);
+    applyReportGoalsFromData(normalizedData);
+    state.reportEntries = normalizedData.entries || [];
+    state.reportData = normalizedData;
+    renderReportOutput(start, end, state.reportEntries, normalizedData);
     cancelActiveReportCalculation();
-    return data;
+    showToast("Report ready. Saving compact cache in the background.");
+    saveReportCacheInBackground(meta, normalizedData, { toast: true });
+    return normalizedData;
   } catch (error) {
     if (error?.name === "AbortError") return null;
     if (isReportCalculationActive(token, meta)) cancelActiveReportCalculation();
@@ -3602,28 +3771,40 @@ function normalizeReportData(data = {}, meta = null) {
   const start = meta?.start || data.start;
   const end = meta?.end || data.end;
   const dates = start && end ? dateRange(start, end) : (data.dates || []);
-  const byDate = Object.fromEntries(dates.map(date => [date, nutrientsFromSnapshot(data.byDate?.[date] || {})]));
-  const recoveredTotal = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
+  const hasByDate = data.byDate && typeof data.byDate === "object";
+  const byDate = hasByDate
+    ? Object.fromEntries(dates.map(date => [date, nutrientsFromSnapshot(data.byDate?.[date] || {})]))
+    : Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  const recoveredTotal = hasByDate ? addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] }))) : emptyNutrients();
   const storedTotal = nutrientsFromSnapshot(data.total || data.nutrientVector || {});
   const total = number(recoveredTotal.kcal) || !number(storedTotal.kcal) ? recoveredTotal : storedTotal;
   const entries = Array.isArray(data.entries) ? data.entries.filter(entry => !entry.date || dates.includes(entry.date)) : [];
   const activeDates = Array.isArray(data.activeDates) && data.activeDates.length
     ? data.activeDates.filter(date => dates.includes(date))
-    : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+    : hasByDate
+      ? dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0))
+      : [];
+  const activeDayCount = number(data.activeDayCount) || activeDates.length || (number(total.kcal) ? 1 : 0);
   const flatRows = limitReportFlatRows(Array.isArray(data.flatRows) && data.flatRows.length
     ? data.flatRows.map(row => normalizeReportRow(row))
     : flatRowsFromReportEntries(entries));
+  const chartData = normalizeReportChartData(data.chartData)
+    || (hasByDate ? buildReportChartData(meta || data, dates, byDate, data.goalsByDate || {}) : null);
   return {
     ...data,
     start,
     end,
     dates,
     activeDates,
+    activeDayCount,
     entries,
     byDate,
+    chartData,
     total,
     flatRows,
-    goalsByDate: data.goalsByDate || {}
+    goalsByDate: data.goalsByDate || {},
+    avgGoals: data.avgGoals || null,
+    targetCaloriesTotal: number(data.targetCaloriesTotal)
   };
 }
 
@@ -3730,6 +3911,10 @@ async function buildReportData(meta, options = {}) {
   }
 
   const total = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
+  const activeDates = dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+  const activeDayCount = activeDates.length;
+  const avgGoals = reportGoalAverages(meta.start, meta.end, activeDates.length ? activeDates : dates, goalsByDate);
+  const chartData = buildReportChartData(meta, dates, byDate, goalsByDate);
   const data = cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     dataModelVersion: DATA_MODEL_VERSION,
@@ -3738,19 +3923,23 @@ async function buildReportData(meta, options = {}) {
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates: dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)),
+    activeDates,
+    activeDayCount,
     entries: [],
     byDate,
+    chartData,
     total,
     nutrientVector: nutrientsToVector(total),
     flatRows: limitReportFlatRows(flatRows),
     reportFoodLimit: REPORT_FOOD_LIMIT,
     goalsByDate,
+    avgGoals,
+    targetCaloriesTotal: number(avgGoals.calorieGoal) * Math.max(1, activeDayCount),
     dirty: false,
     generatedAt: Date.now(),
     sourceEntryCount
   });
-  options.onProgress?.({ percent: 96, message: "Saving completed report" });
+  options.onProgress?.({ percent: 96, message: "Preparing report view" });
   return data;
 }
 
@@ -3762,9 +3951,9 @@ async function calculateAndStoreReportCache(meta, options = {}) {
   }
   const data = await buildReportData(meta, options);
   assertReportCalculationActive(options.signal);
-  await setDoc(reportCacheDoc(meta.key), data, { merge: false });
+  const saved = await storeReportCache(meta, data);
   options.onProgress?.({ percent: 100, message: "Report saved" });
-  return normalizeReportData(data, meta);
+  return saved;
 }
 
 function scheduleReportRecalculationForDate(dateISO) {
@@ -3847,10 +4036,10 @@ function goalStatus(value, goal, mode = "min") {
   return value >= goal ? "good" : "bad";
 }
 
-function reportGoalAverages(start, end, datesOverride = null) {
+function reportGoalAverages(start, end, datesOverride = null, goalsByDate = null, divisorOverride = null) {
   const dates = datesOverride || dateRange(start, end);
   const totals = dates.reduce((acc, day) => {
-    const goals = effectiveGoalsForDate(day);
+    const goals = goalsByDate?.[day] || effectiveGoalsForDate(day);
     const macros = effectiveMacroGoals(goals);
     acc.calorieGoal += number(goals.calorieGoal, state.settings.calorieGoal);
     acc.proteinGoal += number(macros.proteinGoal);
@@ -3858,7 +4047,7 @@ function reportGoalAverages(start, end, datesOverride = null) {
     acc.fatGoal += number(macros.fatGoal);
     return acc;
   }, { calorieGoal: 0, proteinGoal: 0, carbsGoal: 0, fatGoal: 0 });
-  const divisor = Math.max(1, dates.length);
+  const divisor = Math.max(1, number(divisorOverride) || dates.length);
   return {
     calorieGoal: totals.calorieGoal / divisor,
     proteinGoal: totals.proteinGoal / divisor,
@@ -3936,7 +4125,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
   if (sourceData) applyReportGoalsFromData(sourceData);
   const dates = sourceData?.dates || dateRange(start, end);
   const activeDates = sourceData?.activeDates || reportActiveDates(entries, dates);
-  const activeDays = Math.max(1, activeDates.length);
+  const activeDays = Math.max(1, number(sourceData?.activeDayCount) || activeDates.length);
   const total = normalizeNutrients(sourceData?.total || addNutrients(entries));
   const avg = scaleNutrients(total, 1 / activeDays);
   const macro = macroCalories(total);
@@ -3948,9 +4137,10 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const frequencyRows = sortReportRows(foodRows, "frequency");
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
-  const avgGoals = reportGoalAverages(start, end, activeDates);
-  const targetCaloriesTotal = avgGoals.calorieGoal * activeDays;
-  const loggedDayLabel = `${activeDates.length} logged day${activeDates.length === 1 ? "" : "s"}`;
+  const avgGoals = sourceData?.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, sourceData?.goalsByDate || null);
+  const targetCaloriesTotal = number(sourceData?.targetCaloriesTotal) || avgGoals.calorieGoal * activeDays;
+  const loggedDayCount = number(sourceData?.activeDayCount) || activeDates.length;
+  const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}`;
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
     <div class="grid-4 report-metrics-grid">
@@ -4013,7 +4203,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
       </div>
     </div>
   `;
-  renderCharts(byDate);
+  renderCharts(sourceData?.chartData || byDate);
 }
 
 function foodNameFromReportItem(item) {
@@ -4235,41 +4425,14 @@ function renderMicroRows(total, days) {
   }).join("");
 }
 
-function reportChartData(byDate) {
+function reportChartData(source) {
+  const chartData = normalizeReportChartData(source);
+  if (chartData) return chartData;
+  const byDate = source || {};
   const dates = Object.keys(byDate);
-  if (state.reportMode === "year") {
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const buckets = monthNames.map(() => emptyNutrients());
-    const targetBuckets = monthNames.map(() => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 }));
-    for (const date of dates) {
-      const month = new Date(`${date}T12:00:00`).getMonth();
-      const goals = effectiveGoalsForDate(date);
-      const macros = effectiveMacroGoals(goals);
-      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, byDate[date]]);
-      targetBuckets[month].kcal += number(goals.calorieGoal);
-      targetBuckets[month].protein += number(macros.proteinGoal);
-      targetBuckets[month].carbs += number(macros.carbsGoal);
-      targetBuckets[month].fat += number(macros.fatGoal);
-    }
-    return { labels: monthNames, values: buckets, targets: targetBuckets };
-  }
-  const labels = dates.map(date => {
-    const d = new Date(`${date}T12:00:00`);
-    if (state.reportMode === "month") return String(d.getDate()).padStart(2, "0");
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
-  });
-  const targets = dates.map(date => {
-    const goals = effectiveGoalsForDate(date);
-    const macros = effectiveMacroGoals(goals);
-    return {
-      kcal: number(goals.calorieGoal),
-      protein: number(macros.proteinGoal),
-      carbs: number(macros.carbsGoal),
-      fat: number(macros.fatGoal)
-    };
-  });
-  return { labels, values: dates.map(date => byDate[date]), targets };
+  return buildReportChartData({ mode: state.reportMode, start: dates[0], end: dates[dates.length - 1] }, dates, byDate, {});
 }
+
 
 function renderCharts(byDate) {
   if (!window.Chart) return;
@@ -4318,16 +4481,30 @@ function renderCharts(byDate) {
   }
 }
 
+async function calorieRowsForExport(start, end, reportData = null) {
+  const dates = dateRange(start, end);
+  const normalized = reportData ? normalizeReportData(reportData, { mode: state.reportMode, start, end, key: reportCacheKey(state.reportMode, start, end) }) : null;
+  const hasDailyData = normalized?.byDate && dates.some(dateISO => number(normalized.byDate?.[dateISO]?.kcal));
+  if (hasDailyData) {
+    return dates.map(dateISO => ({
+      date: dateISO,
+      totalKcal: round(normalizeNutrients(normalized.byDate?.[dateISO] || {}).kcal, 0)
+    }));
+  }
+
+  const rows = await mapWithConcurrency(dates, 8, async dateISO => {
+    const summary = await readDailySummaryForReport(dateISO);
+    return { date: dateISO, totalKcal: round(summary?.nutrients?.kcal || 0, 0) };
+  });
+  return rows;
+}
+
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
 
   if (caloriesOnly) {
     if (!state.reportData || state.reportData.start !== start || state.reportData.end !== end) await loadReport();
-    const reportData = normalizeReportData(state.reportData || {}, { mode: state.reportMode, start, end, key: reportCacheKey(state.reportMode, start, end) });
-    const rows = dateRange(start, end).map(dateISO => {
-      const total = normalizeNutrients(reportData.byDate?.[dateISO] || {});
-      return { date: dateISO, totalKcal: round(total.kcal, 0) };
-    });
+    const rows = await calorieRowsForExport(start, end, state.reportData);
     if (format === "json") {
       downloadFile(`nutripilot_calories_${start}_to_${end}.json`, JSON.stringify(rows, null, 2), "application/json");
     } else {
