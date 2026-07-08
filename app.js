@@ -41,9 +41,7 @@ const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
-const REPORT_CACHE_VERSION = 10;
-const WEEK_SUMMARY_VERSION = 4;
-const REPORT_ROW_LIMIT = 30;
+const REPORT_CACHE_VERSION = 13;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
   calcium: { target: 1000, mode: "min" },
@@ -70,7 +68,6 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   accent: "teal",
   searchRegion: "world",
-  searchRegions: ["world"],
   databasePreference: "custom-first",
   dashboardDensity: "comfortable",
   macroGoalMode: "manual",
@@ -268,6 +265,7 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
+  reportCalculation: null,
   dailySummaryJobs: new Map(),
   targetDetailScroll: {},
   keyboardSelection: { search: -1, ingredient: -1 },
@@ -371,31 +369,6 @@ function dailyCaloriesDoc(dateISO = state.currentDate) {
 
 function reportCacheDoc(key) {
   return userDoc("reportCaches", key);
-}
-
-function weeklySummaryDoc(key) {
-  return userDoc("weeklySummaries", key);
-}
-
-function weekMetaForDate(dateISO) {
-  const [start, end] = currentWeekRange(dateISO);
-  return { key: `week_${start}_${end}`, start, end };
-}
-
-function weekMetasForRange(startISO, endISO) {
-  const metas = [];
-  const seen = new Set();
-  let cursor = startISO;
-  while (cursor <= endISO) {
-    const meta = weekMetaForDate(cursor);
-    if (!seen.has(meta.key)) {
-      seen.add(meta.key);
-      metas.push(meta);
-    }
-    cursor = addDaysISO(meta.end, 1);
-    if (metas.length > 60) break;
-  }
-  return metas;
 }
 
 function reportPeriodMeta(mode, baseISO = state.currentDate) {
@@ -540,11 +513,6 @@ function mergeSettings(raw = {}) {
   merged.modules = { ...DEFAULT_SETTINGS.modules, ...(source.modules || {}) };
   merged.nutrientVisibility = { ...DEFAULT_SETTINGS.nutrientVisibility, ...(source.nutrientVisibility || {}) };
   merged.micronutrientGoals = { ...structuredClone(MICRO_DEFAULTS), ...(source.micronutrientGoals || {}) };
-  const rawRegions = Array.isArray(source.searchRegions) ? source.searchRegions : [source.searchRegion || "world"];
-  const validRegionValues = new Set(SEARCH_REGIONS.map(([value]) => value));
-  merged.searchRegions = rawRegions.filter(value => validRegionValues.has(value)).slice(0, 3);
-  if (!merged.searchRegions.length) merged.searchRegions = ["world"];
-  merged.searchRegion = merged.searchRegions[0];
   for (const key of Object.keys(MICRO_DEFAULTS)) {
     merged.micronutrientGoals[key] = { ...MICRO_DEFAULTS[key], ...(merged.micronutrientGoals[key] || {}) };
   }
@@ -634,18 +602,6 @@ function addNutrients(items) {
   return total;
 }
 
-function nutrientsHaveValues(nutrients = {}) {
-  return NUTRIENT_KEYS.some(key => Math.abs(number(nutrients?.[key])) > 1e-9);
-}
-
-function totalNutrientsFromByDate(byDate = {}) {
-  return addNutrients(Object.values(byDate || {}).map(nutrients => normalizeNutrients(nutrients)));
-}
-
-function activeDatesFromByDate(byDate = {}, dates = []) {
-  return dates.filter(date => nutrientsHaveValues(byDate?.[date]));
-}
-
 async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) {
   if (!state.user || !dateISO) return;
   let summaryEntries = entries;
@@ -653,24 +609,30 @@ async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) 
     const snap = await getDocs(entryCollection(dateISO));
     summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
   }
+  await ensureDailyGoalSnapshot(dateISO);
   const total = addNutrients(summaryEntries || []);
+  const goalsSnapshot = goalSnapshotFromSettings(effectiveGoalsForDate(dateISO));
+  goalsSnapshot.savedForDate = dateISO;
   const byMeal = Object.fromEntries(MEALS.map(([id]) => [id, 0]));
   for (const entry of summaryEntries || []) byMeal[entry.meal] = round(number(byMeal[entry.meal]) + number(entry.nutrientsSnapshot?.kcal), 0);
-  writeLocal(`dailySummary:${dateISO}`, {
+  await setDoc(dailyCaloriesDoc(dateISO), cleanForFirestore({
     date: dateISO,
+    uid: state.user.uid,
+    app: "NutriPilot",
     totalKcal: round(total.kcal, 0),
     protein: round(total.protein, 1),
     carbs: round(total.carbs, 1),
     fat: round(total.fat, 1),
     fiber: round(total.fiber, 1),
     meals: byMeal,
+    goalsSnapshot,
     itemCount: summaryEntries?.length || 0,
     updatedAt: Date.now()
-  });
+  }), { merge: true });
   if (options.invalidateReports !== false) scheduleReportRecalculationForDate(dateISO);
 }
 
-function queueDailySummaryUpdate(dateISO, entries = null, delay = 220) {
+function queueDailySummaryUpdate(dateISO, entries = null, delay = 220, options = {}) {
   if (!state.user || !dateISO) return;
   const existing = state.dailySummaryJobs.get(dateISO);
   if (existing?.timeout) clearTimeout(existing.timeout);
@@ -679,7 +641,7 @@ function queueDailySummaryUpdate(dateISO, entries = null, delay = 220) {
     const job = state.dailySummaryJobs.get(dateISO);
     if (!job || job.token !== token) return;
     try {
-      await updateDailyCalorieSummary(dateISO, entries);
+      await updateDailyCalorieSummary(dateISO, entries, options);
     } catch (error) {
       console.warn("Daily summary background update failed.", error);
     } finally {
@@ -852,6 +814,9 @@ function updateInAppIcons() {
 }
 
 function setRoute(route) {
+  const previousRoute = state.route;
+  if (route === "reports" && previousRoute !== "reports") resetReportsToThisWeek();
+  if (route !== "reports") cancelActiveReportCalculation();
   state.route = route;
   Object.entries(els.pages).forEach(([key, page]) => page.classList.toggle("active", key === route));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.route === route));
@@ -1125,19 +1090,7 @@ function renderToday() {
     </div>
   `;
 
-  const currentDateInput = document.getElementById("currentDateInput");
-  const openDesktopDatePicker = event => {
-    if (!window.matchMedia("(min-width: 981px)").matches) return;
-    const input = event.currentTarget;
-    if (typeof input.showPicker === "function") {
-      try { input.showPicker(); } catch (_) { input.focus(); }
-    } else {
-      input.focus();
-    }
-  };
-  currentDateInput?.addEventListener("pointerdown", openDesktopDatePicker);
-  currentDateInput?.addEventListener("click", openDesktopDatePicker);
-  currentDateInput?.addEventListener("change", e => {
+  document.getElementById("currentDateInput")?.addEventListener("change", e => {
     state.currentDate = e.target.value || todayISO();
     state.defaultLogDate = state.currentDate;
     subscribeLogsForCurrentDate();
@@ -1376,21 +1329,8 @@ function addRecentSearch(queryText) {
   markSearchStateSaved();
 }
 
-function selectedSearchRegions(settings = state.settings) {
-  const values = Array.isArray(settings.searchRegions) ? settings.searchRegions : [settings.searchRegion || "world"];
-  const valid = new Set(SEARCH_REGIONS.map(([value]) => value));
-  const out = values.filter(value => valid.has(value)).slice(0, 3);
-  return out.length ? out : ["world"];
-}
-
-function openFoodFactsHosts(settings = state.settings) {
-  const selected = selectedSearchRegions(settings);
-  const hostMap = new Map(SEARCH_REGIONS.map(([value, , host]) => [value, host]));
-  return [...new Set(selected.map(value => hostMap.get(value) || "world.openfoodfacts.org"))];
-}
-
 function openFoodFactsHost() {
-  return openFoodFactsHosts()[0] || "world.openfoodfacts.org";
+  return SEARCH_REGIONS.find(([value]) => value === state.settings.searchRegion)?.[2] || "world.openfoodfacts.org";
 }
 
 function mergeFoodResults(localResults, apiResults, queryText = "") {
@@ -1743,6 +1683,7 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? `<button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -1764,6 +1705,12 @@ function renderFoodResultCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? `
+          <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
+          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
+          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
+          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
+        ` : ""}
       </div>
     </div>
   `;
@@ -1794,14 +1741,6 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
-        ${food.source === "custom" && food.id ? `
-          <div class="inline-actions food-detail-actions">
-            <button class="tiny-btn" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-            <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-            <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
-            <button class="danger-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
-          </div>
-        ` : ""}
       </div>
     </div>
   `);
@@ -1935,32 +1874,21 @@ async function getOpenFoodFactsByBarcode(barcode) {
 async function fetchOpenFoodFacts(queryText) {
   const queryTextTrimmed = queryText.trim();
   if (!queryTextTrimmed) return [];
-  const hosts = openFoodFactsHosts();
-  const fetchFromHost = async host => {
-    const url = new URL(`https://${host}/cgi/search.pl`);
-    url.searchParams.set("search_terms", queryTextTrimmed);
-    url.searchParams.set("search_simple", "1");
-    url.searchParams.set("action", "process");
-    url.searchParams.set("json", "1");
-    url.searchParams.set("page_size", String(Math.max(20, Math.ceil(API_SEARCH_RESULT_LIMIT / Math.max(1, hosts.length)))));
-    url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
-    const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-    if (!res.ok) throw new Error(`Open Food Facts search failed for ${host}.`);
-    const data = await res.json();
-    return (data.products || [])
-      .map(normalizeOpenFoodFactsProduct)
-      .filter(Boolean)
-      .filter(food => food.nutrientsPer100g.kcal > 0);
-  };
-  const settled = await Promise.allSettled(hosts.map(fetchFromHost));
-  const results = settled.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  if (!results.length && settled.some(result => result.status === "rejected")) throw settled.find(result => result.status === "rejected").reason;
-  const deduped = new Map();
-  for (const food of results) {
-    const key = foodIdentity(food);
-    if (!deduped.has(key)) deduped.set(key, food);
-  }
-  return [...deduped.values()].slice(0, API_SEARCH_RESULT_LIMIT);
+  const url = new URL(`https://${openFoodFactsHost()}/cgi/search.pl`);
+  url.searchParams.set("search_terms", queryTextTrimmed);
+  url.searchParams.set("search_simple", "1");
+  url.searchParams.set("action", "process");
+  url.searchParams.set("json", "1");
+  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
+  url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+  const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+  if (!res.ok) throw new Error("Open Food Facts search failed.");
+  const data = await res.json();
+  return (data.products || [])
+    .map(normalizeOpenFoodFactsProduct)
+    .filter(Boolean)
+    .filter(food => food.nutrientsPer100g.kcal > 0)
+    .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
 async function runFoodSearch(queryText, options = {}) {
@@ -1997,20 +1925,13 @@ async function runFoodSearch(queryText, options = {}) {
   const localResults = searchPersonalLibrary(query);
   const cached = getCachedSearch(query) || [];
   state.searchResults = mergeFoodResults(localResults, cached, query);
-  const cachedCount = cached.length;
-  const localCount = localResults.length;
-  const initialCount = state.searchResults.length;
-  state.searchFeedback = initialCount
-    ? `Showing ${initialCount} local/cache result${initialCount === 1 ? "" : "s"} while searching.`
-    : "Searching database.";
+  state.searchFeedback = cached.length ? `Showing ${cached.length} offline database result${cached.length === 1 ? "" : "s"} while searching.` : "Searching personal library first.";
   state.searchLoading = true;
-  if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "local");
   if (options.updateState !== false) renderSearchV2();
 
   if (!navigator.onLine || state.settings.databasePreference === "offline-only") {
     state.searchLoading = false;
     state.searchFeedback = `Offline: ${state.searchResults.length} personal/offline result${state.searchResults.length === 1 ? "" : "s"}.`;
-    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "offline");
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
@@ -2019,13 +1940,11 @@ async function runFoodSearch(queryText, options = {}) {
     const apiResults = await fetchOpenFoodFacts(query);
     setCachedSearch(query, apiResults);
     state.searchResults = mergeFoodResults(localResults, apiResults, query);
-    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library/cache and Open Food Facts.`;
-    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "api");
+    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
     return state.searchResults;
   } catch (error) {
-    state.searchFeedback = cachedCount || localCount ? "Network search failed, using local/cache results." : "Network search failed and no offline result was found.";
-    if (typeof options.onIntermediate === "function") options.onIntermediate(state.searchResults, "error");
-    if (!cachedCount && !localCount) throw error;
+    state.searchFeedback = cached.length ? "Network search failed, using offline results." : "Network search failed and no offline result was found.";
+    if (!cached.length && !localResults.length) throw error;
     return state.searchResults;
   } finally {
     state.searchLoading = false;
@@ -2207,26 +2126,6 @@ function servingDisplayName(serving = {}) {
   return String(serving.label || serving.unit || "serving").trim() || "serving";
 }
 
-function isGramServing(serving = {}) {
-  const label = normalizeSearchText(servingDisplayName(serving));
-  const unit = normalizeSearchText(serving.unit || "");
-  return serving.mode === "grams" || unit === "g" || unit === "gram" || unit === "grams" || /(^|\s)g$/.test(label) || label.includes("gram");
-}
-
-function defaultServingSelection(food) {
-  const options = buildServingOptions(food);
-  const explicitDefault = food?.defaultServing || food?.servingOptions?.[0] || null;
-  if (explicitDefault && !isGramServing(explicitDefault)) {
-    const defaultName = normalizeSearchText(servingDisplayName(explicitDefault));
-    const exactNonGramIndex = options.findIndex(option => !isGramServing(option) && normalizeSearchText(servingDisplayName(option)) === defaultName);
-    if (exactNonGramIndex >= 0) return { index: exactNonGramIndex, amount: 1, grams: number(options[exactNonGramIndex].grams, 1) };
-    const firstNonGramIndex = options.findIndex(option => !isGramServing(option));
-    if (firstNonGramIndex >= 0) return { index: firstNonGramIndex, amount: 1, grams: number(options[firstNonGramIndex].grams, 1) };
-  }
-  const grams = number(explicitDefault?.grams, 100) || 100;
-  return { index: 0, amount: grams, grams };
-}
-
 function servingSelectionFromData(food, data, amountName = "amount", unitName = "unitIndex") {
   const servingOptions = buildServingOptions(food);
   const amount = number(data.get(amountName), 100);
@@ -2243,7 +2142,7 @@ function bindServingAmountDefaults(form, food) {
   const applyDefault = () => {
     const serving = buildServingOptions(food)[number(select?.value)] || buildServingOptions(food)[0];
     if (!amountInput || document.activeElement === amountInput) return;
-    amountInput.value = serving?.mode === "grams" ? number(food?.defaultServing?.grams, 100) || 100 : 1;
+    amountInput.value = serving?.mode === "grams" ? 100 : 1;
   };
   select?.addEventListener("change", applyDefault);
 }
@@ -2253,7 +2152,6 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
-  const defaultServing = defaultServingSelection(food);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2261,10 +2159,10 @@ function openLogFoodModal(food) {
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${round(defaultServing.amount, 2)}" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="100" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -2807,9 +2705,8 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const defaultServing = isRecipePortion ? { index: 0, amount: 1, grams: null } : defaultServingSelection(food);
-  const defaultAmount = defaultServing.amount;
-  const defaultGrams = isRecipePortion ? null : defaultServing.grams;
+  const defaultAmount = isRecipePortion ? 1 : (servingOptions[0]?.mode === "grams" ? 100 : 1);
+  const defaultGrams = isRecipePortion ? null : (servingOptions[0]?.mode === "grams" ? defaultAmount : defaultAmount * number(servingOptions[0]?.grams, 1));
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head">
@@ -2821,7 +2718,7 @@ function openIngredientAmountModal(food, kind, id) {
           <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.1" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
-              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultServing.index ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -2857,12 +2754,12 @@ function openIngredientAmountModal(food, kind, id) {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
     form.dataset.submitting = "true";
+    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), defaultAmount);
     const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
     const unit = isRecipePortion ? "portion" : (selected.mode === "grams" ? "g" : servingDisplayName(selected));
     const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
-    form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
     addIngredientToTarget(food, amount, unit, grams, kind, id).catch(showError);
     resetIngredientSearch(kind, id);
     openIngredientModal(kind, id, { restore: false });
@@ -3155,10 +3052,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
   `);
   document.getElementById("logRecipeForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const form = event.currentTarget;
-    if (form.dataset.submitting === "true") return;
-    setFormSubmitting(form, true);
-    const data = new FormData(form);
+    const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
     const createdAt = Date.now();
     const nutrientsSnapshot = scaleNutrients(perPortion, amount);
@@ -3203,66 +3097,97 @@ function openLogMealsetModal(mealset, returnTarget = null) {
   `);
   document.getElementById("logMealsetForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const form = event.currentTarget;
-    if (form.dataset.submitting === "true") return;
-    setFormSubmitting(form, true);
-    try {
-      const data = new FormData(form);
-      const amount = number(data.get("amount"), 1);
-      const meal = data.get("meal");
-      const dateISO = data.get("date");
-      const createdAt = Date.now();
-      const items = mealset.items || [];
-      if (!items.length) {
-        const nutrientsSnapshot = scaleNutrients(total, amount);
-        await addDoc(entryCollection(dateISO), cleanForFirestore({
-          itemType: "mealset",
-          itemId: mealset.id,
-          nameSnapshot: mealset.name,
-          amount,
-          unit: "mealset",
-          meal,
-          date: dateISO,
-          nutrientsSnapshot,
-          itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
-          createdAt,
-          updatedAt: createdAt
-        }));
-      } else {
-        await Promise.all(items.map((item, index) => {
-          const itemAmount = number(item.amount, 1) * amount;
-          const gramsEquivalent = item.grams ? number(item.grams) * amount : (item.unit === "g" ? itemAmount : null);
-          const nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, amount);
-          return addDoc(entryCollection(dateISO), cleanForFirestore({
-            itemType: item.itemType || "food",
-            itemId: item.itemId || null,
-            source: item.source || null,
-            sourceId: item.sourceId || null,
-            barcode: item.barcode || null,
-            nameSnapshot: item.nameSnapshot || mealset.name,
-            brandSnapshot: item.brandSnapshot || null,
-            amount: itemAmount,
-            unit: item.unit || "serving",
-            gramsEquivalent,
-            meal,
-            date: dateISO,
-            nutrientsSnapshot,
-            itemSnapshot: cloneSnapshot({ ...item, amount: itemAmount, grams: gramsEquivalent, nutrientsSnapshot, loggedFromMealset: mealset.id }),
-            createdAt: createdAt + index,
-            updatedAt: createdAt + index
-          }));
-        }));
-      }
-      await incrementFoodUsageForTargetItems(items);
-      await updateDailyCalorieSummary(dateISO).catch(console.warn);
-      closeModal();
-      if (returnTarget) renderRecipes();
-      showToast(items.length ? "Mealset items logged separately." : "Mealset logged.");
-    } catch (error) {
-      setFormSubmitting(form, false);
-      showError(error);
-    }
+    const data = new FormData(event.currentTarget);
+    const amount = number(data.get("amount"), 1);
+    const createdAt = Date.now();
+    const nutrientsSnapshot = scaleNutrients(total, amount);
+    const entry = {
+      itemType: "mealset",
+      itemId: mealset.id,
+      nameSnapshot: mealset.name,
+      amount,
+      unit: "mealset",
+      meal: data.get("meal"),
+      date: data.get("date"),
+      nutrientsSnapshot,
+      itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
+      createdAt,
+      updatedAt: createdAt
+    };
+    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
+    await incrementFoodUsageForTargetItems(mealset.items || []);
+    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
+    closeModal();
+    if (returnTarget) renderRecipes();
+    showToast("Mealset logged.");
   });
+}
+
+
+function resetReportsToThisWeek() {
+  cancelActiveReportCalculation();
+  state.reportMode = "week";
+  state.reportBaseDate = todayISO();
+  state.reportRange = currentWeekRange(state.reportBaseDate);
+  state.reportEntries = [];
+  state.reportData = null;
+  state.reportPages = { topSources: 1, frequency: 1 };
+}
+
+function beginReportCalculation(meta) {
+  const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  state.reportCalculation = { token, key: meta.key, mode: meta.mode, start: meta.start, end: meta.end };
+  return token;
+}
+
+function isReportCalculationActive(token, meta = null) {
+  const current = state.reportCalculation;
+  if (!current || current.token !== token) return false;
+  if (!meta) return true;
+  return current.key === meta.key && current.mode === meta.mode && current.start === meta.start && current.end === meta.end;
+}
+
+function cancelActiveReportCalculation() {
+  state.reportCalculation = null;
+}
+
+function reportAbortError() {
+  const error = new Error("Report calculation abandoned.");
+  error.name = "AbortError";
+  return error;
+}
+
+function assertReportCalculationActive(signal) {
+  if (!signal?.token) return;
+  if (typeof signal.isActive === "function") {
+    if (!signal.isActive()) throw reportAbortError();
+    return;
+  }
+  if (!isReportCalculationActive(signal.token, signal.meta)) throw reportAbortError();
+}
+
+function reportProgressHTML(meta, percent = 0, message = "Building report from diary data") {
+  const pct = Math.max(0, Math.min(100, Math.round(number(percent))));
+  return `
+    <div class="card report-calc-progress">
+      <div class="report-calc-progress-head">
+        <div>
+          <strong>${safeText(message)}</strong>
+          <small>${safeText(meta.mode)} · ${safeText(meta.start)} to ${safeText(meta.end)}</small>
+        </div>
+        <span>${pct}%</span>
+      </div>
+      <div class="report-calc-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+        <div class="report-calc-progress-bar" style="width:${pct}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReportProgress(meta, percent = 0, message = "Building report from diary data") {
+  const output = document.getElementById("reportOutput");
+  if (!output) return;
+  output.innerHTML = reportProgressHTML(meta, percent, message);
 }
 
 function renderReportsShell() {
@@ -3274,10 +3199,7 @@ function renderReportsShell() {
       <div class="card report-period-card">
         <div class="report-period-head">
           <div class="report-period-title">
-            <div class="report-title-row">
-              <h3>${safeText(label)}</h3>
-              <button class="tiny-btn report-recalc-btn desktop-only" type="button" data-action="report-recalc-period" title="Recalculate this report from diary entries">Recalc</button>
-            </div>
+            <div class="report-title-row"><h3>${safeText(label)}</h3><button class="tiny-btn report-recalc-btn" type="button" data-action="recalculate-report">Recalc</button></div>
             <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
         </div>
@@ -3297,27 +3219,51 @@ function renderReportsShell() {
   setTimeout(() => loadReport().catch(showError), 0);
 }
 
-async function loadReport() {
+async function loadReport(options = {}) {
   const [start, end] = state.reportRange || periodRange();
   if (!start || !end || start > end) throw new Error("Choose a valid date range.");
   state.reportRange = [start, end];
-  const meta = { mode: state.reportMode || "week", start, end, key: reportCacheKey(state.reportMode || "week", start, end) };
-  const cached = await readReportCache(meta);
-  if (cached) {
-    applyReportGoalsFromData(cached);
-    state.reportEntries = cached.entries || [];
-    state.reportData = cached;
-    renderReportOutput(start, end, state.reportEntries, cached);
-    return cached;
-  }
+  const mode = state.reportMode || "week";
+  const meta = { mode, start, end, key: reportCacheKey(mode, start, end) };
+  const token = beginReportCalculation(meta);
+  const signal = { token, meta };
+  if (options.force) cancelReportCacheJob(meta.key);
 
-  showReportProgress({ mode: meta.mode, current: 0, total: 1, label: "Preparing report", detail: "Reading diary entries and saving a fresh cache." });
-  const data = await calculateAndStoreReportCache(meta, { force: true });
-  applyReportGoalsFromData(data);
-  state.reportEntries = data.entries || [];
-  state.reportData = data;
-  renderReportOutput(start, end, state.reportEntries, data);
-  return data;
+  try {
+    if (!options.force) {
+      const cached = await readReportCache(meta);
+      if (!isReportCalculationActive(token, meta)) return null;
+      if (cached) {
+        applyReportGoalsFromData(cached);
+        state.reportEntries = cached.entries || [];
+        state.reportData = cached;
+        renderReportOutput(start, end, state.reportEntries, cached);
+        if (isReportCalculationActive(token, meta)) cancelActiveReportCalculation();
+        return cached;
+      }
+    }
+
+    renderReportProgress(meta, 0, options.force ? "Recalculating report from diary data" : "Building report from diary data");
+    const data = await calculateAndStoreReportCache(meta, {
+      force: true,
+      signal,
+      onProgress: progress => {
+        if (!isReportCalculationActive(token, meta)) return;
+        renderReportProgress(meta, progress.percent, progress.message || "Building report from diary data");
+      }
+    });
+    if (!isReportCalculationActive(token, meta)) return null;
+    applyReportGoalsFromData(data);
+    state.reportEntries = data.entries || [];
+    state.reportData = data;
+    renderReportOutput(start, end, state.reportEntries, data);
+    cancelActiveReportCalculation();
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") return null;
+    if (isReportCalculationActive(token, meta)) cancelActiveReportCalculation();
+    throw error;
+  }
 }
 
 async function readReportCache(meta) {
@@ -3328,47 +3274,37 @@ async function readReportCache(meta) {
     const data = snap.data();
     if (data?.dirty || data?.version !== REPORT_CACHE_VERSION) return null;
     if (data.mode !== meta.mode || data.start !== meta.start || data.end !== meta.end) return null;
-    if (!reportDatesMatchPeriod(data)) return null;
-    const normalized = normalizeReportData(data);
-    if (normalized.dates.length !== canonicalReportDates(meta.start, meta.end).length) return null;
-    return normalized;
+    const canonicalDates = dateRange(meta.start, meta.end);
+    const cachedDates = Array.isArray(data.dates) ? data.dates : [];
+    if (cachedDates.length && cachedDates.join("|") !== canonicalDates.join("|")) return null;
+    return normalizeReportData(data, meta);
   } catch (error) {
     console.warn("Report cache read failed; recalculating.", error);
     return null;
   }
 }
 
-function canonicalReportDates(start, end) {
-  if (!start || !end || start > end) return [];
-  return dateRange(start, end);
-}
-
-function reportDatesMatchPeriod(data = {}) {
-  const canonical = canonicalReportDates(data.start, data.end);
-  const stored = Array.isArray(data.dates) ? data.dates : [];
-  return stored.length === canonical.length && stored.every((date, index) => date === canonical[index]);
-}
-
-function normalizeReportData(data = {}) {
-  const dates = canonicalReportDates(data.start, data.end);
-  const rawByDate = data.byDate || {};
-  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(rawByDate[date] || {})]));
+function normalizeReportData(data = {}, meta = null) {
+  const start = meta?.start || data.start;
+  const end = meta?.end || data.end;
+  const dates = start && end ? dateRange(start, end) : (data.dates || []);
+  const byDate = Object.fromEntries(dates.map(date => [date, normalizeNutrients(data.byDate?.[date] || {})]));
+  const recoveredTotal = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
   const storedTotal = normalizeNutrients(data.total || {});
-  const derivedTotal = totalNutrientsFromByDate(byDate);
-  const total = nutrientsHaveValues(storedTotal) && reportDatesMatchPeriod(data) ? storedTotal : derivedTotal;
-  const storedActiveDates = Array.isArray(data.activeDates) ? data.activeDates.filter(date => dates.includes(date)) : [];
-  const derivedActiveDates = activeDatesFromByDate(byDate, dates);
-  const entryActiveDates = reportActiveDates(data.entries || [], dates);
-  const activeDates = derivedActiveDates.length ? derivedActiveDates : (storedActiveDates.length && reportDatesMatchPeriod(data) ? storedActiveDates : entryActiveDates);
+  const total = number(recoveredTotal.kcal) || !number(storedTotal.kcal) ? recoveredTotal : storedTotal;
+  const entries = Array.isArray(data.entries) ? data.entries.filter(entry => !entry.date || dates.includes(entry.date)) : [];
+  const activeDates = dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+  const flatRows = Array.isArray(data.flatRows) && data.flatRows.length ? data.flatRows : flatRowsFromReportEntries(entries);
   return {
     ...data,
+    start,
+    end,
     dates,
     activeDates,
-    entries: Array.isArray(data.entries) ? data.entries.filter(entry => !entry?.date || dates.includes(entry.date)) : [],
+    entries,
     byDate,
     total,
-    flatRows: Array.isArray(data.flatRows) ? data.flatRows.filter(row => !row?.entryDate || dates.includes(row.entryDate)) : [],
-    foodRows: Array.isArray(data.foodRows) ? data.foodRows : null,
+    flatRows,
     goalsByDate: data.goalsByDate || {}
   };
 }
@@ -3378,31 +3314,6 @@ function applyReportGoalsFromData(data = {}) {
     if (!dateISO || !goal) continue;
     state.dailyGoals[dateISO] = goal;
   }
-}
-
-function reportProgressHTML({ mode = state.reportMode || "week", current = 0, total = 1, label = "Calculating report", detail = "" } = {}) {
-  const safeTotal = Math.max(1, number(total, 1));
-  const pct = Math.max(0, Math.min(100, Math.round(number(current, 0) / safeTotal * 100)));
-  return `
-    <div class="card report-progress-card" aria-live="polite">
-      <div class="report-progress-head">
-        <div>
-          <strong>${safeText(label)}</strong>
-          <span>${safeText(`${mode[0].toUpperCase()}${mode.slice(1)} report`)}</span>
-        </div>
-        <span>${pct}%</span>
-      </div>
-      <div class="report-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
-        <div class="report-progress-bar" style="width:${pct}%;"></div>
-      </div>
-      ${detail ? `<small>${safeText(detail)}</small>` : ""}
-    </div>
-  `;
-}
-
-function showReportProgress(progress = {}) {
-  const output = document.getElementById("reportOutput");
-  if (output) output.innerHTML = reportProgressHTML(progress);
 }
 
 function flatRowsFromReportEntries(entries = []) {
@@ -3415,133 +3326,52 @@ function flatRowsFromReportEntries(entries = []) {
   })));
 }
 
-async function readWeeklySummary(meta) {
-  if (!state.user || !meta?.key) return null;
-  try {
-    const snap = await getDoc(weeklySummaryDoc(meta.key));
-    if (!snap.exists()) return null;
-    const data = snap.data();
-    if (data?.dirty || data?.version !== WEEK_SUMMARY_VERSION || data.start !== meta.start || data.end !== meta.end) return null;
-    return data;
-  } catch (error) {
-    console.warn("Weekly summary read failed; rebuilding.", error);
-    return null;
-  }
-}
-
-async function buildWeeklySummary(meta, options = {}) {
-  if (!options.force) {
-    const cached = await readWeeklySummary(meta);
-    if (cached) return cached;
-  }
-  const dates = dateRange(meta.start, meta.end);
-  const entries = [];
-  const goalsByDate = {};
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  for (const dateISO of dates) {
-    const snap = await getDocs(entryCollection(dateISO));
-    if (!snap.empty) {
-      await loadDailyGoalForDate(dateISO);
-      goalsByDate[dateISO] = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
-      snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
-    }
-  }
-  for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  const flatRows = flatRowsFromReportEntries(entries);
-  const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
-  const total = totalNutrientsFromByDate(byDate);
-  const activeDates = activeDatesFromByDate(byDate, dates);
-  const data = cleanForFirestore({
-    version: WEEK_SUMMARY_VERSION,
-    key: meta.key,
-    start: meta.start,
-    end: meta.end,
-    dates,
-    activeDates,
-    entries,
-    byDate,
-    total,
-    flatRows,
-    foodRows,
-    goalsByDate,
-    isEmpty: entries.length === 0,
-    empty: entries.length === 0,
-    dirty: false,
-    generatedAt: Date.now(),
-    sourceEntryCount: entries.length
-  });
-  if (state.user) await setDoc(weeklySummaryDoc(meta.key), data, { merge: false });
-  return data;
-}
-
-function mergeFoodRows(rowSets = []) {
-  const map = new Map();
-  for (const row of rowSets.flat()) {
-    const key = normalizeSearchText(`${row.name}|${row.brand}`);
-    const current = map.get(key) || { name: row.name, count: 0, grams: 0, kcal: 0, protein: 0, carbs: 0, fat: 0, brand: row.brand || "" };
-    current.count += number(row.count);
-    current.grams += number(row.grams);
-    current.kcal += number(row.kcal);
-    current.protein += number(row.protein);
-    current.carbs += number(row.carbs);
-    current.fat += number(row.fat);
-    map.set(key, current);
-  }
-  return [...map.values()];
-}
-
 async function buildReportData(meta, options = {}) {
   const dates = dateRange(meta.start, meta.end);
   const entries = [];
-  const reportFlatRows = [];
   const goalsByDate = {};
-  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
-  const weekSummaries = [];
-  const weekMetas = weekMetasForRange(meta.start, meta.end);
-  if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: 0, total: weekMetas.length + 1, label: "Building report", detail: "Preparing weekly summaries." });
-  for (let i = 0; i < weekMetas.length; i += 1) {
-    if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: i + 1, total: weekMetas.length + 1, label: "Building report", detail: "Combining weekly diary summaries." });
-    const week = await buildWeeklySummary(weekMetas[i], { force: !!options.forceWeekly });
-    weekSummaries.push(week);
-    for (const entry of week.entries || []) {
-      if (entry.date >= meta.start && entry.date <= meta.end) entries.push(entry);
-    }
-    for (const [date, nutrients] of Object.entries(week.byDate || {})) {
-      if (date >= meta.start && date <= meta.end) byDate[date] = normalizeNutrients(nutrients);
-    }
-    for (const row of week.flatRows || []) {
-      const rowDate = row.entryDate || row.date || null;
-      if (!rowDate || (rowDate >= meta.start && rowDate <= meta.end)) reportFlatRows.push(row);
-    }
-    for (const [date, goal] of Object.entries(week.goalsByDate || {})) {
-      if (date >= meta.start && date <= meta.end) goalsByDate[date] = goal;
-    }
+  const totalSteps = Math.max(dates.length, 1);
+  for (let index = 0; index < dates.length; index += 1) {
+    assertReportCalculationActive(options.signal);
+    const dateISO = dates[index];
+    await loadDailyGoalForDate(dateISO);
+    assertReportCalculationActive(options.signal);
+    goalsByDate[dateISO] = state.dailyGoals?.[dateISO] || goalSnapshotFromSettings(state.settings);
+    const snap = await getDocs(entryCollection(dateISO));
+    assertReportCalculationActive(options.signal);
+    snap.docs.forEach(d => entries.push({ id: d.id, ...d.data(), date: dateISO }));
+    options.onProgress?.({
+      percent: ((index + 1) / totalSteps) * 92,
+      message: "Building report from diary data"
+    });
   }
-  const flatRows = reportFlatRows.length ? reportFlatRows : flatRowsFromReportEntries(entries);
-  const foodRows = foodFrequencyRowsFromFlatRows(flatRows);
-  const topFoodRows = [...foodRows].sort((a, b) => b.kcal - a.kcal).slice(0, REPORT_ROW_LIMIT);
-  const total = totalNutrientsFromByDate(byDate);
-  const activeDates = activeDatesFromByDate(byDate, dates);
-  if (options.showProgress !== false) showReportProgress({ mode: meta.mode, current: weekMetas.length + 1, total: weekMetas.length + 1, label: "Saving report", detail: "Writing the cleaned report cache." });
-  return cleanForFirestore({
+  assertReportCalculationActive(options.signal);
+  const byDate = Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
+  for (const entry of entries) {
+    if (!byDate[entry.date]) byDate[entry.date] = emptyNutrients();
+    byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  }
+  const total = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
+  const flatRows = flatRowsFromReportEntries(entries);
+  const data = cleanForFirestore({
     version: REPORT_CACHE_VERSION,
     key: meta.key,
     mode: meta.mode,
     start: meta.start,
     end: meta.end,
     dates,
-    activeDates,
-    entries: meta.mode === "week" ? entries : [],
+    activeDates: dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)),
+    entries,
     byDate,
     total,
-    flatRows: meta.mode === "week" ? flatRows : [],
-    foodRows: topFoodRows,
+    flatRows,
     goalsByDate,
     dirty: false,
     generatedAt: Date.now(),
-    sourceEntryCount: entries.length,
-    sourceWeekCount: weekSummaries.length
+    sourceEntryCount: entries.length
   });
+  options.onProgress?.({ percent: 96, message: "Saving completed report" });
+  return data;
 }
 
 async function calculateAndStoreReportCache(meta, options = {}) {
@@ -3551,56 +3381,16 @@ async function calculateAndStoreReportCache(meta, options = {}) {
     if (cached) return cached;
   }
   const data = await buildReportData(meta, options);
+  assertReportCalculationActive(options.signal);
   await setDoc(reportCacheDoc(meta.key), data, { merge: false });
-  return normalizeReportData(data);
-}
-
-async function recalculateCurrentReportFromDatabase(triggerButton = null) {
-  const [start, end] = state.reportRange || periodRange();
-  if (!start || !end || start > end) throw new Error("Choose a valid report range first.");
-  const mode = state.reportMode || "week";
-  const meta = { mode, start, end, key: reportCacheKey(mode, start, end) };
-  const output = document.getElementById("reportOutput");
-  const oldLabel = triggerButton?.textContent || "Recalc";
-  if (triggerButton) {
-    triggerButton.disabled = true;
-    triggerButton.textContent = "Recalculating...";
-  }
-  try {
-    showReportProgress({ mode, current: 0, total: 1, label: "Recalculating report", detail: "Ignoring old caches and reading diary entries again." });
-    const pending = state.reportCacheJobs.get(meta.key);
-    if (pending?.timeout) clearTimeout(pending.timeout);
-    state.reportCacheJobs.delete(meta.key);
-    const data = await calculateAndStoreReportCache(meta, { force: true, forceWeekly: true });
-    applyReportGoalsFromData(data);
-    state.reportEntries = data.entries || [];
-    state.reportData = data;
-    renderReportOutput(start, end, state.reportEntries, data);
-    showToast(`${mode[0].toUpperCase()}${mode.slice(1)} report recalculated.`);
-    return data;
-  } finally {
-    if (triggerButton) {
-      triggerButton.disabled = false;
-      triggerButton.textContent = oldLabel;
-    }
-  }
+  options.onProgress?.({ percent: 100, message: "Report saved" });
+  return normalizeReportData(data, meta);
 }
 
 function scheduleReportRecalculationForDate(dateISO) {
   if (!state.user || !dateISO) return;
-  const weekMeta = weekMetaForDate(dateISO);
-  setDoc(weeklySummaryDoc(weekMeta.key), {
-    key: weekMeta.key,
-    start: weekMeta.start,
-    end: weekMeta.end,
-    version: WEEK_SUMMARY_VERSION,
-    dirty: true,
-    invalidatedAt: Date.now()
-  }, { merge: false }).catch(console.warn);
+  const invalidatedAt = Date.now();
   for (const meta of affectedReportPeriods(dateISO)) {
-    const existing = state.reportCacheJobs.get(meta.key);
-    if (existing?.timeout) clearTimeout(existing.timeout);
-    const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     setDoc(reportCacheDoc(meta.key), {
       key: meta.key,
       mode: meta.mode,
@@ -3608,35 +3398,67 @@ function scheduleReportRecalculationForDate(dateISO) {
       end: meta.end,
       version: REPORT_CACHE_VERSION,
       dirty: true,
-      invalidatedAt: Date.now()
-    }, { merge: false }).catch(console.warn);
-    const timeout = setTimeout(() => rebuildReportCacheInBackground(meta, token), REPORT_RECALC_DEBOUNCE_MS);
-    state.reportCacheJobs.set(meta.key, { token, timeout });
+      invalidatedAt
+    }, { merge: true })
+      .then(() => queueReportCacheRebuild(meta, invalidatedAt))
+      .catch(console.warn);
   }
 }
 
-async function rebuildReportCacheInBackground(meta, token) {
-  const current = state.reportCacheJobs.get(meta.key);
-  if (!current || current.token !== token) return;
-  current.timeout = null;
-  try {
-    const data = await buildReportData(meta, { showProgress: false });
-    const latest = state.reportCacheJobs.get(meta.key);
-    if (!latest || latest.token !== token) return;
-    await setDoc(reportCacheDoc(meta.key), data, { merge: false });
-    const [start, end] = state.reportRange || [];
-    if (state.route === "reports" && state.reportMode === meta.mode && start === meta.start && end === meta.end) {
-      applyReportGoalsFromData(data);
-      state.reportEntries = data.entries || [];
-      state.reportData = normalizeReportData(data);
-      renderReportOutput(meta.start, meta.end, state.reportEntries, state.reportData);
-    }
-  } catch (error) {
-    console.warn("Background report cache rebuild failed.", error);
-  } finally {
-    const latest = state.reportCacheJobs.get(meta.key);
-    if (latest?.token === token) state.reportCacheJobs.delete(meta.key);
+function queueReportCacheRebuild(meta, invalidatedAt = Date.now()) {
+  if (!state.user || !meta?.key) return;
+  const existing = state.reportCacheJobs.get(meta.key);
+  if (existing?.timeout) clearTimeout(existing.timeout);
+  const token = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  const timeout = setTimeout(() => {
+    rebuildReportCacheInBackground(meta, token, invalidatedAt).catch(error => {
+      if (error?.name !== "AbortError") console.warn("Report background rebuild failed.", error);
+    });
+  }, REPORT_RECALC_DEBOUNCE_MS);
+  state.reportCacheJobs.set(meta.key, { token, timeout, meta, invalidatedAt, status: "queued" });
+}
+
+function cancelReportCacheJob(key) {
+  if (!key) return;
+  const existing = state.reportCacheJobs.get(key);
+  if (existing?.timeout) clearTimeout(existing.timeout);
+  state.reportCacheJobs.delete(key);
+}
+
+function isReportCacheJobActive(key, token) {
+  const job = state.reportCacheJobs.get(key);
+  return !!job && job.token === token;
+}
+
+async function rebuildReportCacheInBackground(meta, token, invalidatedAt = 0) {
+  if (!state.user || !meta?.key || !isReportCacheJobActive(meta.key, token)) return null;
+  const job = state.reportCacheJobs.get(meta.key);
+  if (job) state.reportCacheJobs.set(meta.key, { ...job, status: "running", timeout: null });
+
+  const currentSnap = await getDoc(reportCacheDoc(meta.key));
+  if (!isReportCacheJobActive(meta.key, token)) throw reportAbortError();
+  const current = currentSnap.exists() ? currentSnap.data() : null;
+
+  // A newer complete cache already exists, so this dirty job is obsolete.
+  if (current && !current.dirty && current.version === REPORT_CACHE_VERSION && number(current.generatedAt) >= number(invalidatedAt)) {
+    cancelReportCacheJob(meta.key);
+    return normalizeReportData(current, meta);
   }
+
+  // A newer diary change has queued a newer rebuild. Let the newer job own the write.
+  if (current?.dirty && number(current.invalidatedAt) > number(invalidatedAt)) {
+    throw reportAbortError();
+  }
+
+  const signal = {
+    token,
+    meta,
+    isActive: () => isReportCacheJobActive(meta.key, token)
+  };
+  const data = await calculateAndStoreReportCache(meta, { force: true, signal });
+  if (!isReportCacheJobActive(meta.key, token)) throw reportAbortError();
+  cancelReportCacheJob(meta.key);
+  return data;
 }
 
 function goalStatus(value, goal, mode = "min") {
@@ -3732,21 +3554,18 @@ function renderReportPagination(table, pageData) {
 function renderReportOutput(start, end, entries, reportData = null) {
   const sourceData = reportData ? normalizeReportData(reportData) : null;
   if (sourceData) applyReportGoalsFromData(sourceData);
-  const dates = canonicalReportDates(start, end);
-  const byDate = Object.fromEntries(dates.map(d => [d, normalizeNutrients(sourceData?.byDate?.[d] || {})]));
-  if (!sourceData) for (const entry of entries) {
-    if (entry.date && byDate[entry.date]) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
-  }
-  const activeDates = sourceData?.activeDates?.length ? sourceData.activeDates.filter(date => dates.includes(date)) : activeDatesFromByDate(byDate, dates);
+  const dates = sourceData?.dates || dateRange(start, end);
+  const activeDates = sourceData?.activeDates || reportActiveDates(entries, dates);
   const activeDays = Math.max(1, activeDates.length);
-  const derivedTotal = totalNutrientsFromByDate(byDate);
-  const total = normalizeNutrients(nutrientsHaveValues(derivedTotal) ? derivedTotal : (sourceData?.total || addNutrients(entries)));
+  const total = normalizeNutrients(sourceData?.total || addNutrients(entries));
   const avg = scaleNutrients(total, 1 / activeDays);
   const macro = macroCalories(total);
+  const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
+  if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
   const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
-  const foodRows = sourceData?.foodRows || foodFrequencyRowsFromFlatRows(filteredFlatRows);
-  const topRows = sortReportRows(foodRows, "topSources").slice(0, REPORT_ROW_LIMIT);
-  const frequencyRows = sortReportRows(foodRows, "frequency").slice(0, REPORT_ROW_LIMIT);
+  const foodRows = foodFrequencyRowsFromFlatRows(filteredFlatRows);
+  const topRows = sortReportRows(foodRows, "topSources");
+  const frequencyRows = sortReportRows(foodRows, "frequency");
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
   const avgGoals = reportGoalAverages(start, end, activeDates);
@@ -3814,7 +3633,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
       </div>
     </div>
   `;
-  renderCharts(byDate, dates, sourceData?.mode || state.reportMode, sourceData?.goalsByDate || {});
+  renderCharts(byDate);
 }
 
 function foodNameFromReportItem(item) {
@@ -4011,20 +3830,17 @@ function renderMicroRows(total, days) {
   }).join("");
 }
 
-function reportChartData(byDate, datesOverride = null, modeOverride = null, goalsByDate = {}) {
-  const mode = modeOverride || state.reportMode || "week";
-  const rangeDates = Array.isArray(datesOverride) && datesOverride.length ? datesOverride : Object.keys(byDate || {}).sort();
-  const dates = rangeDates.filter(Boolean).sort();
-  if (mode === "year") {
+function reportChartData(byDate) {
+  const dates = Object.keys(byDate);
+  if (state.reportMode === "year") {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const buckets = monthNames.map(() => emptyNutrients());
     const targetBuckets = monthNames.map(() => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 }));
     for (const date of dates) {
       const month = new Date(`${date}T12:00:00`).getMonth();
-      const dayNutrients = normalizeNutrients(byDate?.[date] || {});
-      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, dayNutrients]);
-      const goals = goalsByDate?.[date] || effectiveGoalsForDate(date);
+      const goals = effectiveGoalsForDate(date);
       const macros = effectiveMacroGoals(goals);
+      buckets[month] = addNutrients([{ nutrientsSnapshot: buckets[month] }, byDate[date]]);
       targetBuckets[month].kcal += number(goals.calorieGoal);
       targetBuckets[month].protein += number(macros.proteinGoal);
       targetBuckets[month].carbs += number(macros.carbsGoal);
@@ -4034,11 +3850,11 @@ function reportChartData(byDate, datesOverride = null, modeOverride = null, goal
   }
   const labels = dates.map(date => {
     const d = new Date(`${date}T12:00:00`);
-    if (mode === "month") return String(d.getDate()).padStart(2, "0");
+    if (state.reportMode === "month") return String(d.getDate()).padStart(2, "0");
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   });
   const targets = dates.map(date => {
-    const goals = goalsByDate?.[date] || effectiveGoalsForDate(date);
+    const goals = effectiveGoalsForDate(date);
     const macros = effectiveMacroGoals(goals);
     return {
       kcal: number(goals.calorieGoal),
@@ -4047,14 +3863,13 @@ function reportChartData(byDate, datesOverride = null, modeOverride = null, goal
       fat: number(macros.fatGoal)
     };
   });
-  return { labels, values: dates.map(date => normalizeNutrients(byDate?.[date] || {})), targets };
+  return { labels, values: dates.map(date => byDate[date]), targets };
 }
 
-function renderCharts(byDate, dates = null, mode = state.reportMode, goalsByDate = {}) {
+function renderCharts(byDate) {
   if (!window.Chart) return;
   Object.values(state.charts).forEach(chart => chart?.destroy?.());
-  state.charts = {};
-  const chartData = reportChartData(byDate, dates, mode, goalsByDate);
+  const chartData = reportChartData(byDate);
   const labels = chartData.labels;
   const kcal = chartData.values.map(n => round(n.kcal, 0));
   const protein = chartData.values.map(n => round(n.protein, 1));
@@ -4066,29 +3881,17 @@ function renderCharts(byDate, dates = null, mode = state.reportMode, goalsByDate
   const fatTarget = chartData.targets.map(n => round(n.fat, 1));
   const calorieCtx = document.getElementById("calorieChart");
   const macroCtx = document.getElementById("macroChart");
-  const commonOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    normalized: true,
-    spanGaps: false,
-    animation: { duration: 180 },
-    scales: {
-      x: { ticks: { autoSkip: mode === "year" || mode === "month", maxRotation: 0 } },
-      y: { beginAtZero: true }
-    },
-    plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } }
-  };
   if (calorieCtx) {
     state.charts.calorie = new Chart(calorieCtx, {
       type: "line",
       data: {
         labels,
         datasets: [
-          { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
+          { label: "kcal", data: kcal, borderColor: "#f97316", backgroundColor: "rgba(249,115,22,.13)", tension: .35 },
           { label: "kcal target", data: kcalTarget, borderColor: "#f97316", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: commonOptions
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
     });
   }
   if (macroCtx) {
@@ -4097,28 +3900,27 @@ function renderCharts(byDate, dates = null, mode = state.reportMode, goalsByDate
       data: {
         labels,
         datasets: [
-          { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
+          { label: "Protein", data: protein, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", tension: .35 },
           { label: "Protein target", data: proteinTarget, borderColor: "#2563eb", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
-          { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
+          { label: "Carbs", data: carbs, borderColor: "#7c3aed", backgroundColor: "rgba(124,58,237,.12)", tension: .35 },
           { label: "Carbs target", data: carbsTarget, borderColor: "#7c3aed", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true },
-          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .25, pointRadius: mode === "year" ? 3 : 2 },
+          { label: "Fat", data: fat, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.14)", tension: .35 },
           { label: "Fat target", data: fatTarget, borderColor: "#f59e0b", borderDash: [6, 6], pointRadius: 0, tension: 0, isTarget: true }
         ]
       },
-      options: commonOptions
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { filter: (item, data) => !data.datasets[item.datasetIndex]?.isTarget } } } }
     });
   }
 }
 
 async function exportEntries(format, caloriesOnly = false) {
   const [start, end] = state.reportRange || periodRange();
-  if (!state.reportData && !state.reportEntries.length) await loadReport();
+  if (!state.reportEntries.length) await loadReport();
   const entries = state.reportEntries;
 
   if (caloriesOnly) {
-    const sourceData = state.reportData ? normalizeReportData(state.reportData) : null;
     const rows = dateRange(start, end).map(dateISO => {
-      const total = sourceData?.byDate?.[dateISO] || addNutrients(entries.filter(e => e.date === dateISO));
+      const total = addNutrients(entries.filter(e => e.date === dateISO));
       return { date: dateISO, totalKcal: round(total.kcal, 0) };
     });
     if (format === "json") {
@@ -4184,8 +3986,10 @@ function renderSettings() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${s.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           </label>
-          <label>Search regions
-            ${searchRegionPickerHTML(s)}
+          <label>Search region
+            <select name="searchRegion">
+              ${["world", "germany", "us", "france", "uk"].map(v => `<option value="${v}" ${s.searchRegion === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
           </label>
         </div>
         <div class="grid-3" style="margin-top:14px;">
@@ -4241,43 +4045,6 @@ function settingLabel(label, info, inputHTML) {
       ${inputHTML}
     </label>
   `;
-}
-
-
-function searchRegionPickerHTML(settings = state.settings) {
-  const selected = selectedSearchRegions(settings);
-  const label = selected.map(value => SEARCH_REGIONS.find(([region]) => region === value)?.[1] || value).join(", ");
-  return `
-    <div class="region-picker" data-region-picker>
-      <button class="region-picker-toggle" type="button" data-action="toggle-region-picker">
-        <span>${safeText(label || "World / global")}</span>
-        <span aria-hidden="true">▾</span>
-      </button>
-      <div class="region-picker-menu" role="group" aria-label="Search regions">
-        ${SEARCH_REGIONS.map(([value, regionLabel]) => `
-          <label class="region-option">
-            <input type="checkbox" name="searchRegions" value="${value}" ${selected.includes(value) ? "checked" : ""} />
-            <span>${safeText(regionLabel)}</span>
-          </label>
-        `).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function handleSearchRegionPickerChange(event) {
-  if (!event.target.matches('input[name="searchRegions"]')) return;
-  const checked = [...document.querySelectorAll('input[name="searchRegions"]:checked')];
-  if (checked.length > 3) {
-    event.target.checked = false;
-    showToast("Choose at most 3 search regions.");
-    return;
-  }
-  if (!checked.length) event.target.checked = true;
-  document.querySelectorAll(".region-picker-toggle span:first-child").forEach(label => {
-    const selected = [...document.querySelectorAll('input[name="searchRegions"]:checked')].map(input => input.value);
-    label.textContent = selected.map(value => SEARCH_REGIONS.find(([region]) => region === value)?.[1] || value).join(", ");
-  });
 }
 
 function renderSettingsV2() {
@@ -4345,7 +4112,11 @@ function renderSettingsV2() {
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${appPrefs.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${preferenceControl("Search regions", searchRegionPickerHTML(appPrefs))}
+          ${preferenceControl("Search region", `
+            <select name="searchRegion">
+              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${appPrefs.searchRegion === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+          `)}
           ${preferenceControl("Database preference", `
             <select name="databasePreference">
               ${[
@@ -4410,7 +4181,6 @@ function renderSettingsV2() {
   `;
   const form = document.getElementById("settingsForm");
   syncMacroGoalInputs(form);
-  form?.addEventListener("change", handleSearchRegionPickerChange);
   form?.addEventListener("input", event => {
     if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
   });
@@ -4469,8 +4239,7 @@ function collectSettingsFromForm(form) {
     sodiumMax: number(data.get("micro_sodium_target"), state.settings.sodiumMax),
     saltMax: round(number(data.get("micro_sodium_target"), state.settings.sodiumMax) / 400, 2),
     theme: String(data.get("theme") || "system"),
-    searchRegions: data.getAll("searchRegions").slice(0, 3),
-    searchRegion: (data.getAll("searchRegions")[0] || data.get("searchRegion") || "world"),
+    searchRegion: String(data.get("searchRegion") || "world"),
     databasePreference: String(data.get("databasePreference") || "custom-first"),
     dashboardDensity: "comfortable",
     macroGoalMode: String(data.get("macroGoalMode") || "manual"),
@@ -5091,21 +4860,6 @@ function closeModal() {
   document.body.classList.remove("modal-open");
 }
 
-function setFormSubmitting(form, submitting = true, label = "Logging...") {
-  if (!form) return;
-  form.dataset.submitting = submitting ? "true" : "";
-  form.querySelectorAll('button[type="submit"], .form-actions button').forEach(button => {
-    if (submitting) {
-      button.dataset.originalText = button.dataset.originalText || button.textContent;
-      button.textContent = label;
-      button.disabled = true;
-    } else {
-      button.disabled = false;
-      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
-    }
-  });
-}
-
 async function handleDynamicSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -5113,7 +4867,7 @@ async function handleDynamicSubmit(event) {
     if (form.id === "logFoodForm") {
       event.preventDefault();
       if (form.dataset.submitting === "true") return;
-      setFormSubmitting(form, true);
+      form.dataset.submitting = "true";
       const data = new FormData(form);
       const key = form.dataset.foodKey;
       const food = key ? getFoodByKey(key) : state.activeLogFood;
@@ -5124,7 +4878,7 @@ async function handleDynamicSubmit(event) {
       return;
     }
   } catch (error) {
-    setFormSubmitting(form, false);
+    form.dataset.submitting = "";
     showError(error);
   }
 }
@@ -5186,12 +4940,6 @@ async function handleClick(event) {
 
   try {
     if (action === "close-modal") closeModal();
-    if (action === "toggle-region-picker") {
-      const picker = btn.closest(".region-picker");
-      document.querySelectorAll(".region-picker.is-open").forEach(node => { if (node !== picker) node.classList.remove("is-open"); });
-      picker?.classList.toggle("is-open");
-      return;
-    }
     if (action === "show-info") {
       showInfoPopover(btn);
       return;
@@ -5249,19 +4997,11 @@ async function handleClick(event) {
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
+      const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
       const nextCollapsed = state.collapsedMeals[meal] === false;
-      if (window.matchMedia("(max-width: 980px)").matches && !nextCollapsed) {
-        state.collapsedMeals = Object.fromEntries(MEALS.map(([id]) => [id, true]));
-      } else if (!window.matchMedia("(max-width: 980px)").matches) {
-        const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
-        if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
-      }
       state.collapsedMeals[meal] = nextCollapsed;
+      if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
       renderToday();
-    }
-    if (action === "report-recalc-period") {
-      await recalculateCurrentReportFromDatabase(btn);
-      return;
     }
     if (action === "create-recipe") await createRecipe();
     if (action === "create-mealset") await createMealset();
@@ -5301,23 +5041,10 @@ async function handleClick(event) {
           state.keyboardSelection.ingredient = -1;
           root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
         } else {
-          const kind = btn.dataset.kind;
-          const id = btn.dataset.id;
-          const publishIngredientResults = (results, phase) => {
-            const list = Array.isArray(results) ? results : [];
-            state.ingredientSearch = { kind, id, query, mode: "food", page: 1, results: list };
-            state.keyboardSelection.ingredient = -1;
-            if (list.length) {
-              root.innerHTML = renderIngredientResultPage(list, kind, id, 1, "food", query);
-            } else if (["local", "offline", "error"].includes(phase)) {
-              root.innerHTML = `<div class="empty-state">${phase === "local" ? "Searching database..." : "No results."}</div>`;
-            }
-          };
-          const results = await runFoodSearch(query, {
-            updateState: false,
-            onIntermediate: publishIngredientResults
-          });
-          publishIngredientResults(results, "final");
+          const results = await runFoodSearch(query, { updateState: false });
+          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results };
+          state.keyboardSelection.ingredient = -1;
+          root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
         }
       } finally {
         btn.disabled = false;
@@ -5363,6 +5090,7 @@ async function handleClick(event) {
     if (action === "log-recipe-from-detail") openLogRecipeModal(state.recipes.find(r => r.id === btn.dataset.id), { kind: "recipe", id: btn.dataset.id });
     if (action === "log-mealset-from-detail") openLogMealsetModal(state.mealsets.find(m => m.id === btn.dataset.id), { kind: "mealset", id: btn.dataset.id });
     if (action === "set-report-mode") {
+      cancelActiveReportCalculation();
       state.reportMode = btn.dataset.mode || "week";
       state.reportRange = periodRange();
       state.reportData = null;
@@ -5370,12 +5098,18 @@ async function handleClick(event) {
       renderReportsShell();
     }
     if (action === "report-prev-period" || action === "report-next-period") {
+      cancelActiveReportCalculation();
       shiftReportPeriod(action === "report-prev-period" ? -1 : 1);
       state.reportData = null;
       state.reportPages = { topSources: 1, frequency: 1 };
       renderReportsShell();
     }
     if (action === "load-report") await loadReport();
+    if (action === "recalculate-report") {
+      cancelActiveReportCalculation();
+      await loadReport({ force: true });
+      showToast("Report recalculated from diary data.");
+    }
     if (action === "report-sort") {
       setReportSort(btn.dataset.table, btn.dataset.key);
       if (state.reportPages?.[btn.dataset.table]) state.reportPages[btn.dataset.table] = 1;
@@ -5455,9 +5189,6 @@ document.addEventListener("click", handleClick);
 document.addEventListener("click", event => {
   if (!event.target.closest(".info-btn") && !event.target.closest(".info-popover")) {
     document.querySelectorAll(".info-popover").forEach(node => node.remove());
-  }
-  if (!event.target.closest(".region-picker")) {
-    document.querySelectorAll(".region-picker.is-open").forEach(node => node.classList.remove("is-open"));
   }
 });
 
