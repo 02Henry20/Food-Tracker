@@ -3361,3 +3361,99 @@ input[type="number"]::-webkit-inner-spin-button {
     font-size: 1.05rem;
   }
 }
+
+/* Persistent report-cache Firebase upload status */
+.report-cache-upload-status {
+  position: fixed;
+  right: 18px;
+  bottom: 76px;
+  z-index: 82;
+  width: min(420px, calc(100vw - 28px));
+  pointer-events: none;
+}
+.report-cache-upload-card {
+  pointer-events: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  animation: toastIn .2s var(--ease) both;
+}
+.report-cache-upload-card.uploading .report-cache-upload-bar,
+.report-cache-upload-card.confirming .report-cache-upload-bar {
+  background-image: linear-gradient(135deg, var(--primary), #3b82f6, var(--secondary));
+  background-size: 180% 100%;
+  animation: reportUploadFlow 1.15s linear infinite;
+}
+.report-cache-upload-card.saved .report-cache-upload-bar {
+  background: var(--success);
+}
+.report-cache-upload-card.pending .report-cache-upload-bar,
+.report-cache-upload-card.error .report-cache-upload-bar {
+  background: var(--warning);
+}
+.report-cache-upload-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.report-cache-upload-head > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.report-cache-upload-head strong {
+  color: var(--text);
+  font-size: .94rem;
+  white-space: normal;
+}
+.report-cache-upload-head small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: normal;
+}
+.report-cache-upload-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight: 950;
+}
+.report-cache-upload-close {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.report-cache-upload-track {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .18);
+}
+.report-cache-upload-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  transition: width .22s var(--ease);
+}
+@keyframes reportUploadFlow {
+  from { background-position: 0% 50%; }
+  to { background-position: 180% 50%; }
+}
+@media (max-width: 560px) {
+  .report-cache-upload-status {
+    left: 10px;
+    right: 10px;
+    bottom: 84px;
+    width: auto;
+  }
+}

@@ -44,7 +44,7 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 17;
+const REPORT_CACHE_VERSION = 18;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -269,6 +269,8 @@ const state = {
   tempFoods: new Map(),
   charts: {},
   reportCacheJobs: new Map(),
+  reportCacheUploadStatus: null,
+  reportCacheUploadHideTimer: null,
   reportCalculation: null,
   dailySummaryJobs: new Map(),
   targetDetailScroll: {},
@@ -812,6 +814,13 @@ function reportGoalTargets(goal = state.settings) {
   };
 }
 
+function reportTargetCaloriesTotalForDates(dates = [], goalsByDate = {}) {
+  return (dates || []).reduce((sum, dateISO) => {
+    const target = reportGoalTargets(goalsByDate?.[dateISO] || effectiveGoalsForDate(dateISO));
+    return sum + number(target.kcal);
+  }, 0);
+}
+
 function buildReportChartData(meta, dates = [], byDate = {}, goalsByDate = {}) {
   const mode = meta?.mode || state.reportMode || "week";
   if (mode === "year") {
@@ -880,12 +889,15 @@ function compactReportCacheData(data = {}, meta = null) {
   const byDate = data.byDate || Object.fromEntries(dates.map(date => [date, emptyNutrients()]));
   const goalsByDate = data.goalsByDate || {};
   const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate);
-  const activeDayCount = number(data.activeDayCount) || (Array.isArray(data.activeDates) ? data.activeDates.length : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0)).length);
-  const avgGoals = data.avgGoals || reportGoalAverages(start, end, null, goalsByDate, activeDayCount || dates.length);
+  const activeDates = Array.isArray(data.activeDates) && data.activeDates.length
+    ? data.activeDates.filter(date => dates.includes(date))
+    : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+  const activeDayCount = number(data.activeDayCount) || activeDates.length;
+  const avgGoals = data.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, goalsByDate);
   const hasStoredTargetCaloriesTotal = data.targetCaloriesTotal !== undefined && data.targetCaloriesTotal !== null;
   const targetCaloriesTotal = hasStoredTargetCaloriesTotal
     ? number(data.targetCaloriesTotal)
-    : (activeDayCount ? number(avgGoals.calorieGoal) * activeDayCount : 0);
+    : reportTargetCaloriesTotalForDates(activeDates, goalsByDate);
   const total = nutrientsFromSnapshot(data.total || data.nutrientVector || addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] }))));
 
   return cleanForFirestore({
@@ -930,18 +942,59 @@ function pendingReportCacheLocalKey(key) {
 function saveReportCacheInBackground(meta, data, options = {}) {
   if (!state.user || !meta?.key) return Promise.resolve(null);
   const cacheData = compactReportCacheData(data, meta);
+  setReportCacheUploadStatus({
+    key: meta.key,
+    mode: meta.mode,
+    start: meta.start,
+    end: meta.end,
+    label: "Report cache queued",
+    detail: "Compact report is ready locally. Firebase upload is starting.",
+    percent: 8,
+    status: "queued"
+  });
   writeLocal(pendingReportCacheLocalKey(meta.key), cacheData);
-  const promise = storeCompactReportCache(meta, cacheData)
-    .then(saved => {
+  setReportCacheUploadStatus({
+    label: "Report cache prepared",
+    detail: "A local retry copy is saved. Uploading to Firebase now.",
+    percent: 22,
+    status: "uploading"
+  });
+  const promise = (async () => {
+    try {
+      setReportCacheUploadStatus({
+        label: "Uploading report cache",
+        detail: "Sending compact cache to Firebase. You can leave the Reports page; this panel will stay visible.",
+        percent: 68,
+        status: "uploading"
+      });
+      const saved = await storeCompactReportCache(meta, cacheData);
+      setReportCacheUploadStatus({
+        label: "Confirming Firebase save",
+        detail: "Firebase accepted the write. Finalizing local retry state.",
+        percent: 96,
+        status: "confirming"
+      });
       removeLocal(pendingReportCacheLocalKey(meta.key));
-      if (options.toast) showToast("Report cache saved to Firebase successfully.", 5200);
+      setReportCacheUploadStatus({
+        label: "Report cache saved",
+        detail: "Saved to Firebase successfully.",
+        percent: 100,
+        status: "saved"
+      });
+      if (options.toast) showToast("Report cache saved to Firebase successfully.", 6500);
       return saved;
-    })
-    .catch(error => {
+    } catch (error) {
       console.warn("Report cache background save failed.", error);
-      if (options.toast) showToast("Report is shown, but the cache save did not finish. It will retry automatically.");
+      setReportCacheUploadStatus({
+        label: "Report cache upload pending",
+        detail: "Firebase save did not finish. A local retry copy is stored and will retry next app open.",
+        percent: 100,
+        status: "pending"
+      });
+      if (options.toast) showToast("Report is shown, but the cache save did not finish. It will retry automatically.", 6500);
       return null;
-    });
+    }
+  })();
   return promise;
 }
 
@@ -953,6 +1006,18 @@ async function flushPendingReportCacheSaves(options = {}) {
     const key = localStorage.key(index);
     if (key?.startsWith(prefix)) keys.push(key);
   }
+  if (keys.length) {
+    setReportCacheUploadStatus({
+      key: "pending-report-cache-retry",
+      mode: "retry",
+      start: "",
+      end: "",
+      label: "Retrying report cache upload",
+      detail: `${keys.length} pending cache save${keys.length === 1 ? "" : "s"} found.`,
+      percent: 8,
+      status: "queued"
+    });
+  }
   let savedCount = 0;
   for (const key of keys) {
     try {
@@ -961,15 +1026,38 @@ async function flushPendingReportCacheSaves(options = {}) {
         localStorage.removeItem(key);
         continue;
       }
+      const percent = 15 + Math.round((savedCount / Math.max(1, keys.length)) * 70);
+      setReportCacheUploadStatus({
+        key: cacheData.key,
+        mode: cacheData.mode,
+        start: cacheData.start,
+        end: cacheData.end,
+        label: "Uploading pending report cache",
+        detail: `Saving pending cache ${savedCount + 1} of ${keys.length} to Firebase.`,
+        percent,
+        status: "uploading"
+      });
       await storeCompactReportCache({ key: cacheData.key, mode: cacheData.mode, start: cacheData.start, end: cacheData.end }, cacheData);
       localStorage.removeItem(key);
       savedCount += 1;
     } catch (error) {
       console.warn("Pending report cache retry failed.", error);
+      setReportCacheUploadStatus({
+        label: "Report cache upload pending",
+        detail: "A pending cache save still could not be uploaded. It will retry next app open.",
+        percent: 100,
+        status: "pending"
+      });
     }
   }
   if (savedCount && options.toast !== false) {
-    showToast(`${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved to Firebase successfully.`, 5200);
+    setReportCacheUploadStatus({
+      label: "Pending report cache saved",
+      detail: `${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved to Firebase successfully.`,
+      percent: 100,
+      status: "saved"
+    });
+    showToast(`${savedCount} pending report cache${savedCount === 1 ? "" : "s"} saved to Firebase successfully.`, 6500);
   }
 }
 
@@ -1287,6 +1375,85 @@ function showToast(message, duration = 3200) {
   els.toast.classList.remove("hidden");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => els.toast.classList.add("hidden"), Math.max(1200, number(duration, 3200)));
+}
+
+function reportCacheUploadLabel(status = {}) {
+  const label = status.label || "Report cache";
+  const range = status.start && status.end ? `${status.start} to ${status.end}` : "";
+  const mode = status.mode ? `${status.mode} report` : "report";
+  return `${label} · ${mode}${range ? ` · ${range}` : ""}`;
+}
+
+function ensureReportCacheUploadHost() {
+  let host = document.getElementById("reportCacheUploadStatus");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "reportCacheUploadStatus";
+    host.className = "report-cache-upload-status hidden";
+    host.setAttribute("aria-live", "polite");
+    document.body.appendChild(host);
+  }
+  return host;
+}
+
+function reportCacheUploadStatusHTML(status = {}) {
+  const pct = Math.max(0, Math.min(100, Math.round(number(status.percent))));
+  const kind = status.status || "queued";
+  const detail = status.detail || "Preparing report cache.";
+  const canDismiss = ["saved", "pending", "error"].includes(kind);
+  return `
+    <div class="report-cache-upload-card ${safeText(kind)}">
+      <div class="report-cache-upload-head">
+        <div>
+          <strong>${safeText(reportCacheUploadLabel(status))}</strong>
+          <small>${safeText(detail)}</small>
+        </div>
+        <div class="report-cache-upload-side">
+          <span>${pct}%</span>
+          ${canDismiss ? `<button class="tiny-btn report-cache-upload-close" type="button" data-action="dismiss-report-cache-upload" aria-label="Hide report cache upload status">×</button>` : ""}
+        </div>
+      </div>
+      <div class="report-cache-upload-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+        <div class="report-cache-upload-bar" style="width:${pct}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReportCacheUploadStatus() {
+  const host = ensureReportCacheUploadHost();
+  const status = state.reportCacheUploadStatus;
+  if (!status || !state.user) {
+    host.classList.add("hidden");
+    host.innerHTML = "";
+    return;
+  }
+  host.classList.remove("hidden");
+  host.innerHTML = reportCacheUploadStatusHTML(status);
+}
+
+function setReportCacheUploadStatus(partial = {}) {
+  clearTimeout(state.reportCacheUploadHideTimer);
+  state.reportCacheUploadStatus = {
+    ...(state.reportCacheUploadStatus || {}),
+    ...partial,
+    updatedAt: Date.now()
+  };
+  renderReportCacheUploadStatus();
+  if (state.reportCacheUploadStatus.status === "saved") {
+    state.reportCacheUploadHideTimer = setTimeout(() => {
+      if (state.reportCacheUploadStatus?.status === "saved") {
+        state.reportCacheUploadStatus = null;
+        renderReportCacheUploadStatus();
+      }
+    }, 12000);
+  }
+}
+
+function clearReportCacheUploadStatus() {
+  clearTimeout(state.reportCacheUploadHideTimer);
+  state.reportCacheUploadStatus = null;
+  renderReportCacheUploadStatus();
 }
 
 function showError(error, fallback = "Something went wrong.") {
@@ -3918,7 +4085,7 @@ async function loadReport(options = {}) {
     state.reportData = normalizedData;
     renderReportOutput(start, end, state.reportEntries, normalizedData);
     cancelActiveReportCalculation();
-    showToast("Report ready. Saving compact cache in the background.");
+    showToast("Report ready. Compact cache upload started.");
     saveReportCacheInBackground(meta, normalizedData, { toast: true });
     return normalizedData;
   } catch (error) {
@@ -4091,9 +4258,16 @@ async function buildReportData(meta, options = {}) {
   }
 
   const total = addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] })));
-  const activeDates = dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
+  const loggedDates = dayResults
+    .filter(result => number(result?.entryCount) > 0)
+    .map(result => result.date)
+    .filter(date => dates.includes(date));
+  const activeDates = loggedDates.length
+    ? loggedDates
+    : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
   const activeDayCount = activeDates.length;
   const avgGoals = reportGoalAverages(meta.start, meta.end, activeDates.length ? activeDates : dates, goalsByDate);
+  const targetCaloriesTotal = reportTargetCaloriesTotalForDates(activeDates, goalsByDate);
   const chartData = buildReportChartData(meta, dates, byDate, goalsByDate);
   const data = cleanForFirestore({
     version: REPORT_CACHE_VERSION,
@@ -4114,7 +4288,7 @@ async function buildReportData(meta, options = {}) {
     reportFoodLimit: REPORT_FOOD_LIMIT,
     goalsByDate,
     avgGoals,
-    targetCaloriesTotal: activeDayCount ? number(avgGoals.calorieGoal) * activeDayCount : 0,
+    targetCaloriesTotal,
     dirty: false,
     generatedAt: Date.now(),
     sourceEntryCount
@@ -4320,7 +4494,10 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const avgGoals = sourceData?.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, sourceData?.goalsByDate || null);
   const loggedDayCount = number(sourceData?.activeDayCount) || activeDates.length;
   const hasStoredTargetCaloriesTotal = sourceData?.targetCaloriesTotal !== undefined && sourceData?.targetCaloriesTotal !== null;
-  const targetCaloriesTotal = hasStoredTargetCaloriesTotal ? number(sourceData.targetCaloriesTotal) : (loggedDayCount ? avgGoals.calorieGoal * loggedDayCount : 0);
+  const targetDatesForDeficit = activeDates.length ? activeDates : [];
+  const targetCaloriesTotal = hasStoredTargetCaloriesTotal
+    ? number(sourceData.targetCaloriesTotal)
+    : reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {});
   const calorieDeficit = targetCaloriesTotal - total.kcal;
   const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}`;
   const output = document.getElementById("reportOutput");
@@ -6047,6 +6224,10 @@ async function handleClick(event) {
   if (route) return setRoute(route);
   const action = btn.dataset.action;
   if (!action) return;
+  if (action === "dismiss-report-cache-upload") {
+    clearReportCacheUploadStatus();
+    return;
+  }
 
   try {
     if (action === "close-modal") closeModal();
@@ -6337,6 +6518,7 @@ onAuthStateChanged(auth, user => {
     setTheme();
     subscribeUserData();
     setRoute(state.route);
+    renderReportCacheUploadStatus();
   } else {
     state.unsubs.forEach(unsub => unsub());
     if (state.unsubLogs) state.unsubLogs();
@@ -6348,6 +6530,7 @@ onAuthStateChanged(auth, user => {
     state.dailyGoals = {};
     state.searchResults = [];
     state.recentSearches = [];
+    clearReportCacheUploadStatus();
   }
 });
 
