@@ -633,6 +633,7 @@ body[data-density="compact"] .meals-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  border-radius: inherit;
   background: linear-gradient(135deg, rgba(255,255,255,.24), transparent 42%);
   opacity: .65;
 }
@@ -2368,14 +2369,6 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     gap: 6px;
     justify-self: stretch;
   }
-  .report-period-card .report-period-tabs .mobile-report-recalc {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .report-period-card .report-period-tabs [data-mode="year"] {
-    grid-column: 3;
-    grid-row: 2;
-  }
   .report-period-card .report-period-tabs .tiny-btn {
     justify-content: center;
     min-height: 38px;
@@ -3244,6 +3237,7 @@ input[type="number"]::-webkit-inner-spin-button {
   display: none;
   align-items: center;
   justify-content: center;
+  align-self: start;
   color: #ffffff;
   border-color: rgba(20, 184, 166, .44);
   background: linear-gradient(135deg, #0f766e, #2563eb);
@@ -3292,20 +3286,18 @@ input[type="number"]::-webkit-inner-spin-button {
   .mobile-report-recalc {
     display: inline-flex;
   }
+  .report-period-card .report-period-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+  }
   .report-period-card .report-period-tabs {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     justify-self: stretch;
-  }
-  .report-period-card .report-period-tabs .mobile-report-recalc {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .report-period-card .report-period-tabs [data-mode="year"] {
-    grid-column: 3;
-    grid-row: 2;
   }
   .report-period-card .report-period-tabs .tiny-btn {
     justify-content: center;
@@ -3357,6 +3349,11 @@ input[type="number"]::-webkit-inner-spin-button {
 .settings-section {
   padding: 0;
   overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+.settings-section.is-region-open {
+  z-index: 80;
 }
 .settings-section-summary {
   display: flex;
@@ -3441,7 +3438,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .region-picker-menu {
   position: absolute;
-  z-index: 14;
+  z-index: 120;
   top: calc(100% + 6px);
   left: 0;
   right: 0;
@@ -3474,7 +3471,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .amount-kcal-row {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 .amount-kcal-badge {
   min-height: 34px;
@@ -3530,12 +3527,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 @media (max-width: 980px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.62rem;
+    font-size: 1.88rem;
   }
 }
 @media (max-width: 560px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.44rem;
+    font-size: 1.66rem;
   }
 }
 

@@ -2427,7 +2427,6 @@ function renderEatenFoodCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `<button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>` : ""}
       </div>
     </div>
   `;
@@ -2486,7 +2485,6 @@ function openFoodDetailModal(food) {
         ${isEditableCustomFood ? `
           <div class="inline-actions food-detail-actions">
             <button class="tiny-btn" data-action="edit-custom-food" data-id="${safeText(food.id)}">Edit</button>
-            <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${safeText(food.id)}">Duplicate</button>
             <button class="danger-btn" data-action="delete-custom-food" data-id="${safeText(food.id)}">Delete</button>
           </div>
         ` : ""}
@@ -4178,11 +4176,10 @@ function renderReportsShell() {
             <div class="report-title-row"><h3>${safeText(label)}</h3><button class="tiny-btn report-recalc-btn desktop-report-recalc" type="button" data-action="recalculate-report">Recalc</button></div>
             <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
+          <button class="tiny-btn report-recalc-btn mobile-report-recalc" type="button" data-action="recalculate-report">Recalc</button>
         </div>
         <div class="segmented report-period-tabs" aria-label="Report period">
-          ${["week", "month"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
-          <button class="tiny-btn report-recalc-btn mobile-report-recalc" type="button" data-action="recalculate-report">Recalc</button>
-          <button class="tiny-btn ${state.reportMode === "year" ? "active" : ""}" data-action="set-report-mode" data-mode="year">year</button>
+          ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
         </div>
         <div class="report-period-actions">
           <button class="ghost-btn" data-action="report-prev-period">Previous</button>
@@ -5377,6 +5374,10 @@ function renderSettingsV2() {
     if (!form.querySelector('[name="searchRegions"]:checked')) event.currentTarget.checked = true;
     updateRegionPickerSummary();
   }));
+  const regionPicker = form?.querySelector(".region-picker");
+  regionPicker?.addEventListener("toggle", () => {
+    regionPicker.closest(".settings-section")?.classList.toggle("is-region-open", regionPicker.open);
+  });
   syncMacroGoalInputs(form);
   form?.addEventListener("input", event => {
     if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
