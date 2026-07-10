@@ -275,6 +275,7 @@ const state = {
   reportCalculation: null,
   dailySummaryJobs: new Map(),
   targetDetailScroll: {},
+  settingsOpenSections: {},
   keyboardSelection: { search: -1, ingredient: -1 },
   unsubs: [],
   sync: {
@@ -1585,7 +1586,7 @@ function subscribeUserData() {
     state.settings = incoming;
     writeLocal("settings", state.settings);
     setTheme();
-    if (!snap.metadata.hasPendingWrites) renderCurrentRoute();
+    if (!snap.metadata.hasPendingWrites && state.route !== "settings") renderCurrentRoute();
   }, error => {
     console.warn("Settings snapshot failed; local cache remains active.", error);
     updateSyncStatus({ fromCache: true });
@@ -1639,7 +1640,7 @@ function subscribeLogsForCurrentDate() {
       if (state.latestDailyGoalWriteAt?.[dateISO] && localUpdatedAt && incomingUpdatedAt < localUpdatedAt) return;
       state.dailyGoals[dateISO] = incoming;
       writeLocal(`dailyGoal:${dateISO}`, state.dailyGoals[dateISO]);
-      if (!snap.metadata.hasPendingWrites && (state.route === "today" || state.route === "settings") && state.currentDate === dateISO) renderCurrentRoute();
+      if (!snap.metadata.hasPendingWrites && state.route === "today" && state.currentDate === dateISO) renderCurrentRoute();
     }
   }, error => console.warn("Daily goal snapshot failed; using local settings.", error));
   state.unsubLogs = onSnapshot(entryCollection(dateISO), { includeMetadataChanges: true }, snap => {
@@ -2450,9 +2451,6 @@ function renderFoodResultCard(food, key) {
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
         ${food.source === "custom" ? `
           <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-          <button class="tiny-btn" data-action="edit-custom-food" data-id="${food.id}">Edit</button>
-          <button class="tiny-btn mobile-hide-search-action" data-action="duplicate-custom-food" data-id="${food.id}">Duplicate</button>
-          <button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>
         ` : ""}
       </div>
     </div>
@@ -2462,6 +2460,7 @@ function renderFoodResultCard(food, key) {
 function openFoodDetailModal(food) {
   if (!food) return;
   const warnings = foodDataWarnings(food);
+  const isEditableCustomFood = food.source === "custom" && !!food.id;
   openModal(`
     <div class="modal food-detail-modal">
       <div class="modal-head"><h3>${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
@@ -2484,6 +2483,13 @@ function openFoodDetailModal(food) {
             ${buildServingOptions(food).map(serving => `<span class="badge gray">${safeText(serving.label)} = ${round(serving.grams)} g</span>`).join("")}
           </div>
         </div>
+        ${isEditableCustomFood ? `
+          <div class="inline-actions food-detail-actions">
+            <button class="tiny-btn" data-action="edit-custom-food" data-id="${safeText(food.id)}">Edit</button>
+            <button class="tiny-btn" data-action="duplicate-custom-food" data-id="${safeText(food.id)}">Duplicate</button>
+            <button class="danger-btn" data-action="delete-custom-food" data-id="${safeText(food.id)}">Delete</button>
+          </div>
+        ` : ""}
       </div>
     </div>
   `);
@@ -2570,7 +2576,8 @@ function renderFoodResult(food, key) {
       </div>
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
-        ${food.source === "custom" ? `<button class="tiny-btn" data-action="delete-custom-food" data-id="${food.id}">Delete</button>` : `<button class="tiny-btn" data-action="save-api-food" data-key="${safeText(key)}">Save</button>`}
+        <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
+        ${food.source === "custom" ? "" : `<button class="tiny-btn" data-action="save-api-food" data-key="${safeText(key)}">Save</button>`}
       </div>
     </div>
   `;
@@ -2915,9 +2922,26 @@ function bindServingAmountDefaults(form, food) {
   select?.addEventListener("change", applyDefault);
 }
 
+function preferredServingOptionIndex(servingOptions = []) {
+  const preferred = servingOptions.findIndex(option => {
+    const label = normalizeSearchText(servingDisplayName(option));
+    return option?.mode !== "grams" && label !== "100 g";
+  });
+  return preferred >= 0 ? preferred : 0;
+}
+
+function kcalAmountBadgeHTML(nutrients) {
+  const n = normalizeNutrients(nutrients);
+  return `
+    <div class="amount-kcal-row">
+      <span class="badge kcal amount-kcal-badge">${round(n.kcal, 0)} kcal</span>
+    </div>
+  `;
+}
+
 function macroAmountPreviewHTML(nutrients) {
   const n = normalizeNutrients(nutrients);
-  return `${nutrientSummaryHTML(n)}${macroSplitSummaryHTML(n)}`;
+  return `${kcalAmountBadgeHTML(n)}${macroSplitSummaryHTML(n)}`;
 }
 
 function openLogFoodModal(food) {
@@ -2925,7 +2949,8 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
-  const defaultSelected = servingOptions[0] || { mode: "grams", grams: 1 };
+  const defaultUnitIndex = preferredServingOptionIndex(servingOptions);
+  const defaultSelected = servingOptions[defaultUnitIndex] || servingOptions[0] || { mode: "grams", grams: 1 };
   const defaultAmount = defaultSelected.mode === "grams" ? 100 : 1;
   const defaultGrams = defaultSelected.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected.grams, 1);
   const defaultMeal = state.defaultLogMeal || "breakfast";
@@ -2938,7 +2963,7 @@ function openLogFoodModal(food) {
           <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex">
-              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultUnitIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
           <label>Meal
@@ -3497,8 +3522,10 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const defaultAmount = isRecipePortion ? 1 : (servingOptions[0]?.mode === "grams" ? 100 : 1);
-  const defaultGrams = isRecipePortion ? null : (servingOptions[0]?.mode === "grams" ? defaultAmount : defaultAmount * number(servingOptions[0]?.grams, 1));
+  const defaultUnitIndex = isRecipePortion ? 0 : preferredServingOptionIndex(servingOptions);
+  const defaultSelected = servingOptions[defaultUnitIndex] || servingOptions[0];
+  const defaultAmount = isRecipePortion ? 1 : (defaultSelected?.mode === "grams" ? 100 : 1);
+  const defaultGrams = isRecipePortion ? null : (defaultSelected?.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected?.grams, 1));
   openModal(`
     <div class="modal amount-selector-modal">
       <div class="modal-head">
@@ -3510,7 +3537,7 @@ function openIngredientAmountModal(food, kind, id) {
           <label>${isRecipePortion ? "Portions" : "Amount"}<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex" ${isRecipePortion ? "disabled" : ""}>
-              ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
+              ${servingOptions.map((s, idx) => `<option value="${idx}" ${idx === defaultUnitIndex ? "selected" : ""}>${safeText(servingDisplayName(s))}</option>`).join("")}
             </select>
           </label>
         </div>
@@ -5197,9 +5224,32 @@ function renderSettingsV2() {
     <button class="primary-btn macro-save-normalize-btn ${placement}-macro-save" type="button" data-action="save-normalize-macro-goals">Save + balance macros</button>
   `;
 
-  const selectedRegions = new Set(selectedSearchRegionValues(appPrefs));
-  const settingsSection = (title, className, body, open = false) => `
-    <details class="card settings-section ${className}" ${open ? "open" : ""}>
+  const selectedRegionValues = selectedSearchRegionValues(appPrefs);
+  const selectedRegions = new Set(selectedRegionValues);
+  const regionSummary = selectedRegionValues
+    .map(value => SEARCH_REGIONS.find(([regionValue]) => regionValue === value)?.[1] || value)
+    .join(", ");
+  const regionPickerHTML = `
+    <div class="preference-control region-control">
+      <span class="label-row">Search region</span>
+      <details class="region-picker">
+        <summary>
+          <span>${safeText(regionSummary || "World / global")}</span>
+          <small>${selectedRegionValues.length} selected</small>
+        </summary>
+        <div class="region-picker-menu">
+          ${SEARCH_REGIONS.map(([value, label]) => `
+            <label class="region-option">
+              <input type="checkbox" name="searchRegions" value="${safeText(value)}" ${selectedRegions.has(value) ? "checked" : ""} />
+              <span>${safeText(label)}</span>
+            </label>
+          `).join("")}
+        </div>
+      </details>
+    </div>
+  `;
+  const settingsSection = (sectionId, title, className, body) => `
+    <details class="card settings-section ${className}" data-settings-section="${safeText(sectionId)}" ${state.settingsOpenSections[sectionId] ? "open" : ""}>
       <summary class="settings-section-summary">
         <span>${safeText(title)}</span>
       </summary>
@@ -5211,12 +5261,8 @@ function renderSettingsV2() {
 
   els.pages.settings.innerHTML = `
     <form id="settingsForm" class="stack">
-      ${settingsSection("Macro goals", "macro-settings-card", `
-        <div class="meal-head">
-          <div>
-            <h3>Macro goals</h3>
-            <p>Targets are saved for the selected Diary date, so older days keep their original goal.</p>
-          </div>
+      ${settingsSection("macro", "Macro goals", "macro-settings-card", `
+        <div class="settings-toolbar macro-settings-toolbar">
           <div class="macro-mode-actions">
             <div class="segmented" aria-label="Macro input mode">
               <button type="button" class="tiny-btn ${macroMode === "manual" ? "active" : ""}" data-action="set-macro-mode" data-mode="manual">grams</button>
@@ -5235,21 +5281,16 @@ function renderSettingsV2() {
           ${macroGoalCard("fat", "Fat", macroGoals.fatGoal, macroPercents.fat, "fat") }
         </div>
         ${saveMacroButton("mobile")}
-      `, true)}
+      `)}
 
-      ${settingsSection("App preferences", "preferences-card", `
-        <h3>App preferences</h3>
+      ${settingsSection("preferences", "App preferences", "preferences-card", `
         <div class="form-grid">
           ${preferenceControl("Theme", `
             <select name="theme">
               ${["system", "light", "dark"].map(v => `<option value="${v}" ${appPrefs.theme === v ? "selected" : ""}>${v}</option>`).join("")}
             </select>
           `)}
-          ${preferenceControl("Search region", `
-            <select name="searchRegions" multiple size="7" class="multi-select">
-              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${selectedRegions.has(value) ? "selected" : ""}>${label}</option>`).join("")}
-            </select>
-          `)}
+          ${regionPickerHTML}
           ${preferenceControl("Database preference", `
             <select name="databasePreference">
               ${[
@@ -5262,8 +5303,7 @@ function renderSettingsV2() {
         </div>
       `)}
 
-      ${settingsSection("Micro goals", "", `
-        <h3>Micro goals</h3>
+      ${settingsSection("micro", "Micro goals", "", `
         <div class="form-grid">
           ${microKeys.map(key => {
             const value = key === "fiber" ? s.fiberGoal
@@ -5280,12 +5320,8 @@ function renderSettingsV2() {
         </div>
       `)}
 
-      ${settingsSection("Data and sync", "sync-panel", `
-        <div class="meal-head">
-          <div>
-            <h3>Data and sync</h3>
-            <p>${safeText(els.syncStatus?.textContent || "Offline")} with Firebase and local offline data.</p>
-          </div>
+      ${settingsSection("sync", "Data and sync", "sync-panel", `
+        <div class="settings-toolbar">
           <span class="status-chip ${state.sync.status}">${safeText(els.syncStatus?.textContent || "Offline")}</span>
         </div>
         <div class="inline-actions">
@@ -5311,11 +5347,7 @@ function renderSettingsV2() {
         <p class="form-message" id="settingsSaveMessage"></p>
       `)}
 
-      ${settingsSection("Exports", "export-panel", `
-        <div>
-          <h3>Exports</h3>
-          <p>Regular exports are separated from backup import/export.</p>
-        </div>
+      ${settingsSection("exports", "Exports", "export-panel", `
         <div class="export-grid">
           <div class="export-action"><button class="secondary-btn" type="button" data-action="export-full-csv">Full CSV</button>${infoButton("Exports every logged item in the selected report period with meal, amount, macros, sodium, and source.")}</div>
           <div class="export-action"><button class="secondary-btn" type="button" data-action="export-calories-csv">Calories CSV</button>${infoButton("Exports one row per day with total calories only. Useful for other apps that only need kcal totals.")}</div>
@@ -5325,6 +5357,26 @@ function renderSettingsV2() {
     </form>
   `;
   const form = document.getElementById("settingsForm");
+  form?.querySelectorAll(".settings-section").forEach(section => {
+    section.addEventListener("toggle", () => {
+      const sectionId = section.dataset.settingsSection;
+      if (sectionId) state.settingsOpenSections[sectionId] = section.open;
+    });
+  });
+  const updateRegionPickerSummary = () => {
+    const regionPicker = form?.querySelector(".region-picker");
+    if (!regionPicker) return;
+    const checked = [...form.querySelectorAll('[name="searchRegions"]:checked')];
+    const labels = checked.map(input => input.closest(".region-option")?.querySelector("span")?.textContent?.trim()).filter(Boolean);
+    const labelEl = regionPicker.querySelector("summary span");
+    const countEl = regionPicker.querySelector("summary small");
+    if (labelEl) labelEl.textContent = labels.join(", ") || "World / global";
+    if (countEl) countEl.textContent = `${Math.max(1, labels.length)} selected`;
+  };
+  form?.querySelectorAll('[name="searchRegions"]').forEach(input => input.addEventListener("change", event => {
+    if (!form.querySelector('[name="searchRegions"]:checked')) event.currentTarget.checked = true;
+    updateRegionPickerSummary();
+  }));
   syncMacroGoalInputs(form);
   form?.addEventListener("input", event => {
     if (event.target.matches('[name="calorieGoal"], [data-macro-gram], [data-macro-percent]')) syncMacroGoalInputs(form, event.target);
@@ -6473,7 +6525,11 @@ async function handleClick(event) {
     if (action === "toggle-favorite-food") await toggleFavoriteFood(btn.dataset.id);
     if (action === "edit-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id));
     if (action === "duplicate-custom-food") openCustomFoodEditor(state.customFoods.find(food => food.id === btn.dataset.id), true);
-    if (action === "delete-custom-food" && confirm("Delete this custom food?")) await deleteDoc(userDoc("customFoods", btn.dataset.id));
+    if (action === "delete-custom-food" && confirm("Delete this custom food?")) {
+      await deleteDoc(userDoc("customFoods", btn.dataset.id));
+      if (btn.closest(".modal")) closeModal();
+      showToast("Custom food deleted.");
+    }
     if (action === "delete-entry") {
       await deleteDoc(entryDoc(btn.dataset.id));
       await updateDailyCalorieSummary(state.currentDate).catch(console.warn);

@@ -981,8 +981,7 @@ body.auth-active #appView {
   font-size: 1.05rem;
 }
 .preferences-card {
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
 }
 .preferences-card .form-grid {
   grid-template-columns: repeat(3, minmax(210px, 1fr));
@@ -3243,6 +3242,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .mobile-report-recalc {
   display: none;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  border-color: rgba(20, 184, 166, .44);
+  background: linear-gradient(135deg, #0f766e, #2563eb);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, .18);
 }
 .report-calc-progress {
   display: grid;
@@ -3286,6 +3291,25 @@ input[type="number"]::-webkit-inner-spin-button {
   }
   .mobile-report-recalc {
     display: inline-flex;
+  }
+  .report-period-card .report-period-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    justify-self: stretch;
+  }
+  .report-period-card .report-period-tabs .mobile-report-recalc {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .report-period-card .report-period-tabs [data-mode="year"] {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .report-period-card .report-period-tabs .tiny-btn {
+    justify-content: center;
+    min-height: 40px;
   }
 }
 
@@ -3332,7 +3356,7 @@ input[type="number"]::-webkit-inner-spin-button {
 /* Collapsible settings sections and multi-region search */
 .settings-section {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .settings-section-summary {
   display: flex;
@@ -3365,13 +3389,106 @@ input[type="number"]::-webkit-inner-spin-button {
   gap: 14px;
   padding: 0 18px 18px;
 }
-.settings-section-body > h3:first-child,
-.settings-section-body > div:first-child > h3:first-child {
-  margin-top: 0;
+.settings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
-.multi-select {
-  min-height: 148px;
+.macro-settings-toolbar {
+  justify-content: flex-end;
+}
+.preference-control {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: .9rem;
+}
+.region-picker {
+  position: relative;
+}
+.region-picker summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-solid);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+  list-style: none;
+}
+.region-picker summary::-webkit-details-marker {
+  display: none;
+}
+.region-picker summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.region-picker summary small {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.region-picker-menu {
+  position: absolute;
+  z-index: 14;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 4px;
+  max-height: min(320px, 56vh);
   overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow);
+}
+.region-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-weight: 850;
+}
+.region-option:hover {
+  background: rgba(20, 184, 166, .08);
+}
+.region-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+.amount-kcal-row {
+  display: flex;
+  justify-content: center;
+}
+.amount-kcal-badge {
+  min-height: 34px;
+  padding: 7px 13px;
+  font-size: 1.1rem;
+  line-height: 1;
+  font-weight: 950;
+}
+
+@media (max-width: 560px) {
+  .amount-kcal-badge {
+    min-height: 36px;
+    font-size: 1.16rem;
+  }
 }
 
 /* Data model maintenance */
@@ -3413,12 +3530,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 @media (max-width: 980px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.42rem;
+    font-size: 1.62rem;
   }
 }
 @media (max-width: 560px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.18rem;
+    font-size: 1.44rem;
   }
 }
 
