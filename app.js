@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS = {
   theme: "system",
   accent: "teal",
   searchRegion: "world",
+  searchRegions: ["world"],
   databasePreference: "custom-first",
   dashboardDensity: "comfortable",
   macroGoalMode: "manual",
@@ -524,6 +525,15 @@ function hydrateUserCache(uid) {
 function mergeSettings(raw = {}) {
   const source = raw || {};
   const merged = { ...structuredClone(DEFAULT_SETTINGS), ...source };
+  const validRegions = new Set(SEARCH_REGIONS.map(([value]) => value));
+  const requestedRegions = Array.isArray(source.searchRegions)
+    ? source.searchRegions
+    : String(source.searchRegion || DEFAULT_SETTINGS.searchRegion).split(",");
+  merged.searchRegions = requestedRegions
+    .map(value => String(value || "").trim())
+    .filter(value => validRegions.has(value));
+  if (!merged.searchRegions.length) merged.searchRegions = [...DEFAULT_SETTINGS.searchRegions];
+  merged.searchRegion = merged.searchRegions[0] || DEFAULT_SETTINGS.searchRegion;
   merged.modules = { ...DEFAULT_SETTINGS.modules, ...(source.modules || {}) };
   merged.nutrientVisibility = { ...DEFAULT_SETTINGS.nutrientVisibility, ...(source.nutrientVisibility || {}) };
   merged.micronutrientGoals = { ...structuredClone(MICRO_DEFAULTS), ...(source.micronutrientGoals || {}) };
@@ -2048,8 +2058,22 @@ function addRecentSearch(queryText) {
   markSearchStateSaved();
 }
 
+function selectedSearchRegionValues(settings = state.settings) {
+  const valid = new Set(SEARCH_REGIONS.map(([value]) => value));
+  const requested = Array.isArray(settings.searchRegions)
+    ? settings.searchRegions
+    : String(settings.searchRegion || "world").split(",");
+  const values = requested.map(value => String(value || "").trim()).filter(value => valid.has(value));
+  return values.length ? values : ["world"];
+}
+
+function selectedOpenFoodFactsHosts(settings = state.settings) {
+  const byRegion = new Map(SEARCH_REGIONS.map(([value, label, host]) => [value, host]));
+  return [...new Set(selectedSearchRegionValues(settings).map(value => byRegion.get(value)).filter(Boolean))];
+}
+
 function openFoodFactsHost() {
-  return SEARCH_REGIONS.find(([value]) => value === state.settings.searchRegion)?.[2] || "world.openfoodfacts.org";
+  return selectedOpenFoodFactsHosts()[0] || "world.openfoodfacts.org";
 }
 
 function mergeFoodResults(localResults, apiResults, queryText = "") {
@@ -2590,10 +2614,10 @@ async function getOpenFoodFactsByBarcode(barcode) {
   showToast(`Found ${displayFoodName(food)}.`);
 }
 
-async function fetchOpenFoodFacts(queryText) {
+async function fetchOpenFoodFactsFromHost(queryText, host) {
   const queryTextTrimmed = queryText.trim();
   if (!queryTextTrimmed) return [];
-  const url = new URL(`https://${openFoodFactsHost()}/cgi/search.pl`);
+  const url = new URL(`https://${host || openFoodFactsHost()}/cgi/search.pl`);
   url.searchParams.set("search_terms", queryTextTrimmed);
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
@@ -2608,6 +2632,21 @@ async function fetchOpenFoodFacts(queryText) {
     .filter(Boolean)
     .filter(food => foodHasUsableNutrients(food))
     .slice(0, API_SEARCH_RESULT_LIMIT);
+}
+
+async function fetchOpenFoodFacts(queryText) {
+  const hosts = selectedOpenFoodFactsHosts();
+  const resultsByHost = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
+  const foods = resultsByHost.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  if (!foods.length && resultsByHost.some(result => result.status === "rejected")) {
+    throw resultsByHost.find(result => result.status === "rejected").reason;
+  }
+  const seen = new Map();
+  for (const food of foods) {
+    const key = foodIdentity(food);
+    if (!seen.has(key)) seen.set(key, food);
+  }
+  return [...seen.values()].slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
 async function runFoodSearch(queryText, options = {}) {
@@ -2696,13 +2735,23 @@ async function lookupBarcodeCached(barcode, options = {}) {
     return cached;
   }
   if (!navigator.onLine) throw new Error("No offline barcode result is available.");
-  const url = `https://${openFoodFactsHost()}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
-  if (!res.ok) throw new Error("Barcode lookup failed.");
-  const data = await res.json();
-  if (!data.product) throw new Error("No product found for this barcode.");
-  const food = normalizeOpenFoodFactsProduct(data.product);
-  if (!food) throw new Error("Product found, but nutrition data is incomplete.");
+  let food = null;
+  let lastError = null;
+  for (const host of selectedOpenFoodFactsHosts()) {
+    try {
+      const url = `https://${host}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("Barcode lookup failed.");
+      const data = await res.json();
+      if (!data.product) continue;
+      food = normalizeOpenFoodFactsProduct(data.product);
+      if (food) break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!food && lastError) throw lastError;
+  if (!food) throw new Error("No usable product found for this barcode.");
   setCachedBarcode(cleanBarcode, food);
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
@@ -2866,11 +2915,19 @@ function bindServingAmountDefaults(form, food) {
   select?.addEventListener("change", applyDefault);
 }
 
+function macroAmountPreviewHTML(nutrients) {
+  const n = normalizeNutrients(nutrients);
+  return `${nutrientSummaryHTML(n)}${macroSplitSummaryHTML(n)}`;
+}
+
 function openLogFoodModal(food) {
   if (!food) return;
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
+  const defaultSelected = servingOptions[0] || { mode: "grams", grams: 1 };
+  const defaultAmount = defaultSelected.mode === "grams" ? 100 : 1;
+  const defaultGrams = defaultSelected.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected.grams, 1);
   const defaultMeal = state.defaultLogMeal || "breakfast";
   const defaultDate = state.defaultLogDate || state.currentDate;
   openModal(`
@@ -2878,7 +2935,7 @@ function openLogFoodModal(food) {
       <div class="modal-head"><h3>Log ${safeText(displayFoodName(food))}</h3><button class="close-btn" data-action="close-modal">x</button></div>
       <form id="logFoodForm" class="modal-body" data-food-key="${safeText(foodKey)}">
         <div class="form-grid two">
-          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="100" required /></label>
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${defaultAmount}" required /></label>
           <label>Unit
             <select name="unitIndex">
               ${servingOptions.map((s, idx) => `<option value="${idx}">${safeText(servingDisplayName(s))}</option>`).join("")}
@@ -2889,6 +2946,9 @@ function openLogFoodModal(food) {
           </label>
           <label>Date<input name="date" type="date" value="${defaultDate}" /></label>
         </div>
+        <div id="logFoodAmountPreview" class="amount-preview">
+          ${macroAmountPreviewHTML(scaleNutrients(foodNutrientsPer100g(food), defaultGrams / 100))}
+        </div>
         <p class="kicker">${safeText(caloriesText(food))}</p>
         <div class="form-actions"><button class="primary-btn" type="submit">Add to day</button></div>
       </form>
@@ -2896,6 +2956,16 @@ function openLogFoodModal(food) {
   `);
   const form = document.getElementById("logFoodForm");
   bindServingAmountDefaults(form, food);
+  const preview = document.getElementById("logFoodAmountPreview");
+  const updatePreview = () => {
+    const data = new FormData(form);
+    const amount = number(data.get("amount"), defaultAmount);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const grams = selected?.mode === "grams" ? amount : amount * number(selected?.grams, 1);
+    if (preview) preview.innerHTML = macroAmountPreviewHTML(scaleNutrients(foodNutrientsPer100g(food), grams / 100));
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", updatePreview);
   requestAnimationFrame(() => {
     form?.elements.amount?.focus();
     form?.elements.amount?.select?.();
@@ -3904,12 +3974,21 @@ function openLogRecipeModal(recipe, returnTarget = null) {
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
-        ${targetDetailSummaryHTML(perPortion, "per portion")}
+        <div id="logRecipeAmountPreview">
+          ${targetDetailSummaryHTML(perPortion, "selected amount")}
+        </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Log recipe</button></div>
       </form>
     </div>
   `);
-  document.getElementById("logRecipeForm").addEventListener("submit", async event => {
+  const form = document.getElementById("logRecipeForm");
+  const preview = document.getElementById("logRecipeAmountPreview");
+  const updatePreview = () => {
+    const amount = number(form?.elements.amount?.value, 1);
+    if (preview) preview.innerHTML = targetDetailSummaryHTML(scaleNutrients(perPortion, amount), "selected amount");
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
@@ -3950,12 +4029,21 @@ function openLogMealsetModal(mealset, returnTarget = null) {
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
           <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
         </div>
-        ${targetDetailSummaryHTML(total, "per mealset")}
+        <div id="logMealsetAmountPreview">
+          ${targetDetailSummaryHTML(total, "selected amount")}
+        </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Log mealset</button></div>
       </form>
     </div>
   `);
-  document.getElementById("logMealsetForm").addEventListener("submit", async event => {
+  const form = document.getElementById("logMealsetForm");
+  const preview = document.getElementById("logMealsetAmountPreview");
+  const updatePreview = () => {
+    const amount = number(form?.elements.amount?.value, 1);
+    if (preview) preview.innerHTML = targetDetailSummaryHTML(scaleNutrients(total, amount), "selected amount");
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const amount = number(data.get("amount"), 1);
@@ -4060,12 +4148,14 @@ function renderReportsShell() {
       <div class="card report-period-card">
         <div class="report-period-head">
           <div class="report-period-title">
-            <div class="report-title-row"><h3>${safeText(label)}</h3><button class="tiny-btn report-recalc-btn" type="button" data-action="recalculate-report">Recalc</button></div>
+            <div class="report-title-row"><h3>${safeText(label)}</h3><button class="tiny-btn report-recalc-btn desktop-report-recalc" type="button" data-action="recalculate-report">Recalc</button></div>
             <span class="report-date-range"><span>${safeText(start)}</span><span class="range-separator">to</span><span>${safeText(end)}</span></span>
           </div>
         </div>
         <div class="segmented report-period-tabs" aria-label="Report period">
-          ${["week", "month", "year"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
+          ${["week", "month"].map(mode => `<button class="tiny-btn ${state.reportMode === mode ? "active" : ""}" data-action="set-report-mode" data-mode="${mode}">${mode}</button>`).join("")}
+          <button class="tiny-btn report-recalc-btn mobile-report-recalc" type="button" data-action="recalculate-report">Recalc</button>
+          <button class="tiny-btn ${state.reportMode === "year" ? "active" : ""}" data-action="set-report-mode" data-mode="year">year</button>
         </div>
         <div class="report-period-actions">
           <button class="ghost-btn" data-action="report-prev-period">Previous</button>
@@ -4268,7 +4358,7 @@ async function reportGoalForDate(dateISO, fallbackGoal = null, options = {}) {
 
 async function buildReportDayData(dateISO, options = {}) {
   assertReportCalculationActive(options.signal);
-  const summary = await readDailySummaryForReport(dateISO);
+  const summary = options.force ? null : await readDailySummaryForReport(dateISO);
   assertReportCalculationActive(options.signal);
   if (summary) {
     const dayHasFood = hasReportFoodData(summary);
@@ -4545,42 +4635,45 @@ function renderReportPagination(table, pageData) {
   `;
 }
 
+function reportMetricDates(activeDates = [], allDates = []) {
+  const baseDates = activeDates.length ? activeDates : allDates;
+  const today = todayISO();
+  return baseDates.filter(dateISO => dateISO !== today);
+}
 
 function renderReportOutput(start, end, entries, reportData = null) {
   const sourceData = reportData ? normalizeReportData(reportData) : null;
   if (sourceData) applyReportGoalsFromData(sourceData);
   const dates = sourceData?.dates || dateRange(start, end);
   const activeDates = sourceData?.activeDates || reportActiveDates(entries, dates);
-  const activeDays = Math.max(1, number(sourceData?.activeDayCount) || activeDates.length);
-  const total = normalizeNutrients(sourceData?.total || addNutrients(entries));
-  const avg = scaleNutrients(total, 1 / activeDays);
-  const macro = macroCalories(total);
+  const allActiveDays = Math.max(1, number(sourceData?.activeDayCount) || activeDates.length);
   const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
+  const metricDates = reportMetricDates(activeDates, dates);
+  const metricDays = Math.max(1, metricDates.length);
+  const metricTotal = normalizeNutrients(addNutrients(metricDates.map(dateISO => ({ nutrientsSnapshot: byDate[dateISO] || emptyNutrients() }))));
+  const avg = scaleNutrients(metricTotal, 1 / metricDays);
+  const macro = macroCalories(metricTotal);
   const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
   const foodRows = foodFrequencyRowsFromFlatRows(filteredFlatRows);
   const topRows = sortReportRows(foodRows, "topSources");
   const frequencyRows = sortReportRows(foodRows, "frequency");
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
-  const avgGoals = sourceData?.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, sourceData?.goalsByDate || null);
-  const loggedDayCount = number(sourceData?.activeDayCount) || activeDates.length;
-  const hasStoredTargetCaloriesTotal = sourceData?.targetCaloriesTotal !== undefined && sourceData?.targetCaloriesTotal !== null;
-  const targetDatesForDeficit = activeDates.length ? activeDates : [];
-  const targetCaloriesTotal = hasStoredTargetCaloriesTotal
-    ? number(sourceData.targetCaloriesTotal)
-    : (sourceData?.mode === "year" && sourceData?.chartData
-      ? reportTargetCaloriesTotalFromChart(sourceData.chartData)
-      : reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {}));
-  const calorieDeficit = targetCaloriesTotal - total.kcal;
-  const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}`;
+  const avgGoals = reportGoalAverages(start, end, metricDates, sourceData?.goalsByDate || null);
+  const loggedDayCount = metricDates.length;
+  const targetDatesForDeficit = metricDates.length ? metricDates : [];
+  const targetCaloriesTotal = reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {});
+  const calorieDeficit = targetCaloriesTotal - metricTotal.kcal;
+  const currentDayExcluded = (activeDates.length ? activeDates : dates).includes(todayISO()) && !metricDates.includes(todayISO());
+  const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}${currentDayExcluded ? ", today excluded" : ""}`;
   const output = document.getElementById("reportOutput");
   output.innerHTML = `
     <div class="grid-4 report-metrics-grid">
       ${metricCard("Average kcal/day", `${round(avg.kcal, 0)} kcal`, `target ${round(avgGoals.calorieGoal, 0)} kcal/day - ${loggedDayLabel}`, goalStatus(avg.kcal, avgGoals.calorieGoal, "max"), `target ${round(avgGoals.calorieGoal, 0)}`)}
-      ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(total.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
+      ${metricCard("Average protein", `${round(avg.protein)} g`, `target ${round(avgGoals.proteinGoal)} g/day - ${round(metricTotal.protein)} g total`, goalStatus(avg.protein, avgGoals.proteinGoal, "min"), `target ${round(avgGoals.proteinGoal)}g`)}
       ${metricCardHTML("Macro split", `<span class="macro-split-metric"><span class="split-segment ${avg.protein > avgGoals.proteinGoal ? "over" : ""}">${round(macro.proteinPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.carbs > avgGoals.carbsGoal ? "over" : ""}">${round(macro.carbsPct, 0)}</span><span class="split-separator"> / </span><span class="split-segment ${avg.fat > avgGoals.fatGoal ? "over" : ""}">${round(macro.fatPct, 0)}</span><span class="split-unit">%</span></span>`, `avg ${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F g`, "neutral", `${round(avg.protein)}P / ${round(avg.carbs)}C / ${round(avg.fat)}F`)}
-      ${metricCard("Kcal deficit", `${round(calorieDeficit, 0)} kcal`, `target ${round(targetCaloriesTotal, 0)} kcal - eaten ${round(total.kcal, 0)} kcal - ${loggedDayLabel}`, goalStatus(total.kcal, targetCaloriesTotal, "max"), `target ${round(targetCaloriesTotal, 0)}`)}
+      ${metricCard("Kcal deficit", `${round(calorieDeficit, 0)} kcal`, `target ${round(targetCaloriesTotal, 0)} kcal - eaten ${round(metricTotal.kcal, 0)} kcal - ${loggedDayLabel}`, goalStatus(metricTotal.kcal, targetCaloriesTotal, "max"), `target ${round(targetCaloriesTotal, 0)}`)}
     </div>
 
     <div class="grid-2">
@@ -4612,7 +4705,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
         <table class="report-table">
           <thead><tr><th>${reportSortButton("frequency", "name", "Food")}</th><th>${reportSortButton("frequency", "count", state.reportFrequencyMode === "avg" ? "Times/day" : "Times")}</th><th>${reportSortButton("frequency", "grams", state.reportFrequencyMode === "avg" ? "Amount/day" : "Total amount")}</th><th>${reportSortButton("frequency", "kcal", state.reportFrequencyMode === "avg" ? "kcal/day" : "Total kcal")}</th></tr></thead>
           <tbody>${frequencyPage.rows.length ? frequencyPage.rows.map(row => {
-            const factor = state.reportFrequencyMode === "avg" ? 1 / activeDays : 1;
+            const factor = state.reportFrequencyMode === "avg" ? 1 / allActiveDays : 1;
             return `<tr><td>${safeText(row.name)}</td><td>${round(row.count * factor, state.reportFrequencyMode === "avg" ? 2 : 0)}</td><td>${round(row.grams * factor, 0)} g</td><td>${round(row.kcal * factor, 0)}</td></tr>`;
           }).join("") : `<tr><td colspan="4">No entries in this range.</td></tr>`}</tbody>
         </table>
@@ -4631,7 +4724,7 @@ function renderReportOutput(start, end, entries, reportData = null) {
       <div class="table-wrap">
         <table class="report-table">
           <thead><tr><th>${reportSortButton("micros", "name", "Nutrient")}</th><th>${reportSortButton("micros", "consumed", state.reportMicroMode === "avg" ? "Avg consumed" : "Consumed")}</th><th>${reportSortButton("micros", "target", state.reportMicroMode === "avg" ? "Daily guidance" : "Period guidance")}</th><th>${reportSortButton("micros", "diff", "Difference")}</th></tr></thead>
-          <tbody>${renderMicroRows(total, activeDays)}</tbody>
+          <tbody>${renderMicroRows(metricTotal, metricDays)}</tbody>
         </table>
       </div>
     </div>
@@ -5032,6 +5125,8 @@ function renderSettings() {
 async function saveSettings(event) {
   event.preventDefault();
   const data = new FormData(event.currentTarget);
+  const searchRegions = data.getAll("searchRegions").map(value => String(value)).filter(Boolean);
+  const searchRegion = searchRegions[0] || String(data.get("searchRegion") || "world");
   const next = {
     ...state.settings,
     calorieGoal: number(data.get("calorieGoal"), state.settings.calorieGoal),
@@ -5043,7 +5138,8 @@ async function saveSettings(event) {
     sodiumMax: number(data.get("sodiumMax"), state.settings.sodiumMax),
     saltMax: number(data.get("saltMax"), state.settings.saltMax),
     theme: String(data.get("theme") || "system"),
-    searchRegion: String(data.get("searchRegion") || "world"),
+    searchRegion,
+    searchRegions: searchRegions.length ? searchRegions : [searchRegion],
     modules: { ...state.settings.modules }
   };
   Object.keys(next.modules).forEach(key => next.modules[key] = data.get(`module_${key}`) === "true");
@@ -5101,9 +5197,21 @@ function renderSettingsV2() {
     <button class="primary-btn macro-save-normalize-btn ${placement}-macro-save" type="button" data-action="save-normalize-macro-goals">Save + balance macros</button>
   `;
 
+  const selectedRegions = new Set(selectedSearchRegionValues(appPrefs));
+  const settingsSection = (title, className, body, open = false) => `
+    <details class="card settings-section ${className}" ${open ? "open" : ""}>
+      <summary class="settings-section-summary">
+        <span>${safeText(title)}</span>
+      </summary>
+      <div class="settings-section-body">
+        ${body}
+      </div>
+    </details>
+  `;
+
   els.pages.settings.innerHTML = `
     <form id="settingsForm" class="stack">
-      <div class="card macro-settings-card">
+      ${settingsSection("Macro goals", "macro-settings-card", `
         <div class="meal-head">
           <div>
             <h3>Macro goals</h3>
@@ -5127,9 +5235,9 @@ function renderSettingsV2() {
           ${macroGoalCard("fat", "Fat", macroGoals.fatGoal, macroPercents.fat, "fat") }
         </div>
         ${saveMacroButton("mobile")}
-      </div>
+      `, true)}
 
-      <div class="card preferences-card">
+      ${settingsSection("App preferences", "preferences-card", `
         <h3>App preferences</h3>
         <div class="form-grid">
           ${preferenceControl("Theme", `
@@ -5138,8 +5246,8 @@ function renderSettingsV2() {
             </select>
           `)}
           ${preferenceControl("Search region", `
-            <select name="searchRegion">
-              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${appPrefs.searchRegion === value ? "selected" : ""}>${label}</option>`).join("")}
+            <select name="searchRegions" multiple size="7" class="multi-select">
+              ${SEARCH_REGIONS.map(([value, label]) => `<option value="${value}" ${selectedRegions.has(value) ? "selected" : ""}>${label}</option>`).join("")}
             </select>
           `)}
           ${preferenceControl("Database preference", `
@@ -5152,9 +5260,9 @@ function renderSettingsV2() {
             </select>
           `)}
         </div>
-      </div>
+      `)}
 
-      <div class="card">
+      ${settingsSection("Micro goals", "", `
         <h3>Micro goals</h3>
         <div class="form-grid">
           ${microKeys.map(key => {
@@ -5170,9 +5278,9 @@ function renderSettingsV2() {
             `;
           }).join("")}
         </div>
-      </div>
+      `)}
 
-      <div class="card stack sync-panel">
+      ${settingsSection("Data and sync", "sync-panel", `
         <div class="meal-head">
           <div>
             <h3>Data and sync</h3>
@@ -5201,9 +5309,9 @@ function renderSettingsV2() {
           <small id="dataModelMigrationDetail">This keeps nutrient snapshots but removes bulky duplicate item snapshots.</small>
         </div>
         <p class="form-message" id="settingsSaveMessage"></p>
-      </div>
+      `)}
 
-      <div class="card stack export-panel">
+      ${settingsSection("Exports", "export-panel", `
         <div>
           <h3>Exports</h3>
           <p>Regular exports are separated from backup import/export.</p>
@@ -5213,7 +5321,7 @@ function renderSettingsV2() {
           <div class="export-action"><button class="secondary-btn" type="button" data-action="export-calories-csv">Calories CSV</button>${infoButton("Exports one row per day with total calories only. Useful for other apps that only need kcal totals.")}</div>
           <div class="export-action"><button class="ghost-btn" type="button" data-action="export-calories-json">Calories JSON</button>${infoButton("Exports the same daily calorie totals as JSON for app-to-app integrations.")}</div>
         </div>
-      </div>
+      `)}
     </form>
   `;
   const form = document.getElementById("settingsForm");
@@ -5269,6 +5377,8 @@ function syncMacroGoalInputs(form, changed = null) {
 function collectSettingsFromForm(form, options = {}) {
   if (options.sync !== false) syncMacroGoalInputs(form);
   const data = new FormData(form);
+  const searchRegions = data.getAll("searchRegions").map(value => String(value)).filter(Boolean);
+  const searchRegion = searchRegions[0] || String(data.get("searchRegion") || state.settings.searchRegion || "world");
   const next = {
     ...state.settings,
     calorieGoal: number(data.get("calorieGoal"), state.settings.calorieGoal),
@@ -5280,7 +5390,8 @@ function collectSettingsFromForm(form, options = {}) {
     sodiumMax: number(data.get("micro_sodium_target"), state.settings.sodiumMax),
     saltMax: round(number(data.get("micro_sodium_target"), state.settings.sodiumMax) / 400, 2),
     theme: String(data.get("theme") || "system"),
-    searchRegion: String(data.get("searchRegion") || "world"),
+    searchRegion,
+    searchRegions: searchRegions.length ? searchRegions : [searchRegion],
     databasePreference: String(data.get("databasePreference") || "custom-first"),
     dashboardDensity: "comfortable",
     macroGoalMode: String(data.get("macroGoalMode") || "manual"),
@@ -6146,11 +6257,22 @@ async function editEntry(id) {
       <form id="editEntryForm" class="modal-body">
         <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
         <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <div id="editEntryAmountPreview" class="amount-preview">
+          ${macroAmountPreviewHTML(entry.nutrientsSnapshot)}
+        </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
       </form>
     </div>
   `);
-  document.getElementById("editEntryForm").addEventListener("submit", async event => {
+  const form = document.getElementById("editEntryForm");
+  const preview = document.getElementById("editEntryAmountPreview");
+  const updatePreview = () => {
+    const newAmount = number(form?.elements.amount?.value, entry.amount);
+    const factor = entry.amount ? newAmount / entry.amount : 1;
+    if (preview) preview.innerHTML = macroAmountPreviewHTML(scaleNutrients(entry.nutrientsSnapshot, factor));
+  };
+  form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const newAmount = number(data.get("amount"), entry.amount);
@@ -6363,9 +6485,10 @@ async function handleClick(event) {
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
       const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
+      const useDesktopPairs = !window.matchMedia("(max-width: 980px)").matches;
       const nextCollapsed = state.collapsedMeals[meal] === false;
       state.collapsedMeals[meal] = nextCollapsed;
-      if (pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
+      if (useDesktopPairs && pairMap[meal]) state.collapsedMeals[pairMap[meal]] = nextCollapsed;
       renderToday();
     }
     if (action === "create-recipe") await createRecipe();

@@ -2369,6 +2369,14 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     gap: 6px;
     justify-self: stretch;
   }
+  .report-period-card .report-period-tabs .mobile-report-recalc {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .report-period-card .report-period-tabs [data-mode="year"] {
+    grid-column: 3;
+    grid-row: 2;
+  }
   .report-period-card .report-period-tabs .tiny-btn {
     justify-content: center;
     min-height: 38px;
@@ -3233,6 +3241,9 @@ input[type="number"]::-webkit-inner-spin-button {
 .report-recalc-btn {
   padding-inline: 12px;
 }
+.mobile-report-recalc {
+  display: none;
+}
 .report-calc-progress {
   display: grid;
   gap: 12px;
@@ -3270,8 +3281,11 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 @media (max-width: 980px) {
-  .report-recalc-btn {
+  .desktop-report-recalc {
     display: none;
+  }
+  .mobile-report-recalc {
+    display: inline-flex;
   }
 }
 
@@ -3311,7 +3325,53 @@ input[type="number"]::-webkit-inner-spin-button {
 
   .mobile-macro-save {
     display: inline-flex;
+    margin-top: 18px;
   }
+}
+
+/* Collapsible settings sections and multi-region search */
+.settings-section {
+  padding: 0;
+  overflow: hidden;
+}
+.settings-section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 950;
+  list-style: none;
+}
+.settings-section-summary::-webkit-details-marker {
+  display: none;
+}
+.settings-section-summary::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform .18s var(--ease);
+}
+.settings-section[open] .settings-section-summary::after {
+  transform: rotate(225deg);
+}
+.settings-section-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+.settings-section-body > h3:first-child,
+.settings-section-body > div:first-child > h3:first-child {
+  margin-top: 0;
+}
+.multi-select {
+  min-height: 148px;
+  overflow: auto;
 }
 
 /* Data model maintenance */
@@ -3343,7 +3403,7 @@ input[type="number"]::-webkit-inner-spin-button {
   padding: 0 4px;
 }
 .macro-calorie-share-text .macro-circle-number {
-  font-size: 1.48rem;
+  font-size: 1.68rem;
   line-height: .9;
   color: var(--ring-color);
   letter-spacing: -.045em;
@@ -3353,12 +3413,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 @media (max-width: 980px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.28rem;
+    font-size: 1.42rem;
   }
 }
 @media (max-width: 560px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.05rem;
+    font-size: 1.18rem;
   }
 }
 
