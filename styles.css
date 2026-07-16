@@ -3138,6 +3138,9 @@ input[type="number"]::-webkit-inner-spin-button {
 #ingredientResults .macro-badges .badge,
 #searchResults .macro-chip,
 #searchResults .macro-percent-row span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 22px;
   padding: 3px 6px;
   font-size: .68rem;
@@ -3532,7 +3535,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 @media (max-width: 560px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.66rem;
+    font-size: 1.92rem;
   }
 }
 

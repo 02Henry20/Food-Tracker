@@ -1,7 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getAuth,
+  browserLocalPersistence,
   onAuthStateChanged,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -32,6 +34,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(error => {
+  console.warn("Firebase auth persistence unavailable:", error.code || error.message);
+});
 enableIndexedDbPersistence(db).catch(error => {
   console.warn("Firestore offline persistence unavailable:", error.code || error.message);
 });
@@ -2448,9 +2453,6 @@ function renderFoodResultCard(food, key) {
       <div class="inline-actions">
         <button class="primary-btn" data-action="log-food" data-key="${safeText(key)}">Log</button>
         <button class="tiny-btn" data-action="food-detail" data-key="${safeText(key)}">Detail</button>
-        ${food.source === "custom" ? `
-          <button class="tiny-btn mobile-hide-search-action" data-action="toggle-favorite-food" data-id="${food.id}">${food.favorite ? "Unfavorite" : "Favorite"}</button>
-        ` : ""}
       </div>
     </div>
   `;
@@ -2906,6 +2908,97 @@ function servingSelectionFromData(food, data, amountName = "amount", unitName = 
   const grams = selected.mode === "grams" ? amount : amount * number(selected.grams, 1);
   const unit = selected.mode === "grams" ? "g" : servingDisplayName(selected);
   return { amount, selected, unit, grams };
+}
+
+function entrySourceFood(entry = {}) {
+  if (!entry || (entry.itemType && entry.itemType !== "food")) return null;
+  const id = String(entry.itemId || entry.sourceId || entry.itemRef?.id || "").trim();
+  const barcode = String(entry.barcode || entry.itemSnapshot?.barcode || "").trim();
+  const name = normalizeSearchText(entry.nameSnapshot || entry.itemSnapshot?.displayName || entry.itemSnapshot?.name);
+  const brand = normalizeSearchText(entry.brandSnapshot || entry.itemSnapshot?.brand);
+  const existing = state.customFoods.find(food => {
+    if (id && (food.id === id || food.sourceId === id || food.barcode === id)) return true;
+    if (barcode && food.barcode === barcode) return true;
+    return name && normalizeSearchText(displayFoodName(food)) === name && (!brand || normalizeSearchText(food.brand) === brand);
+  });
+  if (existing) return existing;
+
+  const snapshot = entry.itemSnapshot || {};
+  const snapshotNutrients = foodNutrientsPer100g(snapshot);
+  if (snapshot?.nutrientsPer100g || snapshot?.nutrientVector || snapshot?.nutrients) {
+    return {
+      ...snapshot,
+      id: snapshot.itemId || entry.itemId || entry.sourceId || null,
+      source: snapshot.source || entry.source || "snapshot",
+      name: snapshot.name || snapshot.displayName || entry.nameSnapshot || "Food",
+      brand: snapshot.brand || entry.brandSnapshot || null,
+      defaultServing: snapshot.defaultServing || null,
+      servingOptions: snapshot.servingOptions || [],
+      nutrientsPer100g: snapshotNutrients
+    };
+  }
+
+  const grams = number(entry.gramsEquivalent);
+  const nutrients = normalizeNutrients(entry.nutrientsSnapshot);
+  if (grams > 0 && NUTRIENT_KEYS.some(key => number(nutrients[key]) > 0)) {
+    const currentUnit = String(entry.unit || "g").trim() || "g";
+    const currentAmount = Math.max(0, number(entry.amount));
+    const servingGrams = currentUnit !== "g" && currentAmount > 0 ? grams / currentAmount : 0;
+    const serving = servingGrams > 0 ? { label: currentUnit, grams: servingGrams, unit: currentUnit } : null;
+    return {
+      source: entry.source || "snapshot",
+      id: entry.itemId || entry.sourceId || null,
+      name: entry.nameSnapshot || "Food",
+      brand: entry.brandSnapshot || null,
+      nutrientsPer100g: scaleNutrients(nutrients, 100 / grams),
+      defaultServing: serving,
+      servingOptions: serving ? [serving] : []
+    };
+  }
+  return null;
+}
+
+function entryServingOptions(entry = {}) {
+  if (entry.itemType === "recipe") return [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }];
+  if (entry.itemType === "mealset") return [{ label: "mealset", grams: 100, mode: "mealset", unit: "mealset" }];
+  const sourceFood = entrySourceFood(entry);
+  const options = sourceFood ? buildServingOptions(sourceFood) : [{ label: "grams", grams: 1, mode: "grams", unit: "g" }];
+  const currentUnit = String(entry.unit || "g").trim() || "g";
+  const currentAmount = Math.max(0, number(entry.amount));
+  const currentGrams = number(entry.gramsEquivalent);
+  if (currentUnit !== "g" && currentAmount > 0 && currentGrams > 0) {
+    const currentLabel = normalizeSearchText(currentUnit);
+    const exists = options.some(option => normalizeSearchText(servingDisplayName(option)) === currentLabel || normalizeSearchText(option.unit) === currentLabel);
+    if (!exists) options.push({ label: currentUnit, grams: currentGrams / currentAmount, mode: "serving", unit: currentUnit });
+  }
+  return options;
+}
+
+function entrySelectedUnitIndex(entry = {}, servingOptions = []) {
+  const currentUnit = normalizeSearchText(entry.unit || "g");
+  if (currentUnit === "g") {
+    const gramsIndex = servingOptions.findIndex(option => option.mode === "grams");
+    return gramsIndex >= 0 ? gramsIndex : 0;
+  }
+  const index = servingOptions.findIndex(option => normalizeSearchText(servingDisplayName(option)) === currentUnit || normalizeSearchText(option.unit) === currentUnit);
+  return index >= 0 ? index : 0;
+}
+
+function entryEditData(entry = {}, amount = 0, selected = {}) {
+  const safeAmount = Math.max(0, number(amount));
+  const sourceFood = entrySourceFood(entry);
+  const isFood = (entry.itemType || "food") === "food";
+  const grams = isFood
+    ? (selected?.mode === "grams" ? safeAmount : safeAmount * number(selected?.grams, 1))
+    : number(entry.gramsEquivalent);
+  const unit = isFood ? (selected?.mode === "grams" ? "g" : servingDisplayName(selected)) : (entry.unit || selected?.unit || "portion");
+  const oldAmount = Math.max(0.000001, number(entry.amount, 1));
+  const nutrientsSnapshot = isFood && sourceFood
+    ? scaleNutrients(foodNutrientsPer100g(sourceFood), grams / 100)
+    : scaleNutrients(entry.nutrientsSnapshot, safeAmount / oldAmount);
+  const oldGrams = number(entry.gramsEquivalent);
+  const factor = isFood && oldGrams > 0 ? grams / oldGrams : safeAmount / oldAmount;
+  return { amount: safeAmount, unit, grams, nutrientsSnapshot, factor };
 }
 
 function bindServingAmountDefaults(form, food) {
@@ -3567,7 +3660,7 @@ function openIngredientAmountModal(food, kind, id) {
     form?.elements.amount?.focus();
     form?.elements.amount?.select?.();
   });
-  form.addEventListener("submit", event => {
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
     const data = new FormData(event.currentTarget);
@@ -3577,13 +3670,15 @@ function openIngredientAmountModal(food, kind, id) {
     const grams = isRecipePortion ? null : (selected.mode === "grams" ? amount : amount * number(selected.grams, 1));
     form.dataset.submitting = "true";
     form.querySelectorAll("button, input, select").forEach(el => el.disabled = true);
-    addIngredientToTarget(food, amount, unit, grams, kind, id).catch(error => {
+    try {
+      await addIngredientToTarget(food, amount, unit, grams, kind, id);
+      resetIngredientSearch(kind, id);
+      openTargetDetail(kind, id);
+    } catch (error) {
       form.dataset.submitting = "";
       form.querySelectorAll("button, input, select").forEach(el => el.disabled = false);
       showError(error);
-    });
-    resetIngredientSearch(kind, id);
-    openIngredientModal(kind, id, { restore: false });
+    }
   });
 }
 
@@ -4140,6 +4235,29 @@ function assertReportCalculationActive(signal) {
   if (!isReportCalculationActive(signal.token, signal.meta)) throw reportAbortError();
 }
 
+function delay(ms = 0) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForDailySummaryJobs(dates = [], signal = null, timeoutMs = 1200) {
+  const pendingDates = dates.filter(date => state.dailySummaryJobs.has(date));
+  if (!pendingDates.length) return;
+  const startedAt = Date.now();
+  while (pendingDates.some(date => state.dailySummaryJobs.has(date)) && Date.now() - startedAt < timeoutMs) {
+    assertReportCalculationActive(signal);
+    await delay(80);
+  }
+}
+
+async function waitForReportCacheJob(meta, signal = null, timeoutMs = 1800) {
+  if (!meta?.key || !state.reportCacheJobs.has(meta.key)) return;
+  const startedAt = Date.now();
+  while (state.reportCacheJobs.has(meta.key) && Date.now() - startedAt < timeoutMs) {
+    assertReportCalculationActive(signal);
+    await delay(100);
+  }
+}
+
 function reportProgressHTML(meta, percent = 0, message = "Building report from diary data") {
   const pct = Math.max(0, Math.min(100, Math.round(number(percent))));
   return `
@@ -4205,7 +4323,9 @@ async function loadReport(options = {}) {
   if (options.force) cancelReportCacheJob(meta.key);
 
   try {
+    renderReportProgress(meta, 0, options.force ? "Recalculating report from diary data" : "Loading report data");
     if (!options.force) {
+      await waitForReportCacheJob(meta, signal);
       const cached = await readReportCache(meta);
       if (!isReportCalculationActive(token, meta)) return null;
       if (cached) {
@@ -4218,7 +4338,8 @@ async function loadReport(options = {}) {
       }
     }
 
-    renderReportProgress(meta, 0, options.force ? "Recalculating report from diary data" : "Building report from diary data");
+    await waitForDailySummaryJobs(dateRange(start, end), signal);
+    renderReportProgress(meta, 5, options.force ? "Recalculating report from diary data" : "Building report from diary data");
     const data = await buildReportData(meta, {
       force: true,
       signal,
@@ -6304,14 +6425,27 @@ function openEntrySnapshotModal(id) {
 async function editEntry(id) {
   const entry = state.logs.find(e => e.id === id);
   if (!entry) return;
+  const servingOptions = entryServingOptions(entry);
+  const selectedIndex = entrySelectedUnitIndex(entry, servingOptions);
+  const initialSelected = servingOptions[selectedIndex] || servingOptions[0];
+  const currentAmount = round(entry.amount ?? entry.gramsEquivalent ?? 100, 2);
+  const initialData = entryEditData(entry, currentAmount, initialSelected);
+  const canChooseUnit = (entry.itemType || "food") === "food" && servingOptions.length > 1;
   openModal(`
     <div class="modal">
       <div class="modal-head"><h3>Edit entry</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
       <form id="editEntryForm" class="modal-body">
-        <label>Amount<input name="amount" type="number" step="0.01" min="0" value="${entry.amount}" required /></label>
-        <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <div class="form-grid two">
+          <label>Amount<input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="${currentAmount}" required /></label>
+          <label>Unit
+            <select name="unitIndex" ${canChooseUnit ? "" : "disabled"}>
+              ${servingOptions.map((serving, optionIndex) => `<option value="${optionIndex}" ${optionIndex === selectedIndex ? "selected" : ""}>${safeText(servingDisplayName(serving))}</option>`).join("")}
+            </select>
+          </label>
+          <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        </div>
         <div id="editEntryAmountPreview" class="amount-preview">
-          ${macroAmountPreviewHTML(entry.nutrientsSnapshot)}
+          ${macroAmountPreviewHTML(initialData.nutrientsSnapshot)}
         </div>
         <div class="form-actions"><button class="primary-btn" type="submit">Save</button></div>
       </form>
@@ -6320,31 +6454,41 @@ async function editEntry(id) {
   const form = document.getElementById("editEntryForm");
   const preview = document.getElementById("editEntryAmountPreview");
   const updatePreview = () => {
-    const newAmount = number(form?.elements.amount?.value, entry.amount);
-    const factor = entry.amount ? newAmount / entry.amount : 1;
-    if (preview) preview.innerHTML = macroAmountPreviewHTML(scaleNutrients(entry.nutrientsSnapshot, factor));
+    const data = new FormData(form);
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const editData = entryEditData(entry, data.get("amount"), selected);
+    if (preview) preview.innerHTML = macroAmountPreviewHTML(editData.nutrientsSnapshot);
   };
   form?.elements.amount?.addEventListener("input", updatePreview);
+  form?.elements.unitIndex?.addEventListener("change", () => {
+    if (canChooseUnit && form.elements.amount && document.activeElement !== form.elements.amount) {
+      const selected = servingOptions[number(form.elements.unitIndex.value)] || servingOptions[0];
+      form.elements.amount.value = selected.mode === "grams" ? round(number(entry.gramsEquivalent) || 100, 2) : 1;
+    }
+    updatePreview();
+  });
   form?.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const newAmount = number(data.get("amount"), entry.amount);
-    const factor = entry.amount ? newAmount / entry.amount : 1;
+    const selected = servingOptions[number(data.get("unitIndex"))] || servingOptions[0];
+    const editData = entryEditData(entry, data.get("amount"), selected);
     const updatedAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(entry.nutrientsSnapshot, factor);
-    const reportItems = scaledReportItems(entry.reportItems || [], factor);
+    const nutrientsSnapshot = editData.nutrientsSnapshot;
+    const reportItems = scaledReportItems(entry.reportItems || [], editData.factor);
     const snapshotSummary = entry.snapshotSummary ? {
       ...entry.snapshotSummary,
-      amount: newAmount,
-      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.snapshotSummary.gramsEquivalent,
+      amount: editData.amount,
+      unit: editData.unit,
+      gramsEquivalent: editData.grams || null,
       nutrientsSnapshot,
       nutrientVector: nutrientsToVector(nutrientsSnapshot),
       reportItemCount: reportItems.length,
       updatedAt
     } : null;
     await updateDoc(entryDoc(id), cleanForFirestore({
-      amount: newAmount,
-      gramsEquivalent: entry.gramsEquivalent ? entry.gramsEquivalent * factor : entry.gramsEquivalent,
+      amount: editData.amount,
+      unit: editData.unit,
+      gramsEquivalent: editData.grams || null,
       meal: data.get("meal"),
       nutrientsSnapshot,
       nutrientVector: nutrientsToVector(nutrientsSnapshot),
@@ -6738,6 +6882,7 @@ els.authForm.addEventListener("submit", async event => {
   event.preventDefault();
   try {
     els.authMessage.textContent = "";
+    await authPersistenceReady;
     await signInWithEmailAndPassword(auth, els.emailInput.value, els.passwordInput.value);
   } catch (error) {
     els.authMessage.textContent = error.message;

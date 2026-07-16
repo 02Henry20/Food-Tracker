@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v53-report-cache-fix";
+const CACHE_NAME = "nutripilot-v54-offline-shell";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -33,9 +33,26 @@ const STATIC_ASSETS = [
   "./icons/maskable-1024x1024.png",
   "./icons/apple-touch-icon.png"
 ];
+const EXTERNAL_ASSETS = [
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js",
+  "https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js",
+  "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"
+];
+const CACHEABLE_EXTERNAL_PREFIXES = [
+  "https://www.gstatic.com/firebasejs/",
+  "https://cdn.jsdelivr.net/npm/chart.js",
+  "https://cdn.jsdelivr.net/npm/@zxing/"
+];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async cache => {
+      await cache.addAll(STATIC_ASSETS);
+      await Promise.allSettled(EXTERNAL_ASSETS.map(url => cache.add(new Request(url, { mode: "cors" }))));
+    })
+  );
   self.skipWaiting();
 });
 
@@ -49,14 +66,22 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const requestUrl = new URL(event.request.url);
   if (event.request.method !== "GET") return;
-  if (requestUrl.origin !== location.origin) return;
+  const isSameOrigin = requestUrl.origin === location.origin;
+  const isCacheableExternal = CACHEABLE_EXTERNAL_PREFIXES.some(prefix => event.request.url.startsWith(prefix));
+  if (!isSameOrigin && !isCacheableExternal) return;
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
         return response;
       })
-      .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+      .catch(() => caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        if (isSameOrigin && event.request.mode === "navigate") return caches.match("./index.html");
+        return Response.error();
+      }))
   );
 });
