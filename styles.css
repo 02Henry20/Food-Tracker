@@ -510,7 +510,8 @@ tr:last-child td { border-bottom: 0; }
 .toast {
   position: fixed;
   right: 18px;
-  bottom: 18px;
+  top: calc(12px + env(safe-area-inset-top));
+  bottom: auto;
   z-index: 80;
   max-width: 420px;
   padding: 14px 16px;
@@ -519,6 +520,7 @@ tr:last-child td { border-bottom: 0; }
   color: white;
   box-shadow: 0 20px 70px rgba(0,0,0,.28);
   animation: toastIn .2s var(--ease) both;
+  pointer-events: none;
 }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -3522,7 +3524,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .macro-calorie-share-text .macro-circle-number {
   font-size: 1.68rem;
   line-height: .9;
-  color: var(--muted);
+  color: var(--text);
   letter-spacing: -.045em;
 }
 .macro-circle-card.is-over .macro-calorie-share-text .macro-circle-number {
@@ -3537,7 +3539,7 @@ input[type="number"]::-webkit-inner-spin-button {
   }
 }
 @media (max-width: 560px) {
-  /* Manual mobile tuning: change the 1.8rem value below for the diary macro percentage number. */
+  /* Manual mobile tuning: change the 1.2rem value below for the diary macro percentage number. */
   .dashboard-hero .macro-circle-card {
     grid-template-columns: 66px minmax(0, 1fr);
   }
@@ -3552,7 +3554,7 @@ input[type="number"]::-webkit-inner-spin-button {
     max-width: none;
     overflow: visible;
     text-overflow: clip;
-    font-size: 1.8rem !important;
+    font-size: 1.2rem !important;
     line-height: 1 !important;
   }
 }

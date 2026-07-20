@@ -250,7 +250,8 @@ const state = {
     query: "",
     mode: "food",
     page: 1,
-    results: []
+    results: [],
+    feedback: ""
   },
   collapsedMeals: Object.fromEntries(MEALS.map(([id]) => [id, true])),
   recipeSectionsCollapsed: { recipes: true, mealsets: true },
@@ -2650,7 +2651,11 @@ async function fetchOpenFoodFactsFromHost(queryText, host) {
   url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
   url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
   const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-  if (!res.ok) throw new Error("Open Food Facts search failed.");
+  if (!res.ok) {
+    if (res.status === 429) throw new Error("Open Food Facts is temporarily rate-limiting searches (HTTP 429). Please wait a moment and try again");
+    if (res.status >= 500) throw new Error(`Open Food Facts is temporarily unavailable (HTTP ${res.status})`);
+    throw new Error(`Open Food Facts rejected the search request (HTTP ${res.status})`);
+  }
   const data = await res.json();
   return (data.products || [])
     .map(normalizeOpenFoodFactsProduct)
@@ -2663,7 +2668,7 @@ async function fetchOpenFoodFacts(queryText) {
   const hosts = selectedOpenFoodFactsHosts();
   const resultsByHost = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
   const foods = resultsByHost.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  if (!foods.length && resultsByHost.some(result => result.status === "rejected")) {
+  if (!resultsByHost.some(result => result.status === "fulfilled") && resultsByHost.some(result => result.status === "rejected")) {
     throw resultsByHost.find(result => result.status === "rejected").reason;
   }
   const seen = new Map();
@@ -2674,8 +2679,29 @@ async function fetchOpenFoodFacts(queryText) {
   return [...seen.values()].slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
+function foodSearchFailureMessage(error, queryText = "") {
+  const query = String(queryText || "").trim();
+  const subject = query ? `Search for "${query}"` : "Search";
+  if (!navigator.onLine) return `${subject} could not go online because this device is offline.`;
+  const message = String(error?.message || "").trim().replace(/[.!]+$/, "");
+  if (message && !/failed to fetch|networkerror|load failed/i.test(message)) return `${subject} could not complete: ${message}.`;
+  return `${subject} could not reach Open Food Facts. Check the connection and selected search regions, then try again.`;
+}
+
+function barcodeLookupFailureMessage(error, barcode = "") {
+  const code = String(barcode || "").replace(/\D/g, "");
+  const label = code ? `Barcode ${code}` : "The barcode";
+  if (!navigator.onLine) return `${label} was read, but it is not saved offline and the device is offline.`;
+  const message = String(error?.message || "").trim();
+  if (/no (usable )?product|no product found/i.test(message)) return `${label} was read successfully, but Open Food Facts has no usable product entry for it.`;
+  if (/incomplete|missing/i.test(message)) return `${label} exists in Open Food Facts, but its product or nutrition information is incomplete.`;
+  if (/failed to fetch|networkerror|load failed/i.test(message)) return `${label} was read, but Open Food Facts could not be reached. Check the connection and try again.`;
+  return message ? `${label} was read, but lookup failed: ${message}` : `${label} was read, but the product lookup failed.`;
+}
+
 async function runFoodSearch(queryText, options = {}) {
   const query = String(queryText || "").trim();
+  let barcodeFailure = "";
   if (!query) {
     state.searchQuery = "";
     state.searchResultsQuery = "";
@@ -2696,7 +2722,8 @@ async function runFoodSearch(queryText, options = {}) {
       await lookupBarcodeCached(query, { updateState: false });
       return state.searchResults;
     } catch (error) {
-      state.searchFeedback = "Barcode not found; searching food names.";
+      barcodeFailure = barcodeLookupFailureMessage(error, query);
+      state.searchFeedback = `${barcodeFailure} Trying a food-name search as a fallback.`;
     } finally {
       state.searchLoading = false;
       if (options.updateState !== false) renderSearchV2();
@@ -2714,7 +2741,10 @@ async function runFoodSearch(queryText, options = {}) {
 
   if (!navigator.onLine || state.settings.databasePreference === "offline-only") {
     state.searchLoading = false;
-    state.searchFeedback = `Offline: ${state.searchResults.length} personal/offline result${state.searchResults.length === 1 ? "" : "s"}.`;
+    const offlineResults = `${state.searchResults.length} personal/offline result${state.searchResults.length === 1 ? "" : "s"}`;
+    state.searchFeedback = barcodeFailure
+      ? `${barcodeFailure} The fallback search can only use ${offlineResults}.`
+      : `Offline: ${offlineResults}.`;
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
   }
@@ -2723,11 +2753,17 @@ async function runFoodSearch(queryText, options = {}) {
     const apiResults = await fetchOpenFoodFacts(query);
     setCachedSearch(query, apiResults);
     state.searchResults = mergeFoodResults(localResults, apiResults, query);
-    state.searchFeedback = `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`;
+    state.searchFeedback = state.searchResults.length
+      ? `${state.searchResults.length} result${state.searchResults.length === 1 ? "" : "s"} from personal library and Open Food Facts.`
+      : barcodeFailure
+        ? `${barcodeFailure} The fallback food-name search also found no matching product.`
+        : `No matching food was found for "${query}" in your personal library or the selected Open Food Facts regions.`;
     return state.searchResults;
   } catch (error) {
-    state.searchFeedback = cached.length ? "Network search failed, using offline results." : "Network search failed and no offline result was found.";
-    if (!cached.length && !localResults.length) throw error;
+    const reason = foodSearchFailureMessage(error, query);
+    state.searchFeedback = state.searchResults.length
+      ? `${reason} Showing ${state.searchResults.length} saved/offline result${state.searchResults.length === 1 ? "" : "s"}.`
+      : reason;
     return state.searchResults;
   } finally {
     state.searchLoading = false;
@@ -2762,21 +2798,32 @@ async function lookupBarcodeCached(barcode, options = {}) {
   if (!navigator.onLine) throw new Error("No offline barcode result is available.");
   let food = null;
   let lastError = null;
+  let productFound = false;
+  let lookupResponded = false;
   for (const host of selectedOpenFoodFactsHosts()) {
     try {
       const url = `https://${host}/api/v2/product/${encodeURIComponent(cleanBarcode)}.json`;
       const res = await fetch(url, { headers: { "Accept": "application/json" } });
-      if (!res.ok) throw new Error("Barcode lookup failed.");
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        if (res.status === 429) throw new Error("Open Food Facts is temporarily rate-limiting barcode lookups (HTTP 429). Please wait and try again");
+        if (res.status >= 500) throw new Error(`Open Food Facts is temporarily unavailable (HTTP ${res.status})`);
+        throw new Error(`Open Food Facts rejected the barcode lookup (HTTP ${res.status})`);
+      }
       const data = await res.json();
+      lookupResponded = true;
       if (!data.product) continue;
+      productFound = true;
       food = normalizeOpenFoodFactsProduct(data.product);
+      if (food && !foodHasUsableNutrients(food)) food = null;
       if (food) break;
     } catch (error) {
       lastError = error;
     }
   }
-  if (!food && lastError) throw lastError;
-  if (!food) throw new Error("No usable product found for this barcode.");
+  if (!food && lastError && !lookupResponded) throw lastError;
+  if (!food && productFound) throw new Error("Product found, but its name or nutrition information is incomplete.");
+  if (!food) throw new Error("No product found for this barcode.");
   setCachedBarcode(cleanBarcode, food);
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
@@ -3535,11 +3582,11 @@ function openIngredientModal(kind, id, options = {}) {
   if (!target) return;
   const canRestore = options.restore && state.ingredientSearch?.kind === kind && state.ingredientSearch?.id === id;
   if (!canRestore) {
-    state.ingredientSearch = { kind, id, query: "", mode: "food", page: 1, results: [] };
+    state.ingredientSearch = { kind, id, query: "", mode: "food", page: 1, results: [], feedback: "" };
   }
   const flow = state.ingredientSearch;
-  const restoredResults = flow.results?.length
-    ? renderIngredientResultPage(flow.results, kind, id, flow.page, flow.mode, flow.query)
+  const restoredResults = flow.query
+    ? renderIngredientResultPage(flow.results || [], kind, id, flow.page, flow.mode, flow.query, flow.feedback)
     : `<div class="empty-state">Search for a food${kind === "mealset" ? " or add a saved recipe." : "."}</div>`;
   openModal(`
     <div class="modal">
@@ -3564,13 +3611,13 @@ function openIngredientModal(kind, id, options = {}) {
   });
 }
 
-function renderIngredientResultPage(foods, kind, id, page = 1, mode = "food", query = "") {
+function renderIngredientResultPage(foods, kind, id, page = 1, mode = "food", query = "", feedback = "") {
   const totalPages = Math.max(1, Math.ceil(foods.length / SEARCH_PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * SEARCH_PAGE_SIZE;
   const pageItems = foods.slice(start, start + SEARCH_PAGE_SIZE);
   return `
-    ${pageItems.map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || `<div class="empty-state">No results.</div>`}
+    ${pageItems.map(food => renderIngredientResult(food, registerTempFood(food), kind, id)).join("") || `<div class="empty-state">${safeText(feedback || `No matching food was found for "${query}".`)}</div>`}
     ${foods.length > SEARCH_PAGE_SIZE ? `
       <div class="pagination ingredient-pagination" data-kind="${kind}" data-id="${id}" data-mode="${mode}" data-query="${safeText(query)}" data-page="${safePage}">
         <button class="ghost-btn" data-action="ingredient-prev-page" ${safePage <= 1 ? "disabled" : ""}>Previous</button>
@@ -6364,11 +6411,48 @@ function openBarcodeModal() {
       <div class="modal-body">
         ${canScan ? `
           <div class="video-box"><video id="barcodeVideo" muted playsinline></video></div>
+          <div id="barcodeStatus" class="loading-line" aria-live="polite">Starting the camera. Point it at a barcode.</div>
         ` : `<div class="empty-state">Camera barcode scanning is not available in this browser. Type the barcode in the search field instead.</div>`}
       </div>
     </div>
   `);
-  if (canScan) setTimeout(() => startBarcodeScan().catch(showError), 0);
+  if (canScan) setTimeout(() => startBarcodeScan().catch(showBarcodeScanFailure), 0);
+}
+
+function setBarcodeStatus(message, allowRetry = false) {
+  const status = document.getElementById("barcodeStatus");
+  if (!status) return false;
+  status.innerHTML = `${safeText(message)}${allowRetry ? ` <button class="tiny-btn" type="button" data-action="start-barcode-scan">Scan again</button>` : ""}`;
+  return true;
+}
+
+function showBarcodeScanFailure(error) {
+  const message = String(error?.name) === "NotAllowedError"
+    ? "Camera permission was denied. Allow camera access or type the barcode in the food search field."
+    : String(error?.name) === "NotFoundError"
+      ? "No camera was found on this device. Type the barcode in the food search field."
+      : String(error?.message || "Barcode scanning failed. Try again or type the barcode in the food search field.");
+  if (!setBarcodeStatus(message, true)) showToast(message, 6000);
+}
+
+async function finishBarcodeLookup(rawValue) {
+  const cleanBarcode = String(rawValue || "").replace(/\D/g, "");
+  setBarcodeStatus(`Barcode ${cleanBarcode || rawValue} detected. Looking up the product...`);
+  try {
+    await lookupBarcodeCached(cleanBarcode);
+    closeModal();
+    setRoute("search");
+    return true;
+  } catch (error) {
+    const message = barcodeLookupFailureMessage(error, cleanBarcode);
+    state.searchTab = "foods";
+    state.searchQuery = cleanBarcode;
+    state.searchResultsQuery = cleanBarcode;
+    state.searchResults = [];
+    state.searchFeedback = message;
+    setBarcodeStatus(message, true);
+    return false;
+  }
 }
 
 async function startBarcodeScan() {
@@ -6378,15 +6462,14 @@ async function startBarcodeScan() {
     const reader = new ZXing.BrowserMultiFormatReader();
     const result = await reader.decodeOnceFromVideoDevice(undefined, video);
     reader.reset();
-    closeModal();
-    await lookupBarcodeCached(result.getText());
-    setRoute("search");
+    await finishBarcodeLookup(result.getText());
     return;
   }
   if (!("BarcodeDetector" in window)) throw new Error("Barcode scanning is not supported in this browser.");
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   video.srcObject = stream;
   await video.play();
+  setBarcodeStatus("Scanning. Hold the barcode steady inside the camera view.");
   const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
   let stopped = false;
   const stop = () => {
@@ -6400,14 +6483,13 @@ async function startBarcodeScan() {
       if (codes.length) {
         const rawValue = codes[0].rawValue;
         stop();
-        closeModal();
-        await lookupBarcodeCached(rawValue);
-        setRoute("search");
+        await finishBarcodeLookup(rawValue);
         return;
       }
     } catch (error) {
       stop();
-      throw error;
+      showBarcodeScanFailure(error);
+      return;
     }
     requestAnimationFrame(scan);
   };
@@ -6700,7 +6782,7 @@ async function handleClick(event) {
     }
     if (action === "open-custom-food-modal") openCustomFoodCreateModal();
     if (action === "open-barcode-modal") openBarcodeModal();
-    if (action === "start-barcode-scan") await startBarcodeScan();
+    if (action === "start-barcode-scan") await startBarcodeScan().catch(showBarcodeScanFailure);
     if (action === "log-food") openLogFoodModal(getFoodByKey(btn.dataset.key));
     if (action === "food-detail") openFoodDetailModal(getFoodByKey(btn.dataset.key));
     if (action === "save-api-food") await saveApiFoodAsCustom(btn.dataset.key);
@@ -6763,14 +6845,15 @@ async function handleClick(event) {
       btn.textContent = "Searching...";
       try {
         if (!normalizeSearchText(query)) {
-          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query: "", mode: "food", page: 1, results: [] };
+          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query: "", mode: "food", page: 1, results: [], feedback: "" };
           state.keyboardSelection.ingredient = -1;
           root.innerHTML = `<div class="empty-state">Enter a food name to search.</div>`;
         } else {
           const results = await runFoodSearch(query, { updateState: false });
-          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results };
+          const feedback = state.searchFeedback;
+          state.ingredientSearch = { kind: btn.dataset.kind, id: btn.dataset.id, query, mode: "food", page: 1, results, feedback };
           state.keyboardSelection.ingredient = -1;
-          root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query);
+          root.innerHTML = renderIngredientResultPage(results, btn.dataset.kind, btn.dataset.id, 1, "food", query, feedback);
         }
       } finally {
         btn.disabled = false;
@@ -6796,8 +6879,9 @@ async function handleClick(event) {
       const results = flow?.results?.length ? flow.results : mode === "recipes"
         ? state.recipes.filter(recipe => recipe.id !== id).map(recipePortionAsFood)
         : await runFoodSearch(query, { updateState: false });
-      state.ingredientSearch = { kind, id, query, mode, page: nextPage, results };
-      root.innerHTML = renderIngredientResultPage(results, kind, id, nextPage, mode, query);
+      const feedback = mode === "food" ? state.ingredientSearch.feedback || state.searchFeedback : "";
+      state.ingredientSearch = { kind, id, query, mode, page: nextPage, results, feedback };
+      root.innerHTML = renderIngredientResultPage(results, kind, id, nextPage, mode, query, feedback);
     }
     if (action === "select-ingredient") {
       btn.disabled = true;
