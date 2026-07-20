@@ -2052,7 +2052,7 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     text-overflow: ellipsis;
     letter-spacing: -.055em;
   }
-  .dashboard-hero .macro-circle span {
+  .dashboard-hero .macro-circle .macro-circle-status {
     font-size: .5rem !important;
   }
   .target-detail-summary-panel {
@@ -3534,8 +3534,23 @@ input[type="number"]::-webkit-inner-spin-button {
   }
 }
 @media (max-width: 560px) {
+  /* Manual mobile tuning: change the 2rem value below for the diary macro percentage number. */
+  .dashboard-hero .macro-circle-card {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+  .dashboard-hero .macro-circle {
+    width: 64px;
+    height: 64px;
+  }
+  .dashboard-hero .macro-circle::after {
+    inset: 8px;
+  }
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 2.25rem;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 2rem !important;
+    line-height: 1 !important;
   }
 }
 
