@@ -49,7 +49,7 @@ const SEARCH_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 19;
+const REPORT_CACHE_VERSION = 20;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -931,12 +931,24 @@ function compactReportCacheData(data = {}, meta = null) {
     ? data.activeDates.filter(date => dates.includes(date))
     : dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0));
   const activeDayCount = number(data.activeDayCount) || activeDates.length;
+  const metricDates = reportMetricDates(activeDates, dates);
+  const hasStoredMetricTotal = data.metricTotal || Array.isArray(data.metricNutrientVector);
+  const metricTotal = hasStoredMetricTotal
+    ? nutrientsFromSnapshot(data.metricTotal || data.metricNutrientVector)
+    : addNutrients(metricDates.map(date => ({ nutrientsSnapshot: byDate[date] || emptyNutrients() })));
+  const hasStoredMetricDayCount = data.metricDayCount !== undefined && data.metricDayCount !== null;
+  const metricDayCount = hasStoredMetricDayCount ? number(data.metricDayCount) : metricDates.length;
   const chartData = data.chartData || buildReportChartData(sourceMeta, dates, byDate, goalsByDate, activeDates);
   const avgGoals = data.avgGoals || reportGoalAverages(start, end, activeDates.length ? activeDates : dates, goalsByDate);
+  const metricAvgGoals = data.metricAvgGoals || reportGoalAverages(start, end, metricDates, goalsByDate);
   const hasStoredTargetCaloriesTotal = data.targetCaloriesTotal !== undefined && data.targetCaloriesTotal !== null;
   const targetCaloriesTotal = hasStoredTargetCaloriesTotal
     ? number(data.targetCaloriesTotal)
     : reportTargetCaloriesTotalForDates(activeDates, goalsByDate);
+  const hasStoredMetricTargetCaloriesTotal = data.metricTargetCaloriesTotal !== undefined && data.metricTargetCaloriesTotal !== null;
+  const metricTargetCaloriesTotal = hasStoredMetricTargetCaloriesTotal
+    ? number(data.metricTargetCaloriesTotal)
+    : reportTargetCaloriesTotalForDates(metricDates, goalsByDate);
   const total = nutrientsFromSnapshot(data.total || data.nutrientVector || addNutrients(dates.map(date => ({ nutrientsSnapshot: byDate[date] }))));
 
   return cleanForFirestore({
@@ -953,9 +965,15 @@ function compactReportCacheData(data = {}, meta = null) {
     nutrientVector: nutrientsToVector(total),
     flatRows: reportCacheRows(data.flatRows || []),
     reportFoodLimit: REPORT_FOOD_LIMIT,
+    activeDates,
     activeDayCount,
+    metricDayCount,
+    metricNutrientVector: nutrientsToVector(metricTotal),
+    averageKcalPerDay: round(metricDayCount ? metricTotal.kcal / metricDayCount : 0, 1),
     avgGoals,
+    metricAvgGoals,
     targetCaloriesTotal,
+    metricTargetCaloriesTotal,
     dirty: false,
     generatedAt: number(data.generatedAt) || Date.now(),
     sourceEntryCount: number(data.sourceEntryCount)
@@ -3446,11 +3464,11 @@ function targetItemContributionHTML(nutrients, total) {
   const n = normalizeNutrients(nutrients);
   const t = normalizeNutrients(total);
   return `
-    <div class="item-contribution-row" aria-label="Contribution to total">
+    <div class="item-contribution-row" aria-label="Calorie contribution to total and macro calorie share of this item">
       <span class="kcal">kcal ${contributionPercent(n.kcal, t.kcal)}%</span>
-      <span class="protein">P ${contributionPercent(n.protein, t.protein)}%</span>
-      <span class="carbs">C ${contributionPercent(n.carbs, t.carbs)}%</span>
-      <span class="fat">F ${contributionPercent(n.fat, t.fat)}%</span>
+      <span class="protein">P ${contributionPercent(n.protein * 4, n.kcal)}%</span>
+      <span class="carbs">C ${contributionPercent(n.carbs * 4, n.kcal)}%</span>
+      <span class="fat">F ${contributionPercent(n.fat * 9, n.kcal)}%</span>
     </div>
   `;
 }
@@ -4401,6 +4419,14 @@ function normalizeReportData(data = {}, meta = null) {
       ? dates.filter(date => NUTRIENT_KEYS.some(key => number(byDate[date]?.[key]) > 0))
       : [];
   const activeDayCount = number(data.activeDayCount) || activeDates.length || (number(total.kcal) ? 1 : 0);
+  const metricDates = reportMetricDates(activeDates, dates);
+  const hasStoredMetricTotal = data.metricTotal || Array.isArray(data.metricNutrientVector);
+  const metricTotal = hasStoredMetricTotal
+    ? nutrientsFromSnapshot(data.metricTotal || data.metricNutrientVector)
+    : addNutrients(metricDates.map(date => ({ nutrientsSnapshot: byDate[date] || emptyNutrients() })));
+  const metricDayCount = data.metricDayCount !== undefined && data.metricDayCount !== null
+    ? number(data.metricDayCount)
+    : metricDates.length;
   const flatRows = limitReportFlatRows(Array.isArray(data.flatRows) && data.flatRows.length
     ? data.flatRows.map(row => normalizeReportRow(row))
     : flatRowsFromReportEntries(entries));
@@ -4414,6 +4440,8 @@ function normalizeReportData(data = {}, meta = null) {
     dates,
     activeDates,
     activeDayCount,
+    metricTotal,
+    metricDayCount,
     entries,
     byDate,
     chartData,
@@ -4421,7 +4449,14 @@ function normalizeReportData(data = {}, meta = null) {
     flatRows,
     goalsByDate: data.goalsByDate || {},
     avgGoals: data.avgGoals || null,
-    targetCaloriesTotal: hasTargetCaloriesTotal ? number(data.targetCaloriesTotal) : null
+    metricAvgGoals: data.metricAvgGoals || null,
+    targetCaloriesTotal: hasTargetCaloriesTotal ? number(data.targetCaloriesTotal) : null,
+    metricTargetCaloriesTotal: data.metricTargetCaloriesTotal !== undefined && data.metricTargetCaloriesTotal !== null
+      ? number(data.metricTargetCaloriesTotal)
+      : null,
+    averageKcalPerDay: data.averageKcalPerDay !== undefined && data.averageKcalPerDay !== null
+      ? number(data.averageKcalPerDay)
+      : round(metricDayCount ? metricTotal.kcal / metricDayCount : 0, 1)
   };
 }
 
@@ -4795,8 +4830,9 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const byDate = sourceData?.byDate || Object.fromEntries(dates.map(d => [d, emptyNutrients()]));
   if (!sourceData) for (const entry of entries) byDate[entry.date] = addNutrients([{ nutrientsSnapshot: byDate[entry.date] }, entry]);
   const metricDates = reportMetricDates(activeDates, dates);
-  const metricDays = Math.max(1, metricDates.length);
-  const metricTotal = normalizeNutrients(addNutrients(metricDates.map(dateISO => ({ nutrientsSnapshot: byDate[dateISO] || emptyNutrients() }))));
+  const metricDays = Math.max(1, sourceData?.metricDayCount ?? metricDates.length);
+  const metricTotal = normalizeNutrients(sourceData?.metricTotal
+    || addNutrients(metricDates.map(dateISO => ({ nutrientsSnapshot: byDate[dateISO] || emptyNutrients() }))));
   const avg = scaleNutrients(metricTotal, 1 / metricDays);
   const macro = macroCalories(metricTotal);
   const filteredFlatRows = applyReportFlatFilters(sourceData?.flatRows || flatRowsFromReportEntries(entries));
@@ -4805,10 +4841,11 @@ function renderReportOutput(start, end, entries, reportData = null) {
   const frequencyRows = sortReportRows(foodRows, "frequency");
   const topPage = paginatedReportRows(topRows, "topSources");
   const frequencyPage = paginatedReportRows(frequencyRows, "frequency");
-  const avgGoals = reportGoalAverages(start, end, metricDates, sourceData?.goalsByDate || null);
+  const avgGoals = sourceData?.metricAvgGoals
+    || reportGoalAverages(start, end, metricDates, sourceData?.goalsByDate || null);
   const loggedDayCount = metricDates.length;
   const targetDatesForDeficit = metricDates.length ? metricDates : [];
-  const targetCaloriesTotal = reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {});
+  const targetCaloriesTotal = sourceData?.metricTargetCaloriesTotal ?? reportTargetCaloriesTotalForDates(targetDatesForDeficit, sourceData?.goalsByDate || {});
   const calorieDeficit = targetCaloriesTotal - metricTotal.kcal;
   const currentDayExcluded = (activeDates.length ? activeDates : dates).includes(todayISO()) && !metricDates.includes(todayISO());
   const loggedDayLabel = `${loggedDayCount} logged day${loggedDayCount === 1 ? "" : "s"}${currentDayExcluded ? ", today excluded" : ""}`;

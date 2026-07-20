@@ -35,6 +35,14 @@ Recipes are portion-based and mealsets are bundle-based. Both support editable a
 
 Reports can be viewed by week, month, or year. A manual recalc path rebuilds report data from raw diary entries when summaries may be stale, and aggregate metrics skip the current day so incomplete logging does not distort trends.
 
+### Reading the Weekly Calorie Average from Another App
+
+NutriPilot stores completed weekly report summaries in Cloud Firestore project `weight-track-app-e0e2c`. After authenticating as the same Firebase user, read this document:
+
+`apps/food-tracker/users/{uid}/reportCaches/week_{monday}_{sunday}`
+
+The dates use `YYYY-MM-DD` and weeks run Monday through Sunday, for example `week_2026-07-20_2026-07-26`. The `averageKcalPerDay` field is the average kcal across logged days in that week, excluding the current day while it is still in progress. `metricDayCount` contains the number of days used for that average. Firestore security rules require the authenticated user's UID to match `{uid}`.
+
 ### Offline-Capable PWA
 
 The app includes a manifest, favicons, app icons, and a service worker. Core app files and icon assets are cached for a smoother installed-app experience.

@@ -3535,7 +3535,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 @media (max-width: 560px) {
   .dashboard-hero .macro-calorie-share-text .macro-circle-number {
-    font-size: 1.92rem;
+    font-size: 2.25rem;
   }
 }
 
