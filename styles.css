@@ -3522,8 +3522,11 @@ input[type="number"]::-webkit-inner-spin-button {
 .macro-calorie-share-text .macro-circle-number {
   font-size: 1.68rem;
   line-height: .9;
-  color: var(--ring-color);
+  color: var(--muted);
   letter-spacing: -.045em;
+}
+.macro-circle-card.is-over .macro-calorie-share-text .macro-circle-number {
+  color: var(--warning);
 }
 .macro-calorie-share-text .macro-circle-status {
   display: none !important;
@@ -3534,7 +3537,7 @@ input[type="number"]::-webkit-inner-spin-button {
   }
 }
 @media (max-width: 560px) {
-  /* Manual mobile tuning: change the 2rem value below for the diary macro percentage number. */
+  /* Manual mobile tuning: change the 1.8rem value below for the diary macro percentage number. */
   .dashboard-hero .macro-circle-card {
     grid-template-columns: 66px minmax(0, 1fr);
   }
@@ -3549,7 +3552,7 @@ input[type="number"]::-webkit-inner-spin-button {
     max-width: none;
     overflow: visible;
     text-overflow: clip;
-    font-size: 2rem !important;
+    font-size: 1.8rem !important;
     line-height: 1 !important;
   }
 }
