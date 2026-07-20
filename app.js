@@ -46,6 +46,7 @@ const SEARCH_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const MAX_RECENT_SEARCHES = 10;
 const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
+const TARGET_LIBRARY_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
@@ -255,6 +256,7 @@ const state = {
   },
   collapsedMeals: Object.fromEntries(MEALS.map(([id]) => [id, true])),
   recipeSectionsCollapsed: { recipes: true, mealsets: true },
+  targetLibraryPages: { recipes: 1, mealsets: 1 },
   defaultLogMeal: "breakfast",
   defaultLogDate: todayISO(),
   reportEntries: [],
@@ -3237,31 +3239,54 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
   scheduleReportRecalculationForDate(dateISO);
 }
 
+function targetLibraryPage(items = [], section = "recipes") {
+  const totalPages = Math.max(1, Math.ceil(items.length / TARGET_LIBRARY_PAGE_SIZE));
+  const page = Math.min(Math.max(1, number(state.targetLibraryPages?.[section], 1)), totalPages);
+  state.targetLibraryPages[section] = page;
+  const start = (page - 1) * TARGET_LIBRARY_PAGE_SIZE;
+  return { items: items.slice(start, start + TARGET_LIBRARY_PAGE_SIZE), page, totalPages, start, total: items.length };
+}
+
+function targetLibraryPaginationHTML(section, pageData) {
+  if (!pageData || pageData.totalPages <= 1) return "";
+  return `
+    <div class="pagination target-library-pagination">
+      <button class="ghost-btn" type="button" data-action="target-library-page" data-section="${section}" data-dir="-1" ${pageData.page <= 1 ? "disabled" : ""}>Previous</button>
+      <span class="kicker">${pageData.start + 1}-${Math.min(pageData.start + TARGET_LIBRARY_PAGE_SIZE, pageData.total)} of ${pageData.total}</span>
+      <button class="ghost-btn" type="button" data-action="target-library-page" data-section="${section}" data-dir="1" ${pageData.page >= pageData.totalPages ? "disabled" : ""}>Next</button>
+    </div>
+  `;
+}
+
 function renderRecipes() {
   const recipes = sortFavoriteFirst(state.recipes);
   const mealsets = sortFavoriteFirst(state.mealsets);
+  const recipePage = targetLibraryPage(recipes, "recipes");
+  const mealsetPage = targetLibraryPage(mealsets, "mealsets");
   els.pages.recipes.innerHTML = `
     <div class="grid-2">
       ${state.settings.modules.recipes ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.recipes ? "is-collapsed" : ""}" data-section="recipes">
         <div class="meal-head">
-          <h3>Recipes</h3>
+          <div class="target-library-title"><h3>Recipes</h3><span class="kicker">${recipes.length}</span></div>
           <div class="section-actions">
             <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="recipes">${state.recipeSectionsCollapsed.recipes ? "Show" : "Hide"}</button>
             <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
           </div>
         </div>
-        <div class="result-grid">${recipes.length ? recipes.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
+        <div class="result-grid target-library-list">${recipePage.items.length ? recipePage.items.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
+        ${targetLibraryPaginationHTML("recipes", recipePage)}
       </div>` : `<div class="card"><div class="empty-state">Recipes are disabled in Settings.</div></div>`}
 
       ${state.settings.modules.mealsets ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.mealsets ? "is-collapsed" : ""}" data-section="mealsets">
         <div class="meal-head">
-          <h3>Mealsets</h3>
+          <div class="target-library-title"><h3>Mealsets</h3><span class="kicker">${mealsets.length}</span></div>
           <div class="section-actions">
             <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="mealsets">${state.recipeSectionsCollapsed.mealsets ? "Show" : "Hide"}</button>
             <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
           </div>
         </div>
-        <div class="result-grid">${mealsets.length ? mealsets.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
+        <div class="result-grid target-library-list">${mealsetPage.items.length ? mealsetPage.items.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
+        ${targetLibraryPaginationHTML("mealsets", mealsetPage)}
       </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
     </div>
   `;
@@ -3284,20 +3309,16 @@ function itemAmountText(item) {
 
 function renderRecipeCard(recipe) {
   const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  const ingredientCount = (recipe.ingredients || []).length;
   return `
-    <div class="result-card recipe-card ${recipe.favorite ? "favorite" : ""}">
-      <div class="recipe-card-main">
-        <div class="recipe-card-head">
-          <div>
-            <h4>${safeText(recipe.name)}</h4>
-            <p>${round(perPortion.kcal, 0)} kcal / portion</p>
-          </div>
-          <div class="recipe-quick-actions">
-            ${itemFavoriteButton("recipe", recipe)}
-            <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Details</button>
-          </div>
-        </div>
-        ${macroSplitSummaryHTML(perPortion)}
+    <div class="result-card recipe-card target-library-row ${recipe.favorite ? "favorite" : ""}">
+      <div class="target-library-copy">
+        <h4>${safeText(recipe.name)}</h4>
+        <p><span>${round(perPortion.kcal, 0)} kcal / portion</span><span aria-hidden="true">·</span><span>${ingredientCount} ingredient${ingredientCount === 1 ? "" : "s"}</span></p>
+      </div>
+      <div class="recipe-quick-actions target-library-actions">
+        ${itemFavoriteButton("recipe", recipe)}
+        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Details</button>
       </div>
     </div>
   `;
@@ -3305,20 +3326,16 @@ function renderRecipeCard(recipe) {
 
 function renderMealsetCard(mealset) {
   const total = normalizeNutrients(mealset.totalNutrients);
+  const itemCount = (mealset.items || []).length;
   return `
-    <div class="result-card recipe-card ${mealset.favorite ? "favorite" : ""}">
-      <div class="recipe-card-main">
-        <div class="recipe-card-head">
-          <div>
-            <h4>${safeText(mealset.name)}</h4>
-            <p>${round(total.kcal, 0)} kcal</p>
-          </div>
-          <div class="recipe-quick-actions">
-            ${itemFavoriteButton("mealset", mealset)}
-            <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Details</button>
-          </div>
-        </div>
-        ${macroSplitSummaryHTML(total)}
+    <div class="result-card recipe-card target-library-row ${mealset.favorite ? "favorite" : ""}">
+      <div class="target-library-copy">
+        <h4>${safeText(mealset.name)}</h4>
+        <p><span>${round(total.kcal, 0)} kcal</span><span aria-hidden="true">·</span><span>${itemCount} item${itemCount === 1 ? "" : "s"}</span></p>
+      </div>
+      <div class="recipe-quick-actions target-library-actions">
+        ${itemFavoriteButton("mealset", mealset)}
+        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Details</button>
       </div>
     </div>
   `;
@@ -6816,6 +6833,11 @@ async function handleClick(event) {
     if (action === "toggle-target-section") {
       const section = btn.dataset.section;
       state.recipeSectionsCollapsed[section] = !state.recipeSectionsCollapsed[section];
+      renderRecipes();
+    }
+    if (action === "target-library-page") {
+      const section = btn.dataset.section === "mealsets" ? "mealsets" : "recipes";
+      state.targetLibraryPages[section] = Math.max(1, number(state.targetLibraryPages?.[section], 1) + number(btn.dataset.dir));
       renderRecipes();
     }
     if (action === "detail-recipe") openTargetDetail("recipe", btn.dataset.id);

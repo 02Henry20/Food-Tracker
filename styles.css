@@ -1338,7 +1338,8 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
     display: inline-flex;
   }
   .target-section.is-collapsed > p,
-  .target-section.is-collapsed > .result-grid {
+  .target-section.is-collapsed > .result-grid,
+  .target-section.is-collapsed > .target-library-pagination {
     display: none;
   }
 }
@@ -3652,5 +3653,86 @@ input[type="number"]::-webkit-inner-spin-button {
     right: 10px;
     bottom: 84px;
     width: auto;
+  }
+}
+
+/* Compact recipe and mealset overview; full nutrition stays in Details. */
+.target-library-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.target-library-title h3 {
+  margin: 0;
+}
+#recipesPage .target-library-list {
+  gap: 6px;
+}
+#recipesPage .target-library-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 9px 10px;
+}
+.target-library-copy {
+  min-width: 0;
+}
+.target-library-copy h4 {
+  margin: 0 0 3px;
+  overflow: hidden;
+  font-size: .96rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target-library-copy p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.1;
+}
+.target-library-copy p span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target-library-actions {
+  gap: 5px;
+}
+.target-library-actions .star-btn {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+}
+.target-library-actions [data-action^="detail-"] {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: .78rem;
+}
+.target-library-pagination {
+  justify-content: space-between;
+  margin-top: 2px;
+}
+.target-library-pagination .ghost-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 560px) {
+  #recipesPage .target-library-row {
+    padding: 8px;
+  }
+  .target-library-copy p {
+    gap: 5px;
+    font-size: .72rem;
+  }
+  .target-library-actions {
+    display: inline-flex;
   }
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "nutripilot-v58-offline-shell";
+const CACHE_NAME = "nutripilot-v59-offline-shell";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
