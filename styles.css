@@ -3643,6 +3643,17 @@ input[type="number"]::-webkit-inner-spin-button {
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   transition: width .22s var(--ease);
 }
+
+/* Ingredient search can include Search, Barcode, and Recipes controls. */
+.ingredient-search-bar {
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+}
+
+@media (max-width: 560px) {
+  .ingredient-search-bar {
+    grid-template-columns: 1fr;
+  }
+}
 @keyframes reportUploadFlow {
   from { background-position: 0% 50%; }
   to { background-position: 180% 50%; }

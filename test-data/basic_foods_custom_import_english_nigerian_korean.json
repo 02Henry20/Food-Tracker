@@ -1,0 +1,7063 @@
+{
+  "exportedAt": "2026-08-05T00:33:00.000Z",
+  "source": "NutriPilot expanded basic foods import",
+  "note": "Approximate generic nutrient values per 100 g edible portion. Visible food names are in English. The original 76 entries were rechecked and incomplete micronutrients were populated. The import also includes Nigerian/West African and Korean vegetables, fruits, staples, legumes, seeds, mushrooms, seaweeds, fermented foods, and oils that are often missing from generic databases. Units: kcal; protein/carbohydrate/sugar/fat/saturated fat/trans fat/fiber/salt in g; sodium/calcium/iron/potassium/magnesium/vitamin C in mg; vitamins A, D, and B12 in µg. Salt is calculated from sodium using salt = sodium × 2.5. Values are practical estimates and can vary by cultivar, product, recipe, fermentation, and preparation; proxy use is disclosed in each food's notes.",
+  "customFoods": [
+    {
+      "id": "basic-kartoffel",
+      "source": "custom",
+      "name": "Potato, raw",
+      "nameLower": "potato, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Potato, flesh and skin, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 77.0,
+        "protein": 2.02,
+        "carbs": 17.47,
+        "sugar": 0.78,
+        "fat": 0.09,
+        "saturatedFat": 0.026,
+        "transFat": 0,
+        "fiber": 2.2,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 12.0,
+        "iron": 0.78,
+        "potassium": 421.0,
+        "magnesium": 23.0,
+        "vitaminA": 0,
+        "vitaminC": 19.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-sukartoffel",
+      "source": "custom",
+      "name": "Sweet potato, raw",
+      "nameLower": "sweet potato, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Sweet potato, raw, unprepared. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 86.0,
+        "protein": 1.57,
+        "carbs": 20.12,
+        "sugar": 4.18,
+        "fat": 0.05,
+        "saturatedFat": 0.018,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.138,
+        "sodium": 55.0,
+        "calcium": 30.0,
+        "iron": 0.61,
+        "potassium": 337.0,
+        "magnesium": 25.0,
+        "vitaminA": 709.0,
+        "vitaminC": 2.4,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-karotte",
+      "source": "custom",
+      "name": "Carrot, raw",
+      "nameLower": "carrot, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Carrots, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 41.0,
+        "protein": 0.93,
+        "carbs": 9.58,
+        "sugar": 4.74,
+        "fat": 0.24,
+        "saturatedFat": 0.037,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.172,
+        "sodium": 69.0,
+        "calcium": 33.0,
+        "iron": 0.3,
+        "potassium": 320.0,
+        "magnesium": 12.0,
+        "vitaminA": 835.0,
+        "vitaminC": 5.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-zwiebel",
+      "source": "custom",
+      "name": "Onion, raw",
+      "nameLower": "onion, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Onions, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 40.0,
+        "protein": 1.1,
+        "carbs": 9.34,
+        "sugar": 4.24,
+        "fat": 0.1,
+        "saturatedFat": 0.042,
+        "transFat": 0,
+        "fiber": 1.7,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 23.0,
+        "iron": 0.21,
+        "potassium": 146.0,
+        "magnesium": 10.0,
+        "vitaminA": 0,
+        "vitaminC": 7.4,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-knoblauch",
+      "source": "custom",
+      "name": "Garlic, raw",
+      "nameLower": "garlic, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Garlic, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 149.0,
+        "protein": 6.36,
+        "carbs": 33.06,
+        "sugar": 1.0,
+        "fat": 0.5,
+        "saturatedFat": 0.089,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.043,
+        "sodium": 17.0,
+        "calcium": 181.0,
+        "iron": 1.7,
+        "potassium": 401.0,
+        "magnesium": 25.0,
+        "vitaminA": 0,
+        "vitaminC": 31.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-brokkoli",
+      "source": "custom",
+      "name": "Broccoli, raw",
+      "nameLower": "broccoli, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Broccoli, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 34.0,
+        "protein": 2.82,
+        "carbs": 6.64,
+        "sugar": 1.7,
+        "fat": 0.37,
+        "saturatedFat": 0.039,
+        "transFat": 0,
+        "fiber": 2.6,
+        "salt": 0.083,
+        "sodium": 33.0,
+        "calcium": 47.0,
+        "iron": 0.73,
+        "potassium": 316.0,
+        "magnesium": 21.0,
+        "vitaminA": 31.0,
+        "vitaminC": 89.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-blumenkohl",
+      "source": "custom",
+      "name": "Cauliflower, raw",
+      "nameLower": "cauliflower, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Cauliflower, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 25.0,
+        "protein": 1.92,
+        "carbs": 4.97,
+        "sugar": 1.91,
+        "fat": 0.28,
+        "saturatedFat": 0.064,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.075,
+        "sodium": 30.0,
+        "calcium": 22.0,
+        "iron": 0.42,
+        "potassium": 299.0,
+        "magnesium": 15.0,
+        "vitaminA": 0,
+        "vitaminC": 48.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-spinat",
+      "source": "custom",
+      "name": "Spinach, raw",
+      "nameLower": "spinach, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spinach, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23.0,
+        "protein": 2.86,
+        "carbs": 3.63,
+        "sugar": 0.42,
+        "fat": 0.39,
+        "saturatedFat": 0.063,
+        "transFat": 0,
+        "fiber": 2.2,
+        "salt": 0.198,
+        "sodium": 79.0,
+        "calcium": 99.0,
+        "iron": 2.71,
+        "potassium": 558.0,
+        "magnesium": 79.0,
+        "vitaminA": 469.0,
+        "vitaminC": 28.1,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-grunkohl",
+      "source": "custom",
+      "name": "Kale, raw",
+      "nameLower": "kale, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Kale, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 50.0,
+        "protein": 3.3,
+        "carbs": 10.01,
+        "sugar": 2.3,
+        "fat": 0.7,
+        "saturatedFat": 0.091,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.107,
+        "sodium": 43.0,
+        "calcium": 135.0,
+        "iron": 1.7,
+        "potassium": 447.0,
+        "magnesium": 34.0,
+        "vitaminA": 769.0,
+        "vitaminC": 120.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kopfsalat",
+      "source": "custom",
+      "name": "Lettuce, raw",
+      "nameLower": "lettuce, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Lettuce, green leaf, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 15.0,
+        "protein": 1.36,
+        "carbs": 2.87,
+        "sugar": 0.78,
+        "fat": 0.15,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 1.3,
+        "salt": 0.07,
+        "sodium": 28.0,
+        "calcium": 36.0,
+        "iron": 0.86,
+        "potassium": 194.0,
+        "magnesium": 13.0,
+        "vitaminA": 370.0,
+        "vitaminC": 9.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-rucola",
+      "source": "custom",
+      "name": "Arugula, raw",
+      "nameLower": "arugula, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Arugula, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 25.0,
+        "protein": 2.58,
+        "carbs": 3.65,
+        "sugar": 2.05,
+        "fat": 0.66,
+        "saturatedFat": 0.086,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.068,
+        "sodium": 27.0,
+        "calcium": 160.0,
+        "iron": 1.46,
+        "potassium": 369.0,
+        "magnesium": 47.0,
+        "vitaminA": 119.0,
+        "vitaminC": 15.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-tomate",
+      "source": "custom",
+      "name": "Tomato, raw",
+      "nameLower": "tomato, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Tomatoes, red, ripe, raw, year round average. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 18.0,
+        "protein": 0.88,
+        "carbs": 3.89,
+        "sugar": 2.63,
+        "fat": 0.2,
+        "saturatedFat": 0.028,
+        "transFat": 0,
+        "fiber": 1.2,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 10.0,
+        "iron": 0.27,
+        "potassium": 237.0,
+        "magnesium": 11.0,
+        "vitaminA": 42.0,
+        "vitaminC": 13.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-gurke",
+      "source": "custom",
+      "name": "Cucumber, raw",
+      "nameLower": "cucumber, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Cucumber, with peel, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 15.0,
+        "protein": 0.65,
+        "carbs": 3.63,
+        "sugar": 1.67,
+        "fat": 0.11,
+        "saturatedFat": 0.037,
+        "transFat": 0,
+        "fiber": 0.5,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 16.0,
+        "iron": 0.28,
+        "potassium": 147.0,
+        "magnesium": 13.0,
+        "vitaminA": 5.0,
+        "vitaminC": 2.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-paprika-rot",
+      "source": "custom",
+      "name": "Red bell pepper, raw",
+      "nameLower": "red bell pepper, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Peppers, sweet, red, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 31.0,
+        "protein": 0.99,
+        "carbs": 6.03,
+        "sugar": 4.2,
+        "fat": 0.3,
+        "saturatedFat": 0.027,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 7.0,
+        "iron": 0.43,
+        "potassium": 211.0,
+        "magnesium": 12.0,
+        "vitaminA": 157.0,
+        "vitaminC": 127.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-zucchini",
+      "source": "custom",
+      "name": "Zucchini, raw",
+      "nameLower": "zucchini, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Squash, summer, zucchini, includes skin, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 17.0,
+        "protein": 1.21,
+        "carbs": 3.11,
+        "sugar": 2.5,
+        "fat": 0.32,
+        "saturatedFat": 0.084,
+        "transFat": 0,
+        "fiber": 1.0,
+        "salt": 0.02,
+        "sodium": 8.0,
+        "calcium": 16.0,
+        "iron": 0.37,
+        "potassium": 261.0,
+        "magnesium": 18.0,
+        "vitaminA": 10.0,
+        "vitaminC": 17.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-aubergine",
+      "source": "custom",
+      "name": "Eggplant, raw",
+      "nameLower": "eggplant, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Eggplant, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 24.0,
+        "protein": 1.01,
+        "carbs": 5.7,
+        "sugar": 2.35,
+        "fat": 0.19,
+        "saturatedFat": 0.034,
+        "transFat": 0,
+        "fiber": 3.4,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 9.0,
+        "iron": 0.24,
+        "potassium": 230.0,
+        "magnesium": 14.0,
+        "vitaminA": 1.0,
+        "vitaminC": 2.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-champignons",
+      "source": "custom",
+      "name": "White button mushrooms, raw",
+      "nameLower": "white button mushrooms, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Mushrooms, white, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 22.0,
+        "protein": 3.09,
+        "carbs": 3.26,
+        "sugar": 1.98,
+        "fat": 0.34,
+        "saturatedFat": 0.05,
+        "transFat": 0,
+        "fiber": 1.0,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 3.0,
+        "iron": 0.5,
+        "potassium": 318.0,
+        "magnesium": 9.0,
+        "vitaminA": 0,
+        "vitaminC": 2.1,
+        "vitaminD": 0.2,
+        "vitaminB12": 0.04
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-mais",
+      "source": "custom",
+      "name": "Sweet corn, cooked",
+      "nameLower": "sweet corn, cooked",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Corn, sweet, yellow, cooked, boiled, drained, without salt. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 96.0,
+        "protein": 3.41,
+        "carbs": 20.98,
+        "sugar": 4.54,
+        "fat": 1.5,
+        "saturatedFat": 0.197,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 3.0,
+        "iron": 0.45,
+        "potassium": 218.0,
+        "magnesium": 26.0,
+        "vitaminA": 13.0,
+        "vitaminC": 5.5,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-erbsen",
+      "source": "custom",
+      "name": "Green peas, raw",
+      "nameLower": "green peas, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Peas, green, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 81.0,
+        "protein": 5.42,
+        "carbs": 14.45,
+        "sugar": 5.67,
+        "fat": 0.4,
+        "saturatedFat": 0.071,
+        "transFat": 0,
+        "fiber": 5.1,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 25.0,
+        "iron": 1.47,
+        "potassium": 244.0,
+        "magnesium": 33.0,
+        "vitaminA": 38.0,
+        "vitaminC": 40.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-grune-bohnen",
+      "source": "custom",
+      "name": "Green beans, raw",
+      "nameLower": "green beans, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Beans, snap, green, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 31.0,
+        "protein": 1.83,
+        "carbs": 6.97,
+        "sugar": 3.26,
+        "fat": 0.22,
+        "saturatedFat": 0.05,
+        "transFat": 0,
+        "fiber": 2.7,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 37.0,
+        "iron": 1.03,
+        "potassium": 211.0,
+        "magnesium": 25.0,
+        "vitaminA": 35.0,
+        "vitaminC": 12.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-rote-bete",
+      "source": "custom",
+      "name": "Beetroot, raw",
+      "nameLower": "beetroot, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Beets, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 43.0,
+        "protein": 1.61,
+        "carbs": 9.56,
+        "sugar": 6.76,
+        "fat": 0.17,
+        "saturatedFat": 0.027,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.195,
+        "sodium": 78.0,
+        "calcium": 16.0,
+        "iron": 0.8,
+        "potassium": 325.0,
+        "magnesium": 23.0,
+        "vitaminA": 2.0,
+        "vitaminC": 4.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-sellerie",
+      "source": "custom",
+      "name": "Celery, raw",
+      "nameLower": "celery, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Celery, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 16.0,
+        "protein": 0.69,
+        "carbs": 2.97,
+        "sugar": 1.83,
+        "fat": 0.17,
+        "saturatedFat": 0.042,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.2,
+        "sodium": 80.0,
+        "calcium": 40.0,
+        "iron": 0.2,
+        "potassium": 260.0,
+        "magnesium": 11.0,
+        "vitaminA": 22.0,
+        "vitaminC": 3.1,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-lauch",
+      "source": "custom",
+      "name": "Leek, raw",
+      "nameLower": "leek, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Leeks, (bulb and lower leaf-portion), raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 61.0,
+        "protein": 1.5,
+        "carbs": 14.15,
+        "sugar": 3.9,
+        "fat": 0.3,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 1.8,
+        "salt": 0.05,
+        "sodium": 20.0,
+        "calcium": 59.0,
+        "iron": 2.1,
+        "potassium": 180.0,
+        "magnesium": 28.0,
+        "vitaminA": 83.0,
+        "vitaminC": 12.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-spargel",
+      "source": "custom",
+      "name": "Asparagus, raw",
+      "nameLower": "asparagus, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Asparagus, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 20.0,
+        "protein": 2.2,
+        "carbs": 3.88,
+        "sugar": 1.88,
+        "fat": 0.12,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 24.0,
+        "iron": 2.14,
+        "potassium": 202.0,
+        "magnesium": 14.0,
+        "vitaminA": 38.0,
+        "vitaminC": 5.6,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kurbis",
+      "source": "custom",
+      "name": "Pumpkin, raw",
+      "nameLower": "pumpkin, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Pumpkin, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 26.0,
+        "protein": 1.0,
+        "carbs": 6.5,
+        "sugar": 1.36,
+        "fat": 0.1,
+        "saturatedFat": 0.052,
+        "transFat": 0,
+        "fiber": 0.5,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 21.0,
+        "iron": 0.8,
+        "potassium": 340.0,
+        "magnesium": 12.0,
+        "vitaminA": 369.0,
+        "vitaminC": 9.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-ingwer",
+      "source": "custom",
+      "name": "Ginger root, raw",
+      "nameLower": "ginger root, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Ginger root, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 80.0,
+        "protein": 1.82,
+        "carbs": 17.77,
+        "sugar": 1.7,
+        "fat": 0.75,
+        "saturatedFat": 0.203,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.033,
+        "sodium": 13.0,
+        "calcium": 16.0,
+        "iron": 0.6,
+        "potassium": 415.0,
+        "magnesium": 43.0,
+        "vitaminA": 0,
+        "vitaminC": 5.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-apfel",
+      "source": "custom",
+      "name": "Apple, raw",
+      "nameLower": "apple, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Apples, raw, with skin. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 52.0,
+        "protein": 0.26,
+        "carbs": 13.81,
+        "sugar": 10.39,
+        "fat": 0.17,
+        "saturatedFat": 0.028,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 6.0,
+        "iron": 0.12,
+        "potassium": 107.0,
+        "magnesium": 5.0,
+        "vitaminA": 3.0,
+        "vitaminC": 4.6,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-banane",
+      "source": "custom",
+      "name": "Banana, raw",
+      "nameLower": "banana, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Bananas, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 89.0,
+        "protein": 1.09,
+        "carbs": 22.84,
+        "sugar": 12.23,
+        "fat": 0.33,
+        "saturatedFat": 0.112,
+        "transFat": 0,
+        "fiber": 2.6,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 5.0,
+        "iron": 0.26,
+        "potassium": 358.0,
+        "magnesium": 27.0,
+        "vitaminA": 3.0,
+        "vitaminC": 8.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-orange",
+      "source": "custom",
+      "name": "Orange, raw",
+      "nameLower": "orange, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Oranges, raw, all commercial varieties. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47.0,
+        "protein": 0.94,
+        "carbs": 11.75,
+        "sugar": 9.35,
+        "fat": 0.12,
+        "saturatedFat": 0.015,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 40.0,
+        "iron": 0.1,
+        "potassium": 181.0,
+        "magnesium": 10.0,
+        "vitaminA": 11.0,
+        "vitaminC": 53.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-zitrone",
+      "source": "custom",
+      "name": "Lemon, raw",
+      "nameLower": "lemon, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Lemons, raw, without peel. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 29.0,
+        "protein": 1.1,
+        "carbs": 9.32,
+        "sugar": 2.5,
+        "fat": 0.3,
+        "saturatedFat": 0.039,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 26.0,
+        "iron": 0.6,
+        "potassium": 138.0,
+        "magnesium": 8.0,
+        "vitaminA": 1.0,
+        "vitaminC": 53.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-limette",
+      "source": "custom",
+      "name": "Lime, raw",
+      "nameLower": "lime, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Limes, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 30.0,
+        "protein": 0.7,
+        "carbs": 10.54,
+        "sugar": 1.69,
+        "fat": 0.2,
+        "saturatedFat": 0.022,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 33.0,
+        "iron": 0.6,
+        "potassium": 102.0,
+        "magnesium": 6.0,
+        "vitaminA": 2.0,
+        "vitaminC": 29.1,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-erdbeeren",
+      "source": "custom",
+      "name": "Strawberries, raw",
+      "nameLower": "strawberries, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Strawberries, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 32.0,
+        "protein": 0.67,
+        "carbs": 7.68,
+        "sugar": 4.89,
+        "fat": 0.3,
+        "saturatedFat": 0.015,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 16.0,
+        "iron": 0.41,
+        "potassium": 153.0,
+        "magnesium": 13.0,
+        "vitaminA": 1.0,
+        "vitaminC": 58.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-blaubeeren",
+      "source": "custom",
+      "name": "Blueberries, raw",
+      "nameLower": "blueberries, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Blueberries, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 57.0,
+        "protein": 0.74,
+        "carbs": 14.49,
+        "sugar": 9.96,
+        "fat": 0.33,
+        "saturatedFat": 0.028,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 6.0,
+        "iron": 0.28,
+        "potassium": 77.0,
+        "magnesium": 6.0,
+        "vitaminA": 3.0,
+        "vitaminC": 9.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-himbeeren",
+      "source": "custom",
+      "name": "Raspberries, raw",
+      "nameLower": "raspberries, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Raspberries, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 52.0,
+        "protein": 1.2,
+        "carbs": 11.94,
+        "sugar": 4.42,
+        "fat": 0.65,
+        "saturatedFat": 0.019,
+        "transFat": 0,
+        "fiber": 6.5,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 25.0,
+        "iron": 0.69,
+        "potassium": 151.0,
+        "magnesium": 22.0,
+        "vitaminA": 2.0,
+        "vitaminC": 26.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-trauben",
+      "source": "custom",
+      "name": "Grapes, raw",
+      "nameLower": "grapes, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Grapes, red or green (European type, such as Thompson seedless), raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 69.0,
+        "protein": 0.72,
+        "carbs": 18.1,
+        "sugar": 15.48,
+        "fat": 0.16,
+        "saturatedFat": 0.054,
+        "transFat": 0,
+        "fiber": 0.9,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 10.0,
+        "iron": 0.36,
+        "potassium": 191.0,
+        "magnesium": 7.0,
+        "vitaminA": 3.0,
+        "vitaminC": 10.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-mango",
+      "source": "custom",
+      "name": "Mango, raw",
+      "nameLower": "mango, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Mangos, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 60.0,
+        "protein": 0.82,
+        "carbs": 14.98,
+        "sugar": 13.66,
+        "fat": 0.38,
+        "saturatedFat": 0.092,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 11.0,
+        "iron": 0.16,
+        "potassium": 168.0,
+        "magnesium": 10.0,
+        "vitaminA": 54.0,
+        "vitaminC": 36.4,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-ananas",
+      "source": "custom",
+      "name": "Pineapple, raw",
+      "nameLower": "pineapple, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Pineapple, raw, all varieties. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 50.0,
+        "protein": 0.54,
+        "carbs": 13.12,
+        "sugar": 9.85,
+        "fat": 0.12,
+        "saturatedFat": 0.009,
+        "transFat": 0,
+        "fiber": 1.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 13.0,
+        "iron": 0.29,
+        "potassium": 109.0,
+        "magnesium": 12.0,
+        "vitaminA": 3.0,
+        "vitaminC": 47.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kiwi",
+      "source": "custom",
+      "name": "Kiwifruit, raw",
+      "nameLower": "kiwifruit, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Kiwifruit, green, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 61.0,
+        "protein": 1.14,
+        "carbs": 14.66,
+        "sugar": 8.99,
+        "fat": 0.52,
+        "saturatedFat": 0.029,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 34.0,
+        "iron": 0.31,
+        "potassium": 312.0,
+        "magnesium": 17.0,
+        "vitaminA": 4.0,
+        "vitaminC": 92.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-birne",
+      "source": "custom",
+      "name": "Pear, raw",
+      "nameLower": "pear, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Pears, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 58.0,
+        "protein": 0.38,
+        "carbs": 15.46,
+        "sugar": 9.8,
+        "fat": 0.12,
+        "saturatedFat": 0.006,
+        "transFat": 0,
+        "fiber": 3.1,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 9.0,
+        "iron": 0.17,
+        "potassium": 119.0,
+        "magnesium": 7.0,
+        "vitaminA": 1.0,
+        "vitaminC": 4.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-pfirsich",
+      "source": "custom",
+      "name": "Peach, raw",
+      "nameLower": "peach, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Peaches, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 39.0,
+        "protein": 0.91,
+        "carbs": 9.54,
+        "sugar": 8.39,
+        "fat": 0.25,
+        "saturatedFat": 0.019,
+        "transFat": 0,
+        "fiber": 1.5,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 6.0,
+        "iron": 0.25,
+        "potassium": 190.0,
+        "magnesium": 9.0,
+        "vitaminA": 16.0,
+        "vitaminC": 6.6,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-avocado",
+      "source": "custom",
+      "name": "Avocado, raw",
+      "nameLower": "avocado, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Avocados, raw, all commercial varieties. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 160.0,
+        "protein": 2.0,
+        "carbs": 8.53,
+        "sugar": 0.66,
+        "fat": 14.66,
+        "saturatedFat": 2.126,
+        "transFat": 0,
+        "fiber": 6.7,
+        "salt": 0.018,
+        "sodium": 7.0,
+        "calcium": 12.0,
+        "iron": 0.55,
+        "potassium": 485.0,
+        "magnesium": 29.0,
+        "vitaminA": 7.0,
+        "vitaminC": 10.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-haferflocken",
+      "source": "custom",
+      "name": "Rolled oats, dry",
+      "nameLower": "rolled oats, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Cereals, oats, regular and quick and instant, not fortified, dry. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 379.0,
+        "protein": 13.15,
+        "carbs": 67.7,
+        "sugar": 0.99,
+        "fat": 6.52,
+        "saturatedFat": 1.11,
+        "transFat": 0,
+        "fiber": 10.1,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 52.0,
+        "iron": 4.25,
+        "potassium": 362.0,
+        "magnesium": 138.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-reis-gekocht",
+      "source": "custom",
+      "name": "White rice, cooked",
+      "nameLower": "white rice, cooked",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Rice, white, long-grain, regular, cooked, unenriched, without salt. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 130.0,
+        "protein": 2.69,
+        "carbs": 28.17,
+        "sugar": 0.05,
+        "fat": 0.28,
+        "saturatedFat": 0.077,
+        "transFat": 0,
+        "fiber": 0.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 10.0,
+        "iron": 0.2,
+        "potassium": 35.0,
+        "magnesium": 12.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-reis-trocken",
+      "source": "custom",
+      "name": "White rice, dry",
+      "nameLower": "white rice, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Rice, white, long-grain, regular, raw, unenriched. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 365.0,
+        "protein": 7.13,
+        "carbs": 79.95,
+        "sugar": 0.12,
+        "fat": 0.66,
+        "saturatedFat": 0.18,
+        "transFat": 0,
+        "fiber": 1.3,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 28.0,
+        "iron": 0.8,
+        "potassium": 115.0,
+        "magnesium": 25.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-nudeln-trocken",
+      "source": "custom",
+      "name": "Pasta, dry",
+      "nameLower": "pasta, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spaghetti, dry, unenriched. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 371.0,
+        "protein": 13.04,
+        "carbs": 74.67,
+        "sugar": 2.67,
+        "fat": 1.51,
+        "saturatedFat": 0.277,
+        "transFat": 0,
+        "fiber": 3.2,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 21.0,
+        "iron": 1.3,
+        "potassium": 223.0,
+        "magnesium": 53.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-bulgur-trocken",
+      "source": "custom",
+      "name": "Bulgur, dry",
+      "nameLower": "bulgur, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Bulgur, dry. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 342.0,
+        "protein": 12.29,
+        "carbs": 75.87,
+        "sugar": 0.41,
+        "fat": 1.33,
+        "saturatedFat": 0.232,
+        "transFat": 0,
+        "fiber": 18.3,
+        "salt": 0.043,
+        "sodium": 17.0,
+        "calcium": 35.0,
+        "iron": 2.46,
+        "potassium": 410.0,
+        "magnesium": 164.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-couscous-trocken",
+      "source": "custom",
+      "name": "Couscous, dry",
+      "nameLower": "couscous, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Couscous, dry. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 376.0,
+        "protein": 12.76,
+        "carbs": 77.43,
+        "sugar": 0.6,
+        "fat": 0.64,
+        "saturatedFat": 0.117,
+        "transFat": 0,
+        "fiber": 5.0,
+        "salt": 0.025,
+        "sodium": 10.0,
+        "calcium": 24.0,
+        "iron": 1.08,
+        "potassium": 166.0,
+        "magnesium": 44.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-quinoa-trocken",
+      "source": "custom",
+      "name": "Quinoa, dry",
+      "nameLower": "quinoa, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Quinoa, uncooked. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 368.0,
+        "protein": 14.12,
+        "carbs": 64.16,
+        "sugar": 0,
+        "fat": 6.07,
+        "saturatedFat": 0.706,
+        "transFat": 0,
+        "fiber": 7.0,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 47.0,
+        "iron": 4.57,
+        "potassium": 563.0,
+        "magnesium": 197.0,
+        "vitaminA": 1.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-linsen-trocken",
+      "source": "custom",
+      "name": "Lentils, dry",
+      "nameLower": "lentils, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Lentils, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 353.0,
+        "protein": 25.8,
+        "carbs": 60.08,
+        "sugar": 2.03,
+        "fat": 1.06,
+        "saturatedFat": 0.156,
+        "transFat": 0,
+        "fiber": 30.5,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 56.0,
+        "iron": 7.54,
+        "potassium": 955.0,
+        "magnesium": 122.0,
+        "vitaminA": 2.0,
+        "vitaminC": 4.4,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kichererbsen-gekocht",
+      "source": "custom",
+      "name": "Chickpeas, cooked",
+      "nameLower": "chickpeas, cooked",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, without salt. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 164.0,
+        "protein": 8.86,
+        "carbs": 27.42,
+        "sugar": 4.8,
+        "fat": 2.59,
+        "saturatedFat": 0.269,
+        "transFat": 0,
+        "fiber": 7.6,
+        "salt": 0.018,
+        "sodium": 7.0,
+        "calcium": 49.0,
+        "iron": 2.89,
+        "potassium": 291.0,
+        "magnesium": 48.0,
+        "vitaminA": 1.0,
+        "vitaminC": 1.3,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kidneybohnen-gekocht",
+      "source": "custom",
+      "name": "Kidney beans, cooked",
+      "nameLower": "kidney beans, cooked",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Beans, kidney, all types, mature seeds, cooked, boiled, without salt. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 127.0,
+        "protein": 8.67,
+        "carbs": 22.8,
+        "sugar": 0.32,
+        "fat": 0.5,
+        "saturatedFat": 0.073,
+        "transFat": 0,
+        "fiber": 6.4,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 35.0,
+        "iron": 2.22,
+        "potassium": 405.0,
+        "magnesium": 42.0,
+        "vitaminA": 0,
+        "vitaminC": 1.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-tofu-natur",
+      "source": "custom",
+      "name": "Tofu, firm, plain",
+      "nameLower": "tofu, firm, plain",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Tofu, raw, firm, prepared with calcium sulfate. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 145.0,
+        "protein": 15.78,
+        "carbs": 4.27,
+        "sugar": 0.6,
+        "fat": 8.72,
+        "saturatedFat": 1.261,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.035,
+        "sodium": 14.0,
+        "calcium": 683.0,
+        "iron": 2.66,
+        "potassium": 237.0,
+        "magnesium": 58.0,
+        "vitaminA": 0,
+        "vitaminC": 0.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-tempeh",
+      "source": "custom",
+      "name": "Tempeh, cooked",
+      "nameLower": "tempeh, cooked",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Tempeh, cooked. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 196.0,
+        "protein": 18.19,
+        "carbs": 9.35,
+        "sugar": 0,
+        "fat": 11.38,
+        "saturatedFat": 3.4,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.035,
+        "sodium": 14.0,
+        "calcium": 96.0,
+        "iron": 2.13,
+        "potassium": 401.0,
+        "magnesium": 77.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0.14
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-mandeln",
+      "source": "custom",
+      "name": "Almonds, raw",
+      "nameLower": "almonds, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Nuts, almonds. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 575.0,
+        "protein": 21.22,
+        "carbs": 21.67,
+        "sugar": 3.89,
+        "fat": 49.42,
+        "saturatedFat": 3.731,
+        "transFat": 0.017,
+        "fiber": 12.2,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 264.0,
+        "iron": 3.72,
+        "potassium": 705.0,
+        "magnesium": 268.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-walnusse",
+      "source": "custom",
+      "name": "Walnuts, raw",
+      "nameLower": "walnuts, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Nuts, walnuts, english. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 654.0,
+        "protein": 15.23,
+        "carbs": 13.71,
+        "sugar": 2.61,
+        "fat": 65.21,
+        "saturatedFat": 6.126,
+        "transFat": 0,
+        "fiber": 6.7,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 98.0,
+        "iron": 2.91,
+        "potassium": 441.0,
+        "magnesium": 158.0,
+        "vitaminA": 1.0,
+        "vitaminC": 1.3,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-erdnusse",
+      "source": "custom",
+      "name": "Peanuts, raw",
+      "nameLower": "peanuts, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Peanuts, all types, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 567.0,
+        "protein": 25.8,
+        "carbs": 16.13,
+        "sugar": 3.97,
+        "fat": 49.24,
+        "saturatedFat": 6.834,
+        "transFat": 0,
+        "fiber": 8.5,
+        "salt": 0.045,
+        "sodium": 18.0,
+        "calcium": 92.0,
+        "iron": 4.58,
+        "potassium": 705.0,
+        "magnesium": 168.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-chiasamen",
+      "source": "custom",
+      "name": "Chia seeds, dry",
+      "nameLower": "chia seeds, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Seeds, chia seeds, dried. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 490.0,
+        "protein": 15.62,
+        "carbs": 43.85,
+        "sugar": 0,
+        "fat": 30.75,
+        "saturatedFat": 3.176,
+        "transFat": 0,
+        "fiber": 37.7,
+        "salt": 0.048,
+        "sodium": 19.0,
+        "calcium": 631.0,
+        "iron": 0,
+        "potassium": 160.0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-leinsamen",
+      "source": "custom",
+      "name": "Flaxseed, dry",
+      "nameLower": "flaxseed, dry",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Seeds, flaxseed. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 534.0,
+        "protein": 18.29,
+        "carbs": 28.88,
+        "sugar": 1.55,
+        "fat": 42.16,
+        "saturatedFat": 3.663,
+        "transFat": 0,
+        "fiber": 27.3,
+        "salt": 0.075,
+        "sodium": 30.0,
+        "calcium": 255.0,
+        "iron": 5.73,
+        "potassium": 813.0,
+        "magnesium": 392.0,
+        "vitaminA": 0,
+        "vitaminC": 0.6,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-olivenol",
+      "source": "custom",
+      "name": "Olive oil",
+      "nameLower": "olive oil",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Oil, olive, salad or cooking. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884.0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 100.0,
+        "saturatedFat": 13.808,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 1.0,
+        "iron": 0.56,
+        "potassium": 1.0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-rapsol",
+      "source": "custom",
+      "name": "Canola oil",
+      "nameLower": "canola oil",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Oil, canola. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884.0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 100.0,
+        "saturatedFat": 7.365,
+        "transFat": 0.395,
+        "fiber": 0,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-joghurt-griechisch-2",
+      "source": "custom",
+      "name": "Greek yogurt, 2% fat",
+      "nameLower": "greek yogurt, 2% fat",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against manual generic reference profile. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 73.0,
+        "protein": 9.0,
+        "carbs": 3.9,
+        "sugar": 3.2,
+        "fat": 2.0,
+        "saturatedFat": 1.25,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.09,
+        "sodium": 36.0,
+        "calcium": 111.0,
+        "iron": 0.07,
+        "potassium": 141.0,
+        "magnesium": 11.0,
+        "vitaminA": 27.0,
+        "vitaminC": 0,
+        "vitaminD": 0.1,
+        "vitaminB12": 0.75
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-magerquark",
+      "source": "custom",
+      "name": "Low-fat quark",
+      "nameLower": "low-fat quark",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against manual generic reference profile. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 67.0,
+        "protein": 12.0,
+        "carbs": 4.0,
+        "sugar": 4.0,
+        "fat": 0.2,
+        "saturatedFat": 0.13,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.1,
+        "sodium": 40.0,
+        "calcium": 92.0,
+        "iron": 0.1,
+        "potassium": 150.0,
+        "magnesium": 11.0,
+        "vitaminA": 5.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0.7
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-milch-1-5",
+      "source": "custom",
+      "name": "Milk, 1.5% fat",
+      "nameLower": "milk, 1.5% fat",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Milk, fluid, 1% fat, without added vitamin A and vitamin D. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47,
+        "protein": 3.4,
+        "carbs": 4.9,
+        "sugar": 4.9,
+        "fat": 1.5,
+        "saturatedFat": 0.22,
+        "transFat": 0,
+        "fiber": 0.0,
+        "salt": 0.11,
+        "sodium": 44,
+        "calcium": 125.0,
+        "iron": 0.03,
+        "potassium": 150.0,
+        "magnesium": 11.0,
+        "vitaminA": 14.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0.47
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-ei",
+      "source": "custom",
+      "name": "Egg, whole, raw",
+      "nameLower": "egg, whole, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Egg, whole, raw, fresh. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 143.0,
+        "protein": 12.56,
+        "carbs": 0.72,
+        "sugar": 0.37,
+        "fat": 9.51,
+        "saturatedFat": 3.126,
+        "transFat": 0.038,
+        "fiber": 0,
+        "salt": 0.355,
+        "sodium": 142.0,
+        "calcium": 56.0,
+        "iron": 1.75,
+        "potassium": 138.0,
+        "magnesium": 12.0,
+        "vitaminA": 160.0,
+        "vitaminC": 0,
+        "vitaminD": 2.0,
+        "vitaminB12": 0.89
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-salz",
+      "source": "custom",
+      "name": "Table salt",
+      "nameLower": "table salt",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Salt, table. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 0,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 96.895,
+        "sodium": 38758.0,
+        "calcium": 24.0,
+        "iron": 0.33,
+        "potassium": 8.0,
+        "magnesium": 1.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-pfeffer-schwarz",
+      "source": "custom",
+      "name": "Black pepper, ground",
+      "nameLower": "black pepper, ground",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, pepper, black. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 251.0,
+        "protein": 10.39,
+        "carbs": 63.95,
+        "sugar": 0.64,
+        "fat": 3.26,
+        "saturatedFat": 1.392,
+        "transFat": 0,
+        "fiber": 25.3,
+        "salt": 0.05,
+        "sodium": 20.0,
+        "calcium": 443.0,
+        "iron": 9.71,
+        "potassium": 1329.0,
+        "magnesium": 171.0,
+        "vitaminA": 27.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-paprikapulver",
+      "source": "custom",
+      "name": "Paprika, ground",
+      "nameLower": "paprika, ground",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, paprika. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 282.0,
+        "protein": 14.14,
+        "carbs": 53.99,
+        "sugar": 10.34,
+        "fat": 12.89,
+        "saturatedFat": 2.14,
+        "transFat": 0,
+        "fiber": 34.9,
+        "salt": 0.17,
+        "sodium": 68.0,
+        "calcium": 229.0,
+        "iron": 21.14,
+        "potassium": 2280.0,
+        "magnesium": 178.0,
+        "vitaminA": 2463.0,
+        "vitaminC": 0.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-currypulver",
+      "source": "custom",
+      "name": "Curry powder",
+      "nameLower": "curry powder",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, curry powder. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 325.0,
+        "protein": 12.66,
+        "carbs": 58.15,
+        "sugar": 2.76,
+        "fat": 13.81,
+        "saturatedFat": 2.237,
+        "transFat": 0,
+        "fiber": 33.2,
+        "salt": 0.13,
+        "sodium": 52.0,
+        "calcium": 478.0,
+        "iron": 29.59,
+        "potassium": 1543.0,
+        "magnesium": 254.0,
+        "vitaminA": 49.0,
+        "vitaminC": 11.4,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kurkuma",
+      "source": "custom",
+      "name": "Turmeric, ground",
+      "nameLower": "turmeric, ground",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, turmeric, ground. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 354.0,
+        "protein": 7.83,
+        "carbs": 64.93,
+        "sugar": 3.21,
+        "fat": 9.88,
+        "saturatedFat": 3.12,
+        "transFat": 0,
+        "fiber": 21.1,
+        "salt": 0.095,
+        "sodium": 38.0,
+        "calcium": 183.0,
+        "iron": 41.42,
+        "potassium": 2525.0,
+        "magnesium": 193.0,
+        "vitaminA": 0,
+        "vitaminC": 25.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-zimt",
+      "source": "custom",
+      "name": "Cinnamon, ground",
+      "nameLower": "cinnamon, ground",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, cinnamon, ground. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 247.0,
+        "protein": 3.99,
+        "carbs": 80.59,
+        "sugar": 2.17,
+        "fat": 1.24,
+        "saturatedFat": 0.345,
+        "transFat": 0,
+        "fiber": 53.1,
+        "salt": 0.025,
+        "sodium": 10.0,
+        "calcium": 1002.0,
+        "iron": 8.32,
+        "potassium": 431.0,
+        "magnesium": 60.0,
+        "vitaminA": 15.0,
+        "vitaminC": 3.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-kreuzkummel",
+      "source": "custom",
+      "name": "Cumin seed, ground",
+      "nameLower": "cumin seed, ground",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, cumin seed. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 375.0,
+        "protein": 17.81,
+        "carbs": 44.24,
+        "sugar": 2.25,
+        "fat": 22.27,
+        "saturatedFat": 1.535,
+        "transFat": 0,
+        "fiber": 10.5,
+        "salt": 0.42,
+        "sodium": 168.0,
+        "calcium": 931.0,
+        "iron": 66.36,
+        "potassium": 1788.0,
+        "magnesium": 366.0,
+        "vitaminA": 64.0,
+        "vitaminC": 7.7,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-oregano-getrocknet",
+      "source": "custom",
+      "name": "Oregano, dried",
+      "nameLower": "oregano, dried",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Spices, oregano, dried. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 265.0,
+        "protein": 9.0,
+        "carbs": 68.92,
+        "sugar": 4.09,
+        "fat": 4.28,
+        "saturatedFat": 1.551,
+        "transFat": 0,
+        "fiber": 42.5,
+        "salt": 0.062,
+        "sodium": 25.0,
+        "calcium": 1597.0,
+        "iron": 36.8,
+        "potassium": 1260.0,
+        "magnesium": 270.0,
+        "vitaminA": 85.0,
+        "vitaminC": 2.3,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-basilikum-frisch",
+      "source": "custom",
+      "name": "Basil, fresh",
+      "nameLower": "basil, fresh",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Basil, fresh. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23.0,
+        "protein": 3.15,
+        "carbs": 2.65,
+        "sugar": 0.3,
+        "fat": 0.64,
+        "saturatedFat": 0.041,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 177.0,
+        "iron": 3.17,
+        "potassium": 295.0,
+        "magnesium": 64.0,
+        "vitaminA": 264.0,
+        "vitaminC": 18.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-petersilie-frisch",
+      "source": "custom",
+      "name": "Parsley, fresh",
+      "nameLower": "parsley, fresh",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Parsley, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 36.0,
+        "protein": 2.97,
+        "carbs": 6.33,
+        "sugar": 0.85,
+        "fat": 0.79,
+        "saturatedFat": 0.132,
+        "transFat": 0,
+        "fiber": 3.3,
+        "salt": 0.14,
+        "sodium": 56.0,
+        "calcium": 138.0,
+        "iron": 6.2,
+        "potassium": 554.0,
+        "magnesium": 50.0,
+        "vitaminA": 421.0,
+        "vitaminC": 133.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-koriander-frisch",
+      "source": "custom",
+      "name": "Cilantro, fresh",
+      "nameLower": "cilantro, fresh",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Coriander (cilantro) leaves, raw. Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23.0,
+        "protein": 2.13,
+        "carbs": 3.67,
+        "sugar": 0.87,
+        "fat": 0.52,
+        "saturatedFat": 0.014,
+        "transFat": 0,
+        "fiber": 2.8,
+        "salt": 0.115,
+        "sodium": 46.0,
+        "calcium": 67.0,
+        "iron": 1.77,
+        "potassium": 521.0,
+        "magnesium": 26.0,
+        "vitaminA": 337.0,
+        "vitaminC": 27.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "basic-sojasauce",
+      "source": "custom",
+      "name": "Soy sauce",
+      "nameLower": "soy sauce",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion. English name; nutrient profile checked against Soy sauce made from soy and wheat (shoyu). Values vary by variety, brand, and preparation.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 53.0,
+        "protein": 6.28,
+        "carbs": 7.61,
+        "sugar": 1.7,
+        "fat": 0.04,
+        "saturatedFat": 0.005,
+        "transFat": 0,
+        "fiber": 0.8,
+        "salt": 14.092,
+        "sodium": 5637.0,
+        "calcium": 19.0,
+        "iron": 1.93,
+        "potassium": 217.0,
+        "magnesium": 43.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1783305101215,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cassava-raw",
+      "source": "custom",
+      "name": "Cassava, raw",
+      "nameLower": "cassava, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cassava, tuber, white flesh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: yuca, manioc.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 142.0,
+        "protein": 1.3,
+        "carbs": 31.6,
+        "sugar": 1.7,
+        "fat": 0.3,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 3.7,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 37.0,
+        "iron": 1.5,
+        "potassium": 167.0,
+        "magnesium": 13.0,
+        "vitaminA": 2.0,
+        "vitaminC": 30.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cassava-boiled-and-drained",
+      "source": "custom",
+      "name": "Cassava, boiled and drained",
+      "nameLower": "cassava, boiled and drained",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cassava, tuber, white flesh, boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: boiled cassava.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 121.0,
+        "protein": 1.1,
+        "carbs": 27.0,
+        "sugar": 1.3,
+        "fat": 0.3,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 3.2,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 30.0,
+        "iron": 1.2,
+        "potassium": 114.0,
+        "magnesium": 10.0,
+        "vitaminA": 2.0,
+        "vitaminC": 18.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-garri-white",
+      "source": "custom",
+      "name": "Garri, white",
+      "nameLower": "garri, white",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cassava, grated, from fermented white cassava, toasted without oil (white gari)”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: gari, cassava granules.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 351.0,
+        "protein": 1.2,
+        "carbs": 82.9,
+        "sugar": 1.0,
+        "fat": 0.5,
+        "saturatedFat": 0.11,
+        "transFat": 0,
+        "fiber": 5.0,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 42.0,
+        "iron": 1.6,
+        "potassium": 309.0,
+        "magnesium": 23.0,
+        "vitaminA": 0,
+        "vitaminC": 2.0,
+        "vitaminD": 0,
+        "vitaminB12": 1.0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-white-yam-raw",
+      "source": "custom",
+      "name": "White yam, raw",
+      "nameLower": "white yam, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Yam, tuber, combined cultivars, raw (Nigeria)”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: Nigerian yam, Dioscorea rotundata.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 129.0,
+        "protein": 1.8,
+        "carbs": 27.2,
+        "sugar": 0.5,
+        "fat": 0.1,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 5.7,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 9.0,
+        "iron": 0.3,
+        "potassium": 383.0,
+        "magnesium": 8.0,
+        "vitaminA": 0,
+        "vitaminC": 13.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-white-yam-boiled",
+      "source": "custom",
+      "name": "White yam, boiled",
+      "nameLower": "white yam, boiled",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Yam, tuber, combined cultivars (Nigeria), boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: boiled yam.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 136.0,
+        "protein": 1.9,
+        "carbs": 28.7,
+        "sugar": 0.4,
+        "fat": 0.2,
+        "saturatedFat": 0.04,
+        "transFat": 0,
+        "fiber": 6.0,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 9.0,
+        "iron": 0.3,
+        "potassium": 322.0,
+        "magnesium": 8.0,
+        "vitaminA": 0,
+        "vitaminC": 9.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cocoyam-raw",
+      "source": "custom",
+      "name": "Cocoyam, raw",
+      "nameLower": "cocoyam, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cocoyam, tuber, white, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: taro, ede.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 136.0,
+        "protein": 3.3,
+        "carbs": 28.9,
+        "sugar": 0.5,
+        "fat": 0.3,
+        "saturatedFat": 0.08,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.022,
+        "sodium": 9.0,
+        "calcium": 15.0,
+        "iron": 0.7,
+        "potassium": 531.0,
+        "magnesium": 13.0,
+        "vitaminA": 0,
+        "vitaminC": 8.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cocoyam-boiled",
+      "source": "custom",
+      "name": "Cocoyam, boiled",
+      "nameLower": "cocoyam, boiled",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cocoyam, tuber, white, boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: boiled taro.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 143.0,
+        "protein": 3.4,
+        "carbs": 30.4,
+        "sugar": 0.4,
+        "fat": 0.3,
+        "saturatedFat": 0.08,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.02,
+        "sodium": 8.0,
+        "calcium": 15.0,
+        "iron": 0.7,
+        "potassium": 447.0,
+        "magnesium": 12.0,
+        "vitaminA": 0,
+        "vitaminC": 6.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-plantain-ripe-raw",
+      "source": "custom",
+      "name": "Plantain, ripe, raw",
+      "nameLower": "plantain, ripe, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Plantain, ripe, ivory flesh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: ripe plantain.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 143.0,
+        "protein": 1.4,
+        "carbs": 32.9,
+        "sugar": 14.8,
+        "fat": 0.2,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 6.0,
+        "iron": 1.1,
+        "potassium": 499.0,
+        "magnesium": 37.0,
+        "vitaminA": 63.0,
+        "vitaminC": 20.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-plantain-ripe-boiled",
+      "source": "custom",
+      "name": "Plantain, ripe, boiled",
+      "nameLower": "plantain, ripe, boiled",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Plantain, ripe, ivory flesh, boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: boiled ripe plantain.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 151.0,
+        "protein": 1.4,
+        "carbs": 34.6,
+        "sugar": 17.0,
+        "fat": 0.2,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 2.5,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 6.0,
+        "iron": 1.0,
+        "potassium": 420.0,
+        "magnesium": 35.0,
+        "vitaminA": 63.0,
+        "vitaminC": 15.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-plantain-unripe-raw",
+      "source": "custom",
+      "name": "Plantain, unripe, raw",
+      "nameLower": "plantain, unripe, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Plantain, unripe, ivory flesh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: green plantain.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 158.0,
+        "protein": 1.9,
+        "carbs": 31.9,
+        "sugar": 4.0,
+        "fat": 1.1,
+        "saturatedFat": 0.29,
+        "transFat": 0,
+        "fiber": 6.5,
+        "salt": 0.085,
+        "sodium": 34.0,
+        "calcium": 8.0,
+        "iron": 0.5,
+        "potassium": 705.0,
+        "magnesium": 38.0,
+        "vitaminA": 71.0,
+        "vitaminC": 20.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-plantain-unripe-boiled",
+      "source": "custom",
+      "name": "Plantain, unripe, boiled",
+      "nameLower": "plantain, unripe, boiled",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Plantain, unripe, ivory flesh, boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: boiled green plantain.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 151.0,
+        "protein": 1.8,
+        "carbs": 30.3,
+        "sugar": 3.0,
+        "fat": 1.1,
+        "saturatedFat": 0.27,
+        "transFat": 0,
+        "fiber": 6.2,
+        "salt": 0.065,
+        "sodium": 26.0,
+        "calcium": 8.0,
+        "iron": 0.5,
+        "potassium": 537.0,
+        "magnesium": 32.0,
+        "vitaminA": 65.0,
+        "vitaminC": 13.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-plantain-deep-fried",
+      "source": "custom",
+      "name": "Plantain, deep-fried",
+      "nameLower": "plantain, deep-fried",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Plantain, deep fried in unfortified vegetable oil*”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: dodo, fried plantain.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 375.0,
+        "protein": 2.1,
+        "carbs": 51.7,
+        "sugar": 18.0,
+        "fat": 16.9,
+        "saturatedFat": 2.51,
+        "transFat": 0,
+        "fiber": 3.7,
+        "salt": 0.812,
+        "sodium": 325.0,
+        "calcium": 12.0,
+        "iron": 1.7,
+        "potassium": 785.0,
+        "magnesium": 59.0,
+        "vitaminA": 20.0,
+        "vitaminC": 29.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-egusi-seed-kernels-dried",
+      "source": "custom",
+      "name": "Egusi seed kernels, dried",
+      "nameLower": "egusi seed kernels, dried",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Melon seed, kernel only, dried, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: egusi, melon seeds.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 574.0,
+        "protein": 27.6,
+        "carbs": 11.6,
+        "sugar": 1.5,
+        "fat": 45.0,
+        "saturatedFat": 11.11,
+        "transFat": 0,
+        "fiber": 6.0,
+        "salt": 0.092,
+        "sodium": 37.0,
+        "calcium": 118.0,
+        "iron": 6.3,
+        "potassium": 610.0,
+        "magnesium": 383.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cowpeas-dry-raw",
+      "source": "custom",
+      "name": "Cowpeas, dry, raw",
+      "nameLower": "cowpeas, dry, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cowpea, dry, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: black-eyed peas, beans, ewa.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 325.0,
+        "protein": 22.6,
+        "carbs": 49.0,
+        "sugar": 3.0,
+        "fat": 1.5,
+        "saturatedFat": 0.36,
+        "transFat": 0,
+        "fiber": 12.6,
+        "salt": 0.055,
+        "sodium": 22.0,
+        "calcium": 82.0,
+        "iron": 6.2,
+        "potassium": 1120.0,
+        "magnesium": 249.0,
+        "vitaminA": 1.0,
+        "vitaminC": 1.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-cowpeas-boiled-and-drained",
+      "source": "custom",
+      "name": "Cowpeas, boiled and drained",
+      "nameLower": "cowpeas, boiled and drained",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Cowpea, not soaked, boiled* (without salt), drained”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: cooked black-eyed peas, ewa.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 122.0,
+        "protein": 8.5,
+        "carbs": 18.3,
+        "sugar": 0.4,
+        "fat": 0.5,
+        "saturatedFat": 0.13,
+        "transFat": 0,
+        "fiber": 4.7,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 26.0,
+        "iron": 2.0,
+        "potassium": 314.0,
+        "magnesium": 79.0,
+        "vitaminA": 1.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-african-yam-beans-dry",
+      "source": "custom",
+      "name": "African yam beans, dry",
+      "nameLower": "african yam beans, dry",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “African yam bean, dry, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: African yam bean.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 316.0,
+        "protein": 20.5,
+        "carbs": 46.7,
+        "sugar": 3.0,
+        "fat": 1.5,
+        "saturatedFat": 0.33,
+        "transFat": 0,
+        "fiber": 16.7,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 40.0,
+        "iron": 4.1,
+        "potassium": 1290.0,
+        "magnesium": 186.0,
+        "vitaminA": 1.0,
+        "vitaminC": 2.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-bambara-groundnuts-dry",
+      "source": "custom",
+      "name": "Bambara groundnuts, dry",
+      "nameLower": "bambara groundnuts, dry",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Bambara groundnut, dry, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: Bambara beans, okpa.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 323.0,
+        "protein": 19.5,
+        "carbs": 33.6,
+        "sugar": 3.0,
+        "fat": 5.9,
+        "saturatedFat": 1.64,
+        "transFat": 0,
+        "fiber": 28.9,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 53.0,
+        "iron": 3.2,
+        "potassium": 1160.0,
+        "magnesium": 174.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-okra-raw",
+      "source": "custom",
+      "name": "Okra, raw",
+      "nameLower": "okra, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Okra, fruit, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: lady's fingers.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 34.0,
+        "protein": 1.7,
+        "carbs": 4.2,
+        "sugar": 1.5,
+        "fat": 0.2,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 4.1,
+        "salt": 0.028,
+        "sodium": 11.0,
+        "calcium": 87.0,
+        "iron": 0.8,
+        "potassium": 382.0,
+        "magnesium": 77.0,
+        "vitaminA": 43.0,
+        "vitaminC": 28.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-fluted-pumpkin-leaves-raw",
+      "source": "custom",
+      "name": "Fluted pumpkin leaves, raw",
+      "nameLower": "fluted pumpkin leaves, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Pumpkin, leaves, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. The source entry is generic pumpkin leaves and is used as the closest regional proxy for ugu. Aliases/local names: ugu, pumpkin leaves.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 32.0,
+        "protein": 4.1,
+        "carbs": 2.4,
+        "sugar": 0.4,
+        "fat": 0.2,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.028,
+        "sodium": 11.0,
+        "calcium": 383.0,
+        "iron": 2.2,
+        "potassium": 500.0,
+        "magnesium": 142.0,
+        "vitaminA": 112.0,
+        "vitaminC": 11.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-bitter-leaves-raw",
+      "source": "custom",
+      "name": "Bitter leaves, raw",
+      "nameLower": "bitter leaves, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Vernonia, leaves, bitter, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: bitterleaf, onugbu, ewuro.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 65.0,
+        "protein": 5.0,
+        "carbs": 6.7,
+        "sugar": 0.8,
+        "fat": 0.9,
+        "saturatedFat": 0.25,
+        "transFat": 0,
+        "fiber": 5.1,
+        "salt": 0.028,
+        "sodium": 11.0,
+        "calcium": 170.0,
+        "iron": 2.1,
+        "potassium": 594.0,
+        "magnesium": 95.0,
+        "vitaminA": 242.0,
+        "vitaminC": 29.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-waterleaf-raw",
+      "source": "custom",
+      "name": "Waterleaf, raw",
+      "nameLower": "waterleaf, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Waterleaf, leaves, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: gbure, Talinum triangulare.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 40.0,
+        "protein": 2.3,
+        "carbs": 4.3,
+        "sugar": 0.3,
+        "fat": 0.7,
+        "saturatedFat": 0.18,
+        "transFat": 0,
+        "fiber": 3.9,
+        "salt": 0.095,
+        "sodium": 38.0,
+        "calcium": 100.0,
+        "iron": 1.1,
+        "potassium": 413.0,
+        "magnesium": 163.0,
+        "vitaminA": 277.0,
+        "vitaminC": 34.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-jute-mallow-leaves-raw",
+      "source": "custom",
+      "name": "Jute mallow leaves, raw",
+      "nameLower": "jute mallow leaves, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Jute mallow (bush-okra), leaves, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: ewedu, molokhia.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 49.0,
+        "protein": 4.2,
+        "carbs": 3.2,
+        "sugar": 0.5,
+        "fat": 0.3,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 8.3,
+        "salt": 0.03,
+        "sodium": 12.0,
+        "calcium": 282.0,
+        "iron": 7.2,
+        "potassium": 273.0,
+        "magnesium": 77.0,
+        "vitaminA": 275.0,
+        "vitaminC": 74.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-garden-egg-raw",
+      "source": "custom",
+      "name": "Garden egg, raw",
+      "nameLower": "garden egg, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Native eggplant, fruit, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: African eggplant.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 32.0,
+        "protein": 1.3,
+        "carbs": 3.9,
+        "sugar": 3.0,
+        "fat": 0.4,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 4.0,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 12.0,
+        "iron": 1.1,
+        "potassium": 239.0,
+        "magnesium": 24.0,
+        "vitaminA": 11.0,
+        "vitaminC": 2.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-scotch-bonnet-pepper-raw",
+      "source": "custom",
+      "name": "Scotch bonnet pepper, raw",
+      "nameLower": "scotch bonnet pepper, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Pepper, chilli, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. The source entry is fresh chilli pepper and is used as a proxy for Scotch bonnet. Aliases/local names: ata rodo, fresh hot pepper.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47.0,
+        "protein": 1.8,
+        "carbs": 7.5,
+        "sugar": 5.3,
+        "fat": 0.3,
+        "saturatedFat": 0.05,
+        "transFat": 0,
+        "fiber": 3.5,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 16.0,
+        "iron": 1.3,
+        "potassium": 345.0,
+        "magnesium": 28.0,
+        "vitaminA": 46.0,
+        "vitaminC": 132.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-ogbono-kernels-dried",
+      "source": "custom",
+      "name": "Ogbono kernels, dried",
+      "nameLower": "ogbono kernels, dried",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Dikanut, kernel, dried, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: dikanut, bush mango seed.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 650.0,
+        "protein": 7.6,
+        "carbs": 5.5,
+        "sugar": 1.0,
+        "fat": 62.6,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 17.3,
+        "salt": 0.005,
+        "sodium": 2.0,
+        "calcium": 105.0,
+        "iron": 3.4,
+        "potassium": 16.0,
+        "magnesium": 287.0,
+        "vitaminA": 0,
+        "vitaminC": 5.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-fermented-african-locust-beans",
+      "source": "custom",
+      "name": "Fermented African locust beans",
+      "nameLower": "fermented african locust beans",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “African locust bean, fermented (soumbala)”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: iru, dawadawa, ogiri.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 375.0,
+        "protein": 33.1,
+        "carbs": 18.4,
+        "sugar": 3.0,
+        "fat": 15.6,
+        "saturatedFat": 2.91,
+        "transFat": 0,
+        "fiber": 14.5,
+        "salt": 0.113,
+        "sodium": 45.0,
+        "calcium": 435.0,
+        "iron": 15.2,
+        "potassium": 465.0,
+        "magnesium": 154.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-red-palm-oil",
+      "source": "custom",
+      "name": "Red palm oil",
+      "nameLower": "red palm oil",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Palm oil, red”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: palm oil.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 898.0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 99.8,
+        "saturatedFat": 48.5,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 2.0,
+        "iron": 0.2,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 5720.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-tiger-nuts-raw",
+      "source": "custom",
+      "name": "Tiger nuts, raw",
+      "nameLower": "tiger nuts, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Tiger nut, tuber, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: aya, chufa.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 344.0,
+        "protein": 4.4,
+        "carbs": 32.1,
+        "sugar": 9.0,
+        "fat": 20.2,
+        "saturatedFat": 4.85,
+        "transFat": 0,
+        "fiber": 8.4,
+        "salt": 0.028,
+        "sodium": 11.0,
+        "calcium": 15.0,
+        "iron": 3.8,
+        "potassium": 297.0,
+        "magnesium": 76.0,
+        "vitaminA": 0,
+        "vitaminC": 9.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-african-star-apple-raw",
+      "source": "custom",
+      "name": "African star apple, raw",
+      "nameLower": "african star apple, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “African star apple, fruit, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: agbalumo, udara.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 132.0,
+        "protein": 3.4,
+        "carbs": 16.4,
+        "sugar": 13.0,
+        "fat": 5.2,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 3.1,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 24.0,
+        "iron": 1.5,
+        "potassium": 355.0,
+        "magnesium": 23.0,
+        "vitaminA": 0,
+        "vitaminC": 127.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-soursop-raw",
+      "source": "custom",
+      "name": "Soursop, raw",
+      "nameLower": "soursop, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Soursop, fruit, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: graviola.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 77.0,
+        "protein": 1.2,
+        "carbs": 13.9,
+        "sugar": 13.5,
+        "fat": 0.8,
+        "saturatedFat": 0.27,
+        "transFat": 0,
+        "fiber": 5.0,
+        "salt": 0.018,
+        "sodium": 7.0,
+        "calcium": 20.0,
+        "iron": 0.4,
+        "potassium": 264.0,
+        "magnesium": 18.0,
+        "vitaminA": 0,
+        "vitaminC": 60.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-guava-raw",
+      "source": "custom",
+      "name": "Guava, raw",
+      "nameLower": "guava, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Guava, fruit, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: guava.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 68.0,
+        "protein": 1.0,
+        "carbs": 12.3,
+        "sugar": 8.9,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 5.7,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 24.0,
+        "iron": 1.3,
+        "potassium": 290.0,
+        "magnesium": 15.0,
+        "vitaminA": 22.0,
+        "vitaminC": 268.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-papaya-ripe-raw",
+      "source": "custom",
+      "name": "Papaya, ripe, raw",
+      "nameLower": "papaya, ripe, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Papaya, fruit, ripe, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: pawpaw.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 59.0,
+        "protein": 0.4,
+        "carbs": 13.0,
+        "sugar": 7.8,
+        "fat": 0.1,
+        "saturatedFat": 0.05,
+        "transFat": 0,
+        "fiber": 2.1,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 21.0,
+        "iron": 0.8,
+        "potassium": 220.0,
+        "magnesium": 8.0,
+        "vitaminA": 63.0,
+        "vitaminC": 52.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-baobab-fruit-pulp-raw",
+      "source": "custom",
+      "name": "Baobab fruit pulp, raw",
+      "nameLower": "baobab fruit pulp, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Baobab, fruit/monkey bread, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: baobab.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 305.0,
+        "protein": 2.1,
+        "carbs": 70.0,
+        "sugar": 13.0,
+        "fat": 0.3,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 7.0,
+        "salt": 0.058,
+        "sodium": 23.0,
+        "calcium": 254.0,
+        "iron": 6.4,
+        "potassium": 1920.0,
+        "magnesium": 139.0,
+        "vitaminA": 6.0,
+        "vitaminC": 251.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-bitter-kola-fresh",
+      "source": "custom",
+      "name": "Bitter kola, fresh",
+      "nameLower": "bitter kola, fresh",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion from the FAO/INFOODS West African Food Composition Table entry “Bitter cola, seeds, fresh, raw”. Total sugar was estimated when the source table did not report it; variety and preparation can cause substantial variation. Aliases/local names: bitter cola, Garcinia kola.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 183.0,
+        "protein": 2.6,
+        "carbs": 37.3,
+        "sugar": 1.0,
+        "fat": 2.1,
+        "saturatedFat": 0.77,
+        "transFat": 0,
+        "fiber": 1.9,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 29.0,
+        "iron": 2.4,
+        "potassium": 282.0,
+        "magnesium": 67.0,
+        "vitaminA": 0,
+        "vitaminC": 6.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "nigerian-african-basil-leaves-raw",
+      "source": "custom",
+      "name": "African basil leaves, raw",
+      "nameLower": "african basil leaves, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g. USDA fresh basil is used as the closest complete nutrient proxy because cultivar-specific African basil data are limited. Aliases/local names: scent leaf, nchuanwu, efirin, Ocimum gratissimum.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 23.0,
+        "protein": 3.15,
+        "carbs": 2.65,
+        "sugar": 0.3,
+        "fat": 0.64,
+        "saturatedFat": 0.041,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.01,
+        "sodium": 4.0,
+        "calcium": 177.0,
+        "iron": 3.17,
+        "potassium": 295.0,
+        "magnesium": 64.0,
+        "vitaminA": 264.0,
+        "vitaminC": 18.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-napa-cabbage-raw",
+      "source": "custom",
+      "name": "Napa cabbage, raw",
+      "nameLower": "napa cabbage, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Cabbage, chinese (pe-tsai), raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: baechu.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 16.0,
+        "protein": 1.2,
+        "carbs": 3.23,
+        "sugar": 1.41,
+        "fat": 0.2,
+        "saturatedFat": 0.043,
+        "transFat": 0,
+        "fiber": 1.2,
+        "salt": 0.022,
+        "sodium": 9.0,
+        "calcium": 77.0,
+        "iron": 0.31,
+        "potassium": 238.0,
+        "magnesium": 13.0,
+        "vitaminA": 16.0,
+        "vitaminC": 27.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-korean-radish-raw",
+      "source": "custom",
+      "name": "Korean radish, raw",
+      "nameLower": "korean radish, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Radishes, oriental, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: mu, daikon.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 18.0,
+        "protein": 0.6,
+        "carbs": 4.1,
+        "sugar": 2.5,
+        "fat": 0.1,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 0.052,
+        "sodium": 21.0,
+        "calcium": 27.0,
+        "iron": 0.4,
+        "potassium": 227.0,
+        "magnesium": 16.0,
+        "vitaminA": 0,
+        "vitaminC": 22.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-korean-zucchini-raw",
+      "source": "custom",
+      "name": "Korean zucchini, raw",
+      "nameLower": "korean zucchini, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Squash, summer, zucchini, includes skin, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: aehobak.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 17.0,
+        "protein": 1.21,
+        "carbs": 3.11,
+        "sugar": 2.5,
+        "fat": 0.32,
+        "saturatedFat": 0.084,
+        "transFat": 0,
+        "fiber": 1.0,
+        "salt": 0.02,
+        "sodium": 8.0,
+        "calcium": 16.0,
+        "iron": 0.37,
+        "potassium": 261.0,
+        "magnesium": 18.0,
+        "vitaminA": 10.0,
+        "vitaminC": 17.9,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-garlic-chives-raw",
+      "source": "custom",
+      "name": "Garlic chives, raw",
+      "nameLower": "garlic chives, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Chives, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: buchu.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 30.0,
+        "protein": 3.27,
+        "carbs": 4.35,
+        "sugar": 1.85,
+        "fat": 0.73,
+        "saturatedFat": 0.146,
+        "transFat": 0,
+        "fiber": 2.5,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 92.0,
+        "iron": 1.6,
+        "potassium": 296.0,
+        "magnesium": 42.0,
+        "vitaminA": 218.0,
+        "vitaminC": 58.1,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-soybean-sprouts-raw",
+      "source": "custom",
+      "name": "Soybean sprouts, raw",
+      "nameLower": "soybean sprouts, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Soybeans, mature seeds, sprouted, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: kongnamul.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 122.0,
+        "protein": 13.09,
+        "carbs": 9.57,
+        "sugar": 0,
+        "fat": 6.7,
+        "saturatedFat": 0.929,
+        "transFat": 0,
+        "fiber": 1.1,
+        "salt": 0.035,
+        "sodium": 14.0,
+        "calcium": 67.0,
+        "iron": 2.1,
+        "potassium": 484.0,
+        "magnesium": 72.0,
+        "vitaminA": 1.0,
+        "vitaminC": 15.3,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-mung-bean-sprouts-raw",
+      "source": "custom",
+      "name": "Mung bean sprouts, raw",
+      "nameLower": "mung bean sprouts, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Mung beans, mature seeds, sprouted, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: sukju-namul.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 30.0,
+        "protein": 3.04,
+        "carbs": 5.94,
+        "sugar": 4.13,
+        "fat": 0.18,
+        "saturatedFat": 0.046,
+        "transFat": 0,
+        "fiber": 1.8,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 13.0,
+        "iron": 0.91,
+        "potassium": 149.0,
+        "magnesium": 21.0,
+        "vitaminA": 1.0,
+        "vitaminC": 13.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-fernbrake-cooked",
+      "source": "custom",
+      "name": "Fernbrake, cooked",
+      "nameLower": "fernbrake, cooked",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Tree fern, cooked, without salt”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: gosari.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 40.0,
+        "protein": 0.29,
+        "carbs": 10.98,
+        "sugar": 0,
+        "fat": 0.07,
+        "saturatedFat": 0.009,
+        "transFat": 0,
+        "fiber": 3.7,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 8.0,
+        "iron": 0.16,
+        "potassium": 5.0,
+        "magnesium": 5.0,
+        "vitaminA": 10.0,
+        "vitaminC": 30.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-lotus-root-raw",
+      "source": "custom",
+      "name": "Lotus root, raw",
+      "nameLower": "lotus root, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Lotus root, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: yeongeun.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 74.0,
+        "protein": 2.6,
+        "carbs": 17.23,
+        "sugar": 0,
+        "fat": 0.1,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 4.9,
+        "salt": 0.1,
+        "sodium": 40.0,
+        "calcium": 45.0,
+        "iron": 1.16,
+        "potassium": 556.0,
+        "magnesium": 23.0,
+        "vitaminA": 0,
+        "vitaminC": 44.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-burdock-root-raw",
+      "source": "custom",
+      "name": "Burdock root, raw",
+      "nameLower": "burdock root, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Burdock root, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: ueong.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 72.0,
+        "protein": 1.53,
+        "carbs": 17.34,
+        "sugar": 2.9,
+        "fat": 0.15,
+        "saturatedFat": 0.025,
+        "transFat": 0,
+        "fiber": 3.3,
+        "salt": 0.013,
+        "sodium": 5.0,
+        "calcium": 41.0,
+        "iron": 0.8,
+        "potassium": 308.0,
+        "magnesium": 38.0,
+        "vitaminA": 0,
+        "vitaminC": 3.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-sweet-potato-leaves-raw",
+      "source": "custom",
+      "name": "Sweet potato leaves, raw",
+      "nameLower": "sweet potato leaves, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Sweet potato leaves, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: goguma-julgi.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 35.0,
+        "protein": 4.0,
+        "carbs": 6.38,
+        "sugar": 0,
+        "fat": 0.3,
+        "saturatedFat": 0.065,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.022,
+        "sodium": 9.0,
+        "calcium": 37.0,
+        "iron": 1.01,
+        "potassium": 518.0,
+        "magnesium": 61.0,
+        "vitaminA": 51.0,
+        "vitaminC": 11.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-wakame-seaweed-raw",
+      "source": "custom",
+      "name": "Wakame seaweed, raw",
+      "nameLower": "wakame seaweed, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Seaweed, wakame, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: miyeok.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 45.0,
+        "protein": 3.03,
+        "carbs": 9.14,
+        "sugar": 0.65,
+        "fat": 0.64,
+        "saturatedFat": 0.13,
+        "transFat": 0,
+        "fiber": 0.5,
+        "salt": 2.18,
+        "sodium": 872.0,
+        "calcium": 150.0,
+        "iron": 2.18,
+        "potassium": 50.0,
+        "magnesium": 107.0,
+        "vitaminA": 18.0,
+        "vitaminC": 3.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-kelp-raw",
+      "source": "custom",
+      "name": "Kelp, raw",
+      "nameLower": "kelp, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Seaweed, kelp, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: dashima.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 43.0,
+        "protein": 1.68,
+        "carbs": 9.57,
+        "sugar": 0.6,
+        "fat": 0.56,
+        "saturatedFat": 0.247,
+        "transFat": 0,
+        "fiber": 1.3,
+        "salt": 0.583,
+        "sodium": 233.0,
+        "calcium": 168.0,
+        "iron": 2.85,
+        "potassium": 89.0,
+        "magnesium": 121.0,
+        "vitaminA": 6.0,
+        "vitaminC": 3.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-laver-seaweed-raw",
+      "source": "custom",
+      "name": "Laver seaweed, raw",
+      "nameLower": "laver seaweed, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Seaweed, laver, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: gim, nori.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 35.0,
+        "protein": 5.81,
+        "carbs": 5.11,
+        "sugar": 0.49,
+        "fat": 0.28,
+        "saturatedFat": 0.061,
+        "transFat": 0,
+        "fiber": 0.3,
+        "salt": 0.12,
+        "sodium": 48.0,
+        "calcium": 70.0,
+        "iron": 1.8,
+        "potassium": 356.0,
+        "magnesium": 2.0,
+        "vitaminA": 260.0,
+        "vitaminC": 39.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-shiitake-mushrooms-raw",
+      "source": "custom",
+      "name": "Shiitake mushrooms, raw",
+      "nameLower": "shiitake mushrooms, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Mushrooms, shiitake, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: pyogo-beoseot.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 34.0,
+        "protein": 2.24,
+        "carbs": 6.79,
+        "sugar": 2.38,
+        "fat": 0.49,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 2.5,
+        "salt": 0.022,
+        "sodium": 9.0,
+        "calcium": 2.0,
+        "iron": 0.41,
+        "potassium": 304.0,
+        "magnesium": 20.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0.4,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-oyster-mushrooms-raw",
+      "source": "custom",
+      "name": "Oyster mushrooms, raw",
+      "nameLower": "oyster mushrooms, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Mushrooms, oyster, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: neutari-beoseot.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 33.0,
+        "protein": 3.31,
+        "carbs": 6.09,
+        "sugar": 1.11,
+        "fat": 0.41,
+        "saturatedFat": 0.062,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.045,
+        "sodium": 18.0,
+        "calcium": 3.0,
+        "iron": 1.33,
+        "potassium": 420.0,
+        "magnesium": 18.0,
+        "vitaminA": 2.0,
+        "vitaminC": 0,
+        "vitaminD": 0.7,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-enoki-mushrooms-raw",
+      "source": "custom",
+      "name": "Enoki mushrooms, raw",
+      "nameLower": "enoki mushrooms, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Mushrooms, enoki, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: paengi-beoseot.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 37.0,
+        "protein": 2.66,
+        "carbs": 7.81,
+        "sugar": 0.22,
+        "fat": 0.29,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 2.7,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 0,
+        "iron": 1.15,
+        "potassium": 359.0,
+        "magnesium": 16.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0.1,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-asian-pear-raw",
+      "source": "custom",
+      "name": "Asian pear, raw",
+      "nameLower": "asian pear, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Pears, asian, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: bae, Korean pear.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 42.0,
+        "protein": 0.5,
+        "carbs": 10.65,
+        "sugar": 7.05,
+        "fat": 0.23,
+        "saturatedFat": 0.012,
+        "transFat": 0,
+        "fiber": 3.6,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 4.0,
+        "iron": 0,
+        "potassium": 121.0,
+        "magnesium": 8.0,
+        "vitaminA": 0,
+        "vitaminC": 3.8,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-japanese-persimmon-raw",
+      "source": "custom",
+      "name": "Japanese persimmon, raw",
+      "nameLower": "japanese persimmon, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Persimmons, japanese, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: gam.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 70.0,
+        "protein": 0.58,
+        "carbs": 18.59,
+        "sugar": 12.53,
+        "fat": 0.19,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 3.6,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 8.0,
+        "iron": 0.15,
+        "potassium": 161.0,
+        "magnesium": 9.0,
+        "vitaminA": 81.0,
+        "vitaminC": 7.5,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-jujube-raw",
+      "source": "custom",
+      "name": "Jujube, raw",
+      "nameLower": "jujube, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Jujube, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: daechu.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 79.0,
+        "protein": 1.2,
+        "carbs": 20.23,
+        "sugar": 0,
+        "fat": 0.2,
+        "saturatedFat": 0,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 21.0,
+        "iron": 0.48,
+        "potassium": 250.0,
+        "magnesium": 10.0,
+        "vitaminA": 2.0,
+        "vitaminC": 69.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-japanese-chestnuts-raw",
+      "source": "custom",
+      "name": "Japanese chestnuts, raw",
+      "nameLower": "japanese chestnuts, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Nuts, chestnuts, japanese, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: bam.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 154.0,
+        "protein": 2.25,
+        "carbs": 34.91,
+        "sugar": 0,
+        "fat": 0.53,
+        "saturatedFat": 0.078,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0.035,
+        "sodium": 14.0,
+        "calcium": 31.0,
+        "iron": 1.45,
+        "potassium": 329.0,
+        "magnesium": 49.0,
+        "vitaminA": 2.0,
+        "vitaminC": 26.3,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-korean-plum-raw",
+      "source": "custom",
+      "name": "Korean plum, raw",
+      "nameLower": "korean plum, raw",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Plums, raw”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: maesil, green plum.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 46.0,
+        "protein": 0.7,
+        "carbs": 11.42,
+        "sugar": 9.92,
+        "fat": 0.28,
+        "saturatedFat": 0.017,
+        "transFat": 0,
+        "fiber": 1.4,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 6.0,
+        "iron": 0.17,
+        "potassium": 157.0,
+        "magnesium": 7.0,
+        "vitaminA": 17.0,
+        "vitaminC": 9.5,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-sesame-oil",
+      "source": "custom",
+      "name": "Sesame oil",
+      "nameLower": "sesame oil",
+      "brand": null,
+      "notes": "Approximate values per 100 g edible portion using the complete USDA generic profile “Oil, sesame, salad or cooking”. Included under its common Korean food name; cultivar and preparation can change the values. Aliases/local names: chamgireum.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884.0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 100.0,
+        "saturatedFat": 14.2,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-perilla-leaves-raw",
+      "source": "custom",
+      "name": "Perilla leaves, raw",
+      "nameLower": "perilla leaves, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: kkaennip.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 41.0,
+        "protein": 3.9,
+        "carbs": 7.4,
+        "sugar": 0.7,
+        "fat": 0.6,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 3.7,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 211.0,
+        "iron": 2.2,
+        "potassium": 389.0,
+        "magnesium": 71.0,
+        "vitaminA": 370.0,
+        "vitaminC": 12.6,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-water-dropwort-raw",
+      "source": "custom",
+      "name": "Water dropwort, raw",
+      "nameLower": "water dropwort, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: minari.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 22.0,
+        "protein": 1.8,
+        "carbs": 4.3,
+        "sugar": 0.8,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 2.5,
+        "salt": 0.062,
+        "sodium": 25.0,
+        "calcium": 80.0,
+        "iron": 1.2,
+        "potassium": 330.0,
+        "magnesium": 24.0,
+        "vitaminA": 165.0,
+        "vitaminC": 8.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-crown-daisy-raw",
+      "source": "custom",
+      "name": "Crown daisy, raw",
+      "nameLower": "crown daisy, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: ssukgat, chrysanthemum greens.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 24.0,
+        "protein": 2.6,
+        "carbs": 3.7,
+        "sugar": 0.8,
+        "fat": 0.5,
+        "saturatedFat": 0.08,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 0.125,
+        "sodium": 50.0,
+        "calcium": 117.0,
+        "iron": 2.3,
+        "potassium": 569.0,
+        "magnesium": 32.0,
+        "vitaminA": 292.0,
+        "vitaminC": 21.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-balloon-flower-root-raw",
+      "source": "custom",
+      "name": "Balloon flower root, raw",
+      "nameLower": "balloon flower root, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: doraji.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 37.0,
+        "protein": 2.0,
+        "carbs": 8.3,
+        "sugar": 1.5,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 4.0,
+        "salt": 0.015,
+        "sodium": 6.0,
+        "calcium": 19.0,
+        "iron": 0.5,
+        "potassium": 232.0,
+        "magnesium": 11.0,
+        "vitaminA": 0,
+        "vitaminC": 7.5,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-mugwort-leaves-raw",
+      "source": "custom",
+      "name": "Mugwort leaves, raw",
+      "nameLower": "mugwort leaves, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: ssuk.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 43.0,
+        "protein": 4.7,
+        "carbs": 8.0,
+        "sugar": 1.2,
+        "fat": 0.6,
+        "saturatedFat": 0.09,
+        "transFat": 0,
+        "fiber": 6.9,
+        "salt": 0.025,
+        "sodium": 10.0,
+        "calcium": 230.0,
+        "iron": 4.3,
+        "potassium": 610.0,
+        "magnesium": 42.0,
+        "vitaminA": 374.0,
+        "vitaminC": 33.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-deodeok-root-raw",
+      "source": "custom",
+      "name": "Deodeok root, raw",
+      "nameLower": "deodeok root, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: deodeok, Codonopsis lanceolata.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 55.0,
+        "protein": 2.3,
+        "carbs": 12.0,
+        "sugar": 2.0,
+        "fat": 0.1,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 4.0,
+        "salt": 0.02,
+        "sodium": 8.0,
+        "calcium": 20.0,
+        "iron": 0.6,
+        "potassium": 310.0,
+        "magnesium": 18.0,
+        "vitaminA": 0,
+        "vitaminC": 4.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-king-oyster-mushrooms-raw",
+      "source": "custom",
+      "name": "King oyster mushrooms, raw",
+      "nameLower": "king oyster mushrooms, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: saesongi-beoseot.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 35.0,
+        "protein": 2.8,
+        "carbs": 6.5,
+        "sugar": 1.1,
+        "fat": 0.4,
+        "saturatedFat": 0.06,
+        "transFat": 0,
+        "fiber": 2.3,
+        "salt": 0.007,
+        "sodium": 3.0,
+        "calcium": 3.0,
+        "iron": 0.7,
+        "potassium": 420.0,
+        "magnesium": 18.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-korean-melon-raw",
+      "source": "custom",
+      "name": "Korean melon, raw",
+      "nameLower": "korean melon, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: chamoe.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 34.0,
+        "protein": 0.8,
+        "carbs": 8.2,
+        "sugar": 7.9,
+        "fat": 0.2,
+        "saturatedFat": 0.03,
+        "transFat": 0,
+        "fiber": 0.9,
+        "salt": 0.025,
+        "sodium": 10.0,
+        "calcium": 6.0,
+        "iron": 0.2,
+        "potassium": 267.0,
+        "magnesium": 10.0,
+        "vitaminA": 17.0,
+        "vitaminC": 21.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-yuzu-raw",
+      "source": "custom",
+      "name": "Yuzu, raw",
+      "nameLower": "yuzu, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: yuja.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 21.0,
+        "protein": 0.5,
+        "carbs": 9.0,
+        "sugar": 2.0,
+        "fat": 0.1,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 2.0,
+        "salt": 0.003,
+        "sodium": 1.0,
+        "calcium": 49.0,
+        "iron": 0.4,
+        "potassium": 150.0,
+        "magnesium": 11.0,
+        "vitaminA": 1.0,
+        "vitaminC": 40.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-jeju-citrus-raw",
+      "source": "custom",
+      "name": "Jeju citrus, raw",
+      "nameLower": "jeju citrus, raw",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: hallabong.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 47.0,
+        "protein": 0.9,
+        "carbs": 11.8,
+        "sugar": 9.4,
+        "fat": 0.1,
+        "saturatedFat": 0.02,
+        "transFat": 0,
+        "fiber": 2.4,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 40.0,
+        "iron": 0.1,
+        "potassium": 181.0,
+        "magnesium": 10.0,
+        "vitaminA": 11.0,
+        "vitaminC": 53.2,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-napa-cabbage-kimchi",
+      "source": "custom",
+      "name": "Napa cabbage kimchi",
+      "nameLower": "napa cabbage kimchi",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: baechu-kimchi, kimchi.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 15.0,
+        "protein": 1.1,
+        "carbs": 2.4,
+        "sugar": 1.1,
+        "fat": 0.5,
+        "saturatedFat": 0.07,
+        "transFat": 0,
+        "fiber": 1.6,
+        "salt": 1.245,
+        "sodium": 498.0,
+        "calcium": 33.0,
+        "iron": 0.7,
+        "potassium": 151.0,
+        "magnesium": 14.0,
+        "vitaminA": 25.0,
+        "vitaminC": 18.0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-gochujang",
+      "source": "custom",
+      "name": "Gochujang",
+      "nameLower": "gochujang",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: Korean red pepper paste.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 228.0,
+        "protein": 4.9,
+        "carbs": 49.1,
+        "sugar": 25.0,
+        "fat": 2.1,
+        "saturatedFat": 0.4,
+        "transFat": 0,
+        "fiber": 3.0,
+        "salt": 6.0,
+        "sodium": 2400.0,
+        "calcium": 45.0,
+        "iron": 1.5,
+        "potassium": 350.0,
+        "magnesium": 35.0,
+        "vitaminA": 40.0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-doenjang",
+      "source": "custom",
+      "name": "Doenjang",
+      "nameLower": "doenjang",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: Korean fermented soybean paste.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 198.0,
+        "protein": 12.8,
+        "carbs": 25.4,
+        "sugar": 6.0,
+        "fat": 6.7,
+        "saturatedFat": 1.1,
+        "transFat": 0,
+        "fiber": 5.0,
+        "salt": 11.75,
+        "sodium": 4700.0,
+        "calcium": 110.0,
+        "iron": 4.0,
+        "potassium": 650.0,
+        "magnesium": 80.0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    },
+    {
+      "id": "korean-perilla-oil",
+      "source": "custom",
+      "name": "Perilla oil",
+      "nameLower": "perilla oil",
+      "brand": null,
+      "notes": "Approximate generic values per 100 g edible portion compiled for a Korean regional food entry. Use as a practical tracking estimate; cultivar, fermentation, recipe, and brand can materially change the result. Aliases/local names: deulkireum.",
+      "favorite": false,
+      "defaultServing": {
+        "label": "100 g",
+        "grams": 100,
+        "unit": "g"
+      },
+      "servingOptions": [
+        {
+          "label": "100 g",
+          "grams": 100,
+          "unit": "g"
+        },
+        {
+          "label": "grams",
+          "grams": 1,
+          "unit": "g"
+        }
+      ],
+      "nutrientsPer100g": {
+        "kcal": 884.0,
+        "protein": 0,
+        "carbs": 0,
+        "sugar": 0,
+        "fat": 100.0,
+        "saturatedFat": 7.6,
+        "transFat": 0,
+        "fiber": 0,
+        "salt": 0,
+        "sodium": 0,
+        "calcium": 0,
+        "iron": 0,
+        "potassium": 0,
+        "magnesium": 0,
+        "vitaminA": 0,
+        "vitaminC": 0,
+        "vitaminD": 0,
+        "vitaminB12": 0
+      },
+      "createdAt": 1785889980000,
+      "updatedAt": 1785889980000
+    }
+  ]
+}

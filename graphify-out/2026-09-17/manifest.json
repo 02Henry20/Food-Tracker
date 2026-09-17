@@ -1,0 +1,182 @@
+{
+  ".ai-tooling/bootstrap.json": {
+    "mtime": 1789643060.5547173,
+    "ast_hash": "8cb82cbcc0db38235850429f70f74ada",
+    "semantic_hash": "8cb82cbcc0db38235850429f70f74ada"
+  },
+  "app.js": {
+    "mtime": 1789643682.078772,
+    "ast_hash": "43c3ab6e78c33783895235e8eb4295ed",
+    "semantic_hash": ""
+  },
+  "firebase.json": {
+    "mtime": 1783474263.775208,
+    "ast_hash": "c9557dad8cb66ed8dea6220ba51e0d0f",
+    "semantic_hash": "c9557dad8cb66ed8dea6220ba51e0d0f"
+  },
+  "sw.js": {
+    "mtime": 1789643645.7580192,
+    "ast_hash": "81237da5946d54c963202a67980e6f37",
+    "semantic_hash": ""
+  },
+  "test-data/basic_foods_custom_import.json": {
+    "mtime": 1783317719.6904254,
+    "ast_hash": "ce05ec808fad59f20c9178829abf81d3",
+    "semantic_hash": "ce05ec808fad59f20c9178829abf81d3"
+  },
+  "test-data/basic_foods_custom_import_english_nigerian_korean.json": {
+    "mtime": 1785890736.5085843,
+    "ast_hash": "673d3ea7fd67e3c3127265ec2af65f26",
+    "semantic_hash": "673d3ea7fd67e3c3127265ec2af65f26"
+  },
+  ".serena/project.yml": {
+    "mtime": 1789639953.6505103,
+    "ast_hash": "1acfe7c1ac173b83bef806f6df813813",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1789643060.0418754,
+    "ast_hash": "f1b8e38fca3fe5a149feef44a4ea4767",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1784549589.4550865,
+    "ast_hash": "011bc57b88d5fb1bf5d0766aedec1d0d",
+    "semantic_hash": ""
+  },
+  "index.html": {
+    "mtime": 1783474263.7388213,
+    "ast_hash": "557d5e5c746e921d8058c4f949702755",
+    "semantic_hash": ""
+  },
+  "favicons/favicon-16x16.png": {
+    "mtime": 1783334976.3788438,
+    "ast_hash": "6b17b3e931b712a5c8c0f78a51b90b68",
+    "semantic_hash": ""
+  },
+  "favicons/favicon-32x32.png": {
+    "mtime": 1783334976.3861265,
+    "ast_hash": "61623c5955ef764f4cedc921650530bc",
+    "semantic_hash": ""
+  },
+  "favicons/favicon-48x48.png": {
+    "mtime": 1783334976.394142,
+    "ast_hash": "0263e952e83cab5eb6ccf7b75d51ee81",
+    "semantic_hash": ""
+  },
+  "icons/android-circle-1024x1024.png": {
+    "mtime": 1783334976.1102283,
+    "ast_hash": "c305ed613ff368488bfd1852e0ee35d0",
+    "semantic_hash": ""
+  },
+  "icons/android-circle-192x192.png": {
+    "mtime": 1783334976.1183012,
+    "ast_hash": "00ebff12034b6dc273bb8cc64bca843c",
+    "semantic_hash": ""
+  },
+  "icons/android-circle-512x512.png": {
+    "mtime": 1783334976.1273074,
+    "ast_hash": "0febbd345a79c3282137e404eac30b1c",
+    "semantic_hash": ""
+  },
+  "icons/apple-touch-icon.png": {
+    "mtime": 1783334976.1423075,
+    "ast_hash": "15914b7001e7492645d74bfb4387133a",
+    "semantic_hash": ""
+  },
+  "icons/icon-1024x1024.png": {
+    "mtime": 1783334976.1479433,
+    "ast_hash": "c305ed613ff368488bfd1852e0ee35d0",
+    "semantic_hash": ""
+  },
+  "icons/icon-128x128.png": {
+    "mtime": 1783334976.1660976,
+    "ast_hash": "39c5739cdd2c3880bd58bb65bf6c526a",
+    "semantic_hash": ""
+  },
+  "icons/icon-144x144.png": {
+    "mtime": 1783334976.1706164,
+    "ast_hash": "ca117196835d125b5d65870713aeca4a",
+    "semantic_hash": ""
+  },
+  "icons/icon-152x152.png": {
+    "mtime": 1783334976.1778314,
+    "ast_hash": "4b3e087bfbfeb4ba80506058245ceb95",
+    "semantic_hash": ""
+  },
+  "icons/icon-167x167.png": {
+    "mtime": 1783334976.1872368,
+    "ast_hash": "483d81ac55a90f3e80aa332964515fe9",
+    "semantic_hash": ""
+  },
+  "icons/icon-16x16.png": {
+    "mtime": 1783334976.193774,
+    "ast_hash": "6b17b3e931b712a5c8c0f78a51b90b68",
+    "semantic_hash": ""
+  },
+  "icons/icon-180x180.png": {
+    "mtime": 1783334976.2081406,
+    "ast_hash": "15914b7001e7492645d74bfb4387133a",
+    "semantic_hash": ""
+  },
+  "icons/icon-192x192.png": {
+    "mtime": 1783334976.2185848,
+    "ast_hash": "00ebff12034b6dc273bb8cc64bca843c",
+    "semantic_hash": ""
+  },
+  "icons/icon-256x256.png": {
+    "mtime": 1783334976.231949,
+    "ast_hash": "59409768a7a64209e3e1dbaefd638dac",
+    "semantic_hash": ""
+  },
+  "icons/icon-32x32.png": {
+    "mtime": 1783334976.2389548,
+    "ast_hash": "61623c5955ef764f4cedc921650530bc",
+    "semantic_hash": ""
+  },
+  "icons/icon-384x384.png": {
+    "mtime": 1783334976.2459247,
+    "ast_hash": "b58ec6f1f71ac065a9061be24a569b23",
+    "semantic_hash": ""
+  },
+  "icons/icon-48x48.png": {
+    "mtime": 1783334976.256423,
+    "ast_hash": "0263e952e83cab5eb6ccf7b75d51ee81",
+    "semantic_hash": ""
+  },
+  "icons/icon-512x512.png": {
+    "mtime": 1783334976.2761025,
+    "ast_hash": "0febbd345a79c3282137e404eac30b1c",
+    "semantic_hash": ""
+  },
+  "icons/icon-64x64.png": {
+    "mtime": 1783334976.282342,
+    "ast_hash": "164b12ddd95a4b083e60649fbfff8ba5",
+    "semantic_hash": ""
+  },
+  "icons/icon-72x72.png": {
+    "mtime": 1783334976.2894633,
+    "ast_hash": "d3d089f8c225c21695ef90669a1a9e07",
+    "semantic_hash": ""
+  },
+  "icons/icon-96x96.png": {
+    "mtime": 1783334976.3036406,
+    "ast_hash": "8307123ba4f1110535c5d1a70cbd81bb",
+    "semantic_hash": ""
+  },
+  "icons/maskable-1024x1024.png": {
+    "mtime": 1783334976.328442,
+    "ast_hash": "c305ed613ff368488bfd1852e0ee35d0",
+    "semantic_hash": ""
+  },
+  "icons/maskable-192x192.png": {
+    "mtime": 1783334976.3477325,
+    "ast_hash": "00ebff12034b6dc273bb8cc64bca843c",
+    "semantic_hash": ""
+  },
+  "icons/maskable-512x512.png": {
+    "mtime": 1783334976.3672614,
+    "ast_hash": "0febbd345a79c3282137e404eac30b1c",
+    "semantic_hash": ""
+  }
+}

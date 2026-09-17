@@ -254,6 +254,7 @@ const state = {
     results: [],
     feedback: ""
   },
+  activeBarcodeContext: null,
   collapsedMeals: Object.fromEntries(MEALS.map(([id]) => [id, true])),
   recipeSectionsCollapsed: { recipes: true, mealsets: true },
   targetLibraryPages: { recipes: 1, mealsets: 1 },
@@ -1910,7 +1911,7 @@ function renderMealCard(mealId, label) {
           ${summaryHTML}
         </div>
         <div class="meal-actions">
-          ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
+          ${entries.length ? `<button class="tiny-btn" data-action="copy-meal" data-meal="${mealId}">Copy</button><button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
           <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
         </div>
       </div>
@@ -1955,6 +1956,41 @@ function searchTokens(value) {
   return normalizeSearchText(value).split(/\s+/).filter(Boolean);
 }
 
+function damerauLevenshteinDistance(leftValue, rightValue) {
+  const left = normalizeCompactSearchText(leftValue);
+  const right = normalizeCompactSearchText(rightValue);
+  if (!left) return right.length;
+  if (!right) return left.length;
+  const matrix = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0));
+  for (let i = 0; i <= left.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= right.length; j += 1) matrix[0][j] = j;
+  for (let i = 1; i <= left.length; i += 1) {
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+      if (i > 1 && j > 1 && left[i - 1] === right[j - 2] && left[i - 2] === right[j - 1]) {
+        matrix[i][j] = Math.min(matrix[i][j], matrix[i - 2][j - 2] + cost);
+      }
+    }
+  }
+  return matrix[left.length][right.length];
+}
+
+function fuzzyTokenScore(queryToken, candidateToken) {
+  const query = normalizeCompactSearchText(queryToken);
+  const candidate = normalizeCompactSearchText(candidateToken);
+  if (query.length < 4 || candidate.length < 3) return 0;
+  const distance = damerauLevenshteinDistance(query, candidate);
+  const longest = Math.max(query.length, candidate.length);
+  const allowedDistance = longest <= 5 ? 1 : longest <= 9 ? 2 : 3;
+  if (distance > allowedDistance || distance / longest > 0.34) return 0;
+  return Math.max(1, Math.round((1 - distance / longest) * 100));
+}
+
 function searchMatchScore(parts, queryText) {
   const query = normalizeSearchText(queryText);
   const compactQuery = normalizeCompactSearchText(queryText);
@@ -1976,6 +2012,9 @@ function searchMatchScore(parts, queryText) {
       return sum;
     }, 0);
   }
+  const candidateTokens = (parts || []).filter(Boolean).flatMap(searchTokens);
+  const fuzzyScores = tokens.map(token => candidateTokens.reduce((best, candidate) => Math.max(best, fuzzyTokenScore(token, candidate)), 0));
+  if (fuzzyScores.length && fuzzyScores.every(Boolean)) score += 120 + fuzzyScores.reduce((sum, value) => sum + value, 0);
   return score;
 }
 
@@ -2003,11 +2042,19 @@ function searchRankForFood(food) {
   return number(food.usedCount) || number(food.eatenCount) || 0;
 }
 
+function isPersonalCustomFood(food) {
+  return food?.source === "custom" && !food.originalSource && !food.isDatabaseFood;
+}
+
 function foodSearchSort(a, b) {
-  const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
-  if (favoriteDiff) return favoriteDiff;
+  const latestEatenDiff = number(b.lastUsedAt) - number(a.lastUsedAt);
+  if (latestEatenDiff) return latestEatenDiff;
   const eatenDiff = searchRankForFood(b) - searchRankForFood(a);
   if (eatenDiff) return eatenDiff;
+  const customDiff = Number(isPersonalCustomFood(b)) - Number(isPersonalCustomFood(a));
+  if (customDiff) return customDiff;
+  const favoriteDiff = Number(!!b.favorite) - Number(!!a.favorite);
+  if (favoriteDiff) return favoriteDiff;
   return displayFoodName(a).localeCompare(displayFoodName(b));
 }
 
@@ -2017,7 +2064,7 @@ function searchPersonalLibrary(queryText) {
   return state.customFoods
     .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
     .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score || foodSearchSort(a.food, b.food))
+    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
     .slice(0, API_SEARCH_RESULT_LIMIT)
     .map(({ food }) => markResultFood(food, resultKindForFood(food)));
 }
@@ -2028,12 +2075,12 @@ function eatenFoodResults(queryText) {
     .filter(food => searchRankForFood(food) > 0)
     .map(food => ({ food, score: query ? searchMatchScore(foodSearchParts(food), query) : 1 }))
     .filter(({ score }) => !query || score > 0)
-    .sort((a, b) => b.score - a.score || searchRankForFood(b.food) - searchRankForFood(a.food) || displayFoodName(a.food).localeCompare(displayFoodName(b.food)))
+    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
     .map(({ food }) => markResultFood(food, "eaten"));
 }
 
 function resultKindForFood(food) {
-  if (food.source === "custom" && !food.originalSource && !food.isDatabaseFood) return "personal";
+  if (isPersonalCustomFood(food)) return "personal";
   if (food.source === "custom" || food.usedCount || food.lastUsedAt) return "used";
   return "database";
 }
@@ -2122,7 +2169,7 @@ function mergeFoodResults(localResults, apiResults, queryText = "") {
   return filtered
     .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
     .filter(({ score, food }) => score > 0 || food.resultKind !== "database")
-    .sort((a, b) => b.score - a.score || foodSearchSort(a.food, b.food))
+    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
     .map(({ food }) => food);
 }
 
@@ -2416,7 +2463,7 @@ function renderRecipeSearchCard(recipe) {
         ${nutrientSummaryHTML(n)}
       </div>
       <div class="inline-actions">
-        ${itemFavoriteButton("recipe", recipe)}
+        <button class="tiny-btn" data-action="detail-recipe" data-id="${recipe.id}">Details</button>
         <button class="primary-btn" data-action="log-recipe" data-id="${recipe.id}">Log</button>
       </div>
     </div>
@@ -2433,7 +2480,7 @@ function renderMealsetSearchCard(mealset) {
         ${nutrientSummaryHTML(n)}
       </div>
       <div class="inline-actions">
-        ${itemFavoriteButton("mealset", mealset)}
+        <button class="tiny-btn" data-action="detail-mealset" data-id="${mealset.id}">Details</button>
         <button class="primary-btn" data-action="log-mealset" data-id="${mealset.id}">Log</button>
       </div>
     </div>
@@ -2666,19 +2713,42 @@ async function fetchOpenFoodFactsFromHost(queryText, host) {
     .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
+function closestSearchQueries(queryText) {
+  const query = normalizeSearchText(queryText);
+  const tokens = searchTokens(query);
+  const candidates = [];
+  const withoutLastCharacters = tokens.map(token => token.length >= 5 ? token.slice(0, -1) : token).join(" ");
+  if (withoutLastCharacters && withoutLastCharacters !== query) candidates.push(withoutLastCharacters);
+  const longest = [...tokens].sort((a, b) => b.length - a.length)[0] || "";
+  if (longest.length >= 4) candidates.push(longest.slice(0, 3));
+  return [...new Set(candidates)].filter(Boolean).slice(0, 2);
+}
+
 async function fetchOpenFoodFacts(queryText) {
   const hosts = selectedOpenFoodFactsHosts();
-  const resultsByHost = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
-  const foods = resultsByHost.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  if (!resultsByHost.some(result => result.status === "fulfilled") && resultsByHost.some(result => result.status === "rejected")) {
-    throw resultsByHost.find(result => result.status === "rejected").reason;
+  const primaryResults = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
+  const foods = primaryResults.flatMap(result => result.status === "fulfilled" ? result.value : []);
+  const primaryMatchCount = foods.filter(food => searchMatchScore(foodSearchParts(food), queryText) > 0).length;
+  const fallbackQueries = primaryMatchCount < SEARCH_PAGE_SIZE ? closestSearchQueries(queryText) : [];
+  const fallbackResults = fallbackQueries.length
+    ? await Promise.allSettled(fallbackQueries.flatMap(query => hosts.map(host => fetchOpenFoodFactsFromHost(query, host))))
+    : [];
+  foods.push(...fallbackResults.flatMap(result => result.status === "fulfilled" ? result.value : []));
+  const allResults = [...primaryResults, ...fallbackResults];
+  if (!allResults.some(result => result.status === "fulfilled") && allResults.some(result => result.status === "rejected")) {
+    throw allResults.find(result => result.status === "rejected").reason;
   }
   const seen = new Map();
   for (const food of foods) {
     const key = foodIdentity(food);
     if (!seen.has(key)) seen.set(key, food);
   }
-  return [...seen.values()].slice(0, API_SEARCH_RESULT_LIMIT);
+  return [...seen.values()]
+    .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), queryText) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || displayFoodName(a.food).localeCompare(displayFoodName(b.food)))
+    .slice(0, API_SEARCH_RESULT_LIMIT)
+    .map(({ food }) => food);
 }
 
 function foodSearchFailureMessage(error, queryText = "") {
@@ -2925,6 +2995,7 @@ async function ensureFoodInPersonalLibrary(food, options = { incrementUsage: tru
     const patch = {
       usedCount: number(existing.usedCount) + (options.incrementUsage === false ? 0 : 1),
       lastUsedAt: options.incrementUsage === false ? existing.lastUsedAt || null : now,
+      ...(options.lastUsedServing ? { lastUsedServing: cleanForFirestore(options.lastUsedServing) } : {}),
       updatedAt: now
     };
     await updateDoc(userDoc("customFoods", existing.id), cleanForFirestore(patch));
@@ -2938,6 +3009,7 @@ async function ensureFoodInPersonalLibrary(food, options = { incrementUsage: tru
     nameLower: food.name.toLowerCase(),
     usedCount: options.incrementUsage === false ? 0 : 1,
     lastUsedAt: options.incrementUsage === false ? null : now,
+    ...(options.lastUsedServing ? { lastUsedServing: cleanForFirestore(options.lastUsedServing) } : {}),
     createdAt: Date.now(),
     updatedAt: now
   };
@@ -3080,7 +3152,15 @@ function bindServingAmountDefaults(form, food) {
   select?.addEventListener("change", applyDefault);
 }
 
-function preferredServingOptionIndex(servingOptions = []) {
+function preferredServingOptionIndex(food, servingOptions = []) {
+  const lastUnit = normalizeSearchText(food?.lastUsedServing?.unit);
+  if (searchRankForFood(food) > 0 && lastUnit) {
+    const lastIndex = servingOptions.findIndex(option => {
+      if (lastUnit === "g") return option?.mode === "grams";
+      return normalizeSearchText(servingDisplayName(option)) === lastUnit || normalizeSearchText(option?.unit) === lastUnit;
+    });
+    if (lastIndex >= 0) return lastIndex;
+  }
   const preferred = servingOptions.findIndex(option => {
     const label = normalizeSearchText(servingDisplayName(option));
     return option?.mode !== "grams" && label !== "100 g";
@@ -3107,7 +3187,7 @@ function openLogFoodModal(food) {
   state.activeLogFood = food;
   const foodKey = registerTempFood(food);
   const servingOptions = buildServingOptions(food);
-  const defaultUnitIndex = preferredServingOptionIndex(servingOptions);
+  const defaultUnitIndex = preferredServingOptionIndex(food, servingOptions);
   const defaultSelected = servingOptions[defaultUnitIndex] || servingOptions[0] || { mode: "grams", grams: 1 };
   const defaultAmount = defaultSelected.mode === "grams" ? 100 : 1;
   const defaultGrams = defaultSelected.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected.grams, 1);
@@ -3234,7 +3314,10 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
   }, null, dateISO);
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
   showToast("Food logged.");
-  ensureFoodInPersonalLibrary(food, { incrementUsage: true }).catch(console.warn);
+  ensureFoodInPersonalLibrary(food, {
+    incrementUsage: true,
+    lastUsedServing: { amount, unit, grams }
+  }).catch(console.warn);
   queueDailySummaryUpdate(dateISO);
   scheduleReportRecalculationForDate(dateISO);
 }
@@ -3609,9 +3692,10 @@ function openIngredientModal(kind, id, options = {}) {
     <div class="modal">
       <div class="modal-head"><h3>${kind === "recipe" ? "Ingredients" : "Items"} for ${safeText(target.name)}</h3><button class="close-btn" data-action="return-target-detail" data-kind="${kind}" data-id="${id}">x</button></div>
       <div class="modal-body">
-        <div class="search-bar">
+        <div class="search-bar ingredient-search-bar">
           <input id="ingredientSearchInput" type="search" placeholder="Name of the food" value="${safeText(flow.query)}" aria-label="Search ingredients" />
           <button class="primary-btn" data-action="ingredient-search" data-kind="${kind}" data-id="${id}">Search</button>
+          ${state.settings.modules.barcode ? `<button class="secondary-btn" type="button" data-action="open-ingredient-barcode-modal" data-kind="${kind}" data-id="${id}">Barcode</button>` : ""}
           ${kind === "mealset" ? `<button class="secondary-btn" data-action="show-recipe-ingredients" data-kind="${kind}" data-id="${id}">Recipes</button>` : ""}
         </div>
         <div id="ingredientResults" class="result-grid">
@@ -3695,7 +3779,7 @@ function openIngredientAmountModal(food, kind, id) {
   if (!food) return;
   const isRecipePortion = food?.source === "recipe";
   const servingOptions = isRecipePortion ? [{ label: "portion", grams: 100, mode: "portion", unit: "portion" }] : buildServingOptions(food);
-  const defaultUnitIndex = isRecipePortion ? 0 : preferredServingOptionIndex(servingOptions);
+  const defaultUnitIndex = isRecipePortion ? 0 : preferredServingOptionIndex(food, servingOptions);
   const defaultSelected = servingOptions[defaultUnitIndex] || servingOptions[0];
   const defaultAmount = isRecipePortion ? 1 : (defaultSelected?.mode === "grams" ? 100 : 1);
   const defaultGrams = isRecipePortion ? null : (defaultSelected?.mode === "grams" ? defaultAmount : defaultAmount * number(defaultSelected?.grams, 1));
@@ -6416,15 +6500,19 @@ function useFirebaseForLocalCache() {
   showToast("Firebase copy saved offline.");
 }
 
-function openBarcodeModal() {
+function openBarcodeModal(context = null) {
   if (!state.settings.modules.barcode) {
     showToast("Barcode module is disabled in Settings.");
     return;
   }
+  state.activeBarcodeContext = context?.kind && context?.id ? { kind: context.kind, id: context.id } : null;
+  const closeAction = state.activeBarcodeContext
+    ? `data-action="back-to-ingredient-search" data-kind="${safeText(state.activeBarcodeContext.kind)}" data-id="${safeText(state.activeBarcodeContext.id)}"`
+    : `data-action="close-modal"`;
   const canScan = (("BarcodeDetector" in window) || window.ZXing?.BrowserMultiFormatReader) && navigator.mediaDevices?.getUserMedia;
   openModal(`
     <div class="modal">
-      <div class="modal-head"><h3>Barcode lookup</h3><button class="close-btn" data-action="close-modal">x</button></div>
+      <div class="modal-head"><h3>Barcode lookup</h3><button class="close-btn" ${closeAction}>x</button></div>
       <div class="modal-body">
         ${canScan ? `
           <div class="video-box"><video id="barcodeVideo" muted playsinline></video></div>
@@ -6454,10 +6542,16 @@ function showBarcodeScanFailure(error) {
 
 async function finishBarcodeLookup(rawValue) {
   const cleanBarcode = String(rawValue || "").replace(/\D/g, "");
+  const context = state.activeBarcodeContext;
   setBarcodeStatus(`Barcode ${cleanBarcode || rawValue} detected. Looking up the product...`);
   try {
-    await lookupBarcodeCached(cleanBarcode);
+    const food = await lookupBarcodeCached(cleanBarcode, { updateState: false });
     closeModal();
+    state.activeBarcodeContext = null;
+    if (context?.kind && context?.id) {
+      openIngredientAmountModal(food, context.kind, context.id);
+      return true;
+    }
     setRoute("search");
     return true;
   } catch (error) {
@@ -6511,6 +6605,75 @@ async function startBarcodeScan() {
     requestAnimationFrame(scan);
   };
   scan();
+}
+
+function openCopyMealModal(sourceMeal) {
+  const sourceLabel = MEALS.find(([id]) => id === sourceMeal)?.[1] || "Meal";
+  const entries = state.logs.filter(entry => entry.meal === sourceMeal);
+  if (!entries.length) {
+    showToast(`${sourceLabel} has no entries to copy.`);
+    return;
+  }
+  openModal(`
+    <div class="modal">
+      <div class="modal-head"><h3>Copy ${safeText(sourceLabel)}</h3><button class="close-btn" type="button" data-action="close-modal">x</button></div>
+      <form id="copyMealForm" class="modal-body" data-source-meal="${safeText(sourceMeal)}">
+        <p class="kicker">Copy all ${entries.length} ${entries.length === 1 ? "entry" : "entries"} from ${safeText(state.currentDate)} to another date and meal.</p>
+        <div class="form-grid two">
+          <label>Date<input name="date" type="date" value="${addDaysISO(state.currentDate, 1)}" required /></label>
+          <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === sourceMeal ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        </div>
+        <div class="form-actions">
+          <button class="secondary-btn" type="button" data-action="close-modal">Cancel</button>
+          <button class="primary-btn" type="submit">Copy entries</button>
+        </div>
+      </form>
+    </div>
+  `);
+  document.getElementById("copyMealForm")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (form.dataset.submitting === "true") return;
+    form.dataset.submitting = "true";
+    form.querySelectorAll("button, input, select").forEach(element => element.disabled = true);
+    try {
+      const data = new FormData(form);
+      await copyMealEntries(sourceMeal, String(data.get("date") || ""), String(data.get("meal") || ""));
+    } catch (error) {
+      form.dataset.submitting = "";
+      form.querySelectorAll("button, input, select").forEach(element => element.disabled = false);
+      showError(error);
+    }
+  });
+}
+
+async function copyMealEntries(sourceMeal, targetDate, targetMeal) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new Error("Choose a valid destination date.");
+  if (!MEALS.some(([id]) => id === targetMeal)) throw new Error("Choose a valid destination meal.");
+  const entries = state.logs.filter(entry => entry.meal === sourceMeal);
+  if (!entries.length) throw new Error("This meal has no entries to copy.");
+  const batch = writeBatch(db);
+  const copiedAt = Date.now();
+  entries.forEach((entry, index) => {
+    const copy = compactLoggedEntry({
+      ...entry,
+      meal: targetMeal,
+      date: targetDate,
+      createdAt: copiedAt + index,
+      updatedAt: copiedAt + index
+    }, null, targetDate);
+    delete copy.id;
+    batch.set(doc(entryCollection(targetDate)), cleanForFirestore(copy));
+  });
+  await batch.commit();
+  await updateDailyCalorieSummary(targetDate).catch(console.warn);
+  closeModal();
+  state.currentDate = targetDate;
+  state.defaultLogDate = targetDate;
+  state.defaultLogMeal = targetMeal;
+  state.collapsedMeals[targetMeal] = false;
+  subscribeLogsForCurrentDate();
+  showToast(`${entries.length} ${entries.length === 1 ? "entry" : "entries"} copied to ${targetDate}.`);
 }
 
 async function repeatYesterday() {
@@ -6579,6 +6742,7 @@ async function editEntry(id) {
             </select>
           </label>
           <label>Meal<select name="meal">${MEALS.map(([mid, label]) => `<option value="${mid}" ${entry.meal === mid ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+          <label>Date<input name="date" type="date" value="${safeText(entry.date || state.currentDate)}" required /></label>
         </div>
         <div id="editEntryAmountPreview" class="amount-preview">
           ${macroAmountPreviewHTML(initialData.nutrientsSnapshot)}
@@ -6611,6 +6775,9 @@ async function editEntry(id) {
     const updatedAt = Date.now();
     const nutrientsSnapshot = editData.nutrientsSnapshot;
     const reportItems = scaledReportItems(entry.reportItems || [], editData.factor);
+    const sourceDate = entry.date || state.currentDate;
+    const targetDate = String(data.get("date") || sourceDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new Error("Choose a valid date.");
     const snapshotSummary = entry.snapshotSummary ? {
       ...entry.snapshotSummary,
       amount: editData.amount,
@@ -6621,18 +6788,34 @@ async function editEntry(id) {
       reportItemCount: reportItems.length,
       updatedAt
     } : null;
-    await updateDoc(entryDoc(id), cleanForFirestore({
+    const patch = cleanForFirestore({
       amount: editData.amount,
       unit: editData.unit,
       gramsEquivalent: editData.grams || null,
       meal: data.get("meal"),
+      date: targetDate,
       nutrientsSnapshot,
       nutrientVector: nutrientsToVector(nutrientsSnapshot),
       reportItems,
       ...(snapshotSummary ? { snapshotSummary } : {}),
       updatedAt
-    }));
-    await updateDailyCalorieSummary(state.currentDate).catch(console.warn);
+    });
+    if (targetDate === sourceDate) {
+      await updateDoc(entryDoc(id, sourceDate), patch);
+      await updateDailyCalorieSummary(sourceDate).catch(console.warn);
+    } else {
+      const movedEntry = compactLoggedEntry({ ...entry, ...patch }, id, targetDate);
+      delete movedEntry.id;
+      const batch = writeBatch(db);
+      batch.set(entryDoc(id, targetDate), cleanForFirestore(movedEntry));
+      batch.delete(entryDoc(id, sourceDate));
+      await batch.commit();
+      await Promise.all([
+        updateDailyCalorieSummary(sourceDate).catch(console.warn),
+        updateDailyCalorieSummary(targetDate).catch(console.warn)
+      ]);
+      showToast(`Entry moved to ${targetDate}.`);
+    }
     closeModal();
   });
 }
@@ -6674,6 +6857,7 @@ function closeModal() {
   els.modalRoot.classList.add("hidden");
   els.modalRoot.innerHTML = "";
   document.body.classList.remove("modal-open");
+  state.activeBarcodeContext = null;
 }
 
 async function handleDynamicSubmit(event) {
@@ -6799,6 +6983,7 @@ async function handleClick(event) {
     }
     if (action === "open-custom-food-modal") openCustomFoodCreateModal();
     if (action === "open-barcode-modal") openBarcodeModal();
+    if (action === "open-ingredient-barcode-modal") openBarcodeModal({ kind: btn.dataset.kind, id: btn.dataset.id });
     if (action === "start-barcode-scan") await startBarcodeScan().catch(showBarcodeScanFailure);
     if (action === "log-food") openLogFoodModal(getFoodByKey(btn.dataset.key));
     if (action === "food-detail") openFoodDetailModal(getFoodByKey(btn.dataset.key));
@@ -6819,6 +7004,7 @@ async function handleClick(event) {
     if (action === "edit-entry") await editEntry(btn.dataset.id);
     if (action === "move-entry") await moveEntry(btn.dataset.id);
     if (action === "duplicate-entry") await duplicateEntry(btn.dataset.id);
+    if (action === "copy-meal") openCopyMealModal(btn.dataset.meal);
     if (action === "toggle-meal-foods") {
       const meal = btn.dataset.meal;
       const pairMap = { breakfast: "lunch", lunch: "breakfast", dinner: "snack", snack: "dinner" };
@@ -6858,7 +7044,12 @@ async function handleClick(event) {
       closeModal();
     }
     if (action === "add-ingredient") openIngredientModal(btn.dataset.kind, btn.dataset.id);
-    if (action === "back-to-ingredient-search") openIngredientModal(btn.dataset.kind, btn.dataset.id, { restore: true });
+    if (action === "back-to-ingredient-search") {
+      const kind = btn.dataset.kind;
+      const id = btn.dataset.id;
+      closeModal();
+      openIngredientModal(kind, id, { restore: true });
+    }
     if (action === "ingredient-search") {
       const query = document.getElementById("ingredientSearchInput")?.value || "";
       const root = document.getElementById("ingredientResults");
