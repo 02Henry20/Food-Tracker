@@ -233,6 +233,7 @@ const state = {
   searchResults: [],
   searchResultsQuery: "",
   searchQuery: "",
+  recipeLibraryQuery: "",
   searchTab: "foods",
   searchLoading: false,
   searchFeedback: "",
@@ -312,6 +313,33 @@ function addDaysISO(iso, days) {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function normalizeDateInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let year;
+  let month;
+  let day;
+  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const localMatch = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (isoMatch) {
+    [, year, month, day] = isoMatch;
+  } else if (localMatch) {
+    [, day, month, year] = localMatch;
+  } else {
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return "";
+    parsed.setMinutes(parsed.getMinutes() - parsed.getTimezoneOffset());
+    return parsed.toISOString().slice(0, 10);
+  }
+  const normalized = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const parsed = new Date(`${normalized}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())
+    || parsed.getFullYear() !== Number(year)
+    || parsed.getMonth() + 1 !== Number(month)
+    || parsed.getDate() !== Number(day)) return "";
+  return normalized;
 }
 
 function currentWeekRange(baseISO = todayISO()) {
@@ -1560,6 +1588,10 @@ function setRoute(route) {
   const previousRoute = state.route;
   if (route === "reports" && previousRoute !== "reports") resetReportsToThisWeek();
   if (route !== "reports") cancelActiveReportCalculation();
+  if (previousRoute === "recipes" && route !== "recipes") {
+    state.recipeLibraryQuery = "";
+    state.targetLibraryPages = { recipes: 1, mealsets: 1 };
+  }
   state.route = route;
   Object.entries(els.pages).forEach(([key, page]) => page.classList.toggle("active", key === route));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.route === route));
@@ -1901,7 +1933,10 @@ function renderMealCard(mealId, label) {
             <span class="meal-kcal">${round(total.kcal, 0)} kcal</span>
             <span class="meal-protein">P ${round(total.protein)}g</span>
             <span class="meal-carbs">C ${round(total.carbs)}g</span>
-            <span class="meal-fat">F ${round(total.fat)}g</span>
+            <span class="meal-fat-stack">
+              ${!collapsed ? `<button class="tiny-btn meal-copy-btn" type="button" data-action="copy-meal" data-meal="${safeText(mealId)}">Copy</button>` : ""}
+              <span class="meal-fat">F ${round(total.fat)}g</span>
+            </span>
           </div>` : "";
   return `
     <article class="meal-card meal-card-${safeText(mealId)}">
@@ -1911,7 +1946,7 @@ function renderMealCard(mealId, label) {
           ${summaryHTML}
         </div>
         <div class="meal-actions">
-          ${entries.length ? `<button class="tiny-btn" data-action="copy-meal" data-meal="${mealId}">Copy</button><button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
+          ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
           <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
         </div>
       </div>
@@ -1988,6 +2023,15 @@ function fuzzyTokenScore(queryToken, candidateToken) {
   const longest = Math.max(query.length, candidate.length);
   const allowedDistance = longest <= 5 ? 1 : longest <= 9 ? 2 : 3;
   if (distance > allowedDistance || distance / longest > 0.34) return 0;
+  if (query.length === candidate.length && distance === 1) {
+    const isAdjacentTransposition = query.split("").some((character, index) => index < query.length - 1
+      && character === candidate[index + 1]
+      && query[index + 1] === candidate[index]
+      && `${query.slice(0, index)}${query.slice(index + 2)}` === `${candidate.slice(0, index)}${candidate.slice(index + 2)}`);
+    let commonPrefixLength = 0;
+    while (commonPrefixLength < query.length && query[commonPrefixLength] === candidate[commonPrefixLength]) commonPrefixLength += 1;
+    if (!isAdjacentTransposition && (query.length < 7 || commonPrefixLength < 3)) return 0;
+  }
   return Math.max(1, Math.round((1 - distance / longest) * 100));
 }
 
@@ -2020,6 +2064,33 @@ function searchMatchScore(parts, queryText) {
 
 function foodSearchParts(food) {
   return [food?.name, food?.brand, food?.barcode, food?.sourceId, food?.notes];
+}
+
+function searchMatchTier(parts, queryText) {
+  const query = normalizeSearchText(queryText);
+  const compactQuery = normalizeCompactSearchText(queryText);
+  if (!query && !compactQuery) return 1;
+  const normalizedParts = (parts || []).filter(Boolean).map(normalizeSearchText);
+  const compactParts = normalizedParts.map(normalizeCompactSearchText);
+  const haystack = normalizedParts.join(" ");
+  const compactHaystack = compactParts.join("");
+  const queryTokens = searchTokens(query);
+  const candidateTokens = normalizedParts.flatMap(searchTokens);
+  if (normalizedParts.includes(query) || compactParts.includes(compactQuery)) return 5;
+  if (queryTokens.length && queryTokens.every(token => candidateTokens.includes(token))) return 4;
+  if (haystack.startsWith(query) || compactHaystack.startsWith(compactQuery)
+    || (queryTokens.length && queryTokens.every(token => candidateTokens.some(candidate => candidate.startsWith(token))))) return 3;
+  if (haystack.includes(query) || compactHaystack.includes(compactQuery)) return 2;
+  return searchMatchScore(parts, query) > 0 ? 1 : 0;
+}
+
+function foodSearchMatch(food, queryText) {
+  const parts = foodSearchParts(food);
+  return {
+    food,
+    tier: searchMatchTier(parts, queryText),
+    score: searchMatchScore(parts, queryText)
+  };
 }
 
 
@@ -2058,13 +2129,17 @@ function foodSearchSort(a, b) {
   return displayFoodName(a).localeCompare(displayFoodName(b));
 }
 
+function compareFoodSearchMatches(a, b) {
+  return b.tier - a.tier || b.score - a.score || foodSearchSort(a.food, b.food);
+}
+
 function searchPersonalLibrary(queryText) {
   const query = normalizeSearchText(queryText);
   if (!query) return [];
   return state.customFoods
-    .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
+    .map(food => foodSearchMatch(food, query))
+    .filter(({ tier }) => tier > 0)
+    .sort(compareFoodSearchMatches)
     .slice(0, API_SEARCH_RESULT_LIMIT)
     .map(({ food }) => markResultFood(food, resultKindForFood(food)));
 }
@@ -2073,9 +2148,9 @@ function eatenFoodResults(queryText) {
   const query = normalizeSearchText(queryText);
   return state.customFoods
     .filter(food => searchRankForFood(food) > 0)
-    .map(food => ({ food, score: query ? searchMatchScore(foodSearchParts(food), query) : 1 }))
-    .filter(({ score }) => !query || score > 0)
-    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
+    .map(food => query ? foodSearchMatch(food, query) : { food, tier: 1, score: 1 })
+    .filter(({ tier }) => !query || tier > 0)
+    .sort((a, b) => query ? compareFoodSearchMatches(a, b) : foodSearchSort(a.food, b.food))
     .map(({ food }) => markResultFood(food, "eaten"));
 }
 
@@ -2167,9 +2242,9 @@ function mergeFoodResults(localResults, apiResults, queryText = "") {
   const query = normalizeSearchText(queryText);
   if (!query) return filtered.sort(foodSearchSort);
   return filtered
-    .map(food => ({ food, score: searchMatchScore(foodSearchParts(food), query) }))
-    .filter(({ score, food }) => score > 0 || food.resultKind !== "database")
-    .sort((a, b) => foodSearchSort(a.food, b.food) || b.score - a.score)
+    .map(food => foodSearchMatch(food, query))
+    .filter(({ tier }) => tier > 0)
+    .sort(compareFoodSearchMatches)
     .map(({ food }) => food);
 }
 
@@ -3342,37 +3417,59 @@ function targetLibraryPaginationHTML(section, pageData) {
 }
 
 function renderRecipes() {
-  const recipes = sortFavoriteFirst(state.recipes);
-  const mealsets = sortFavoriteFirst(state.mealsets);
+  const query = String(state.recipeLibraryQuery || "");
+  const recipes = searchLibraryItems(state.recipes, query);
+  const mealsets = searchLibraryItems(state.mealsets, query);
   const recipePage = targetLibraryPage(recipes, "recipes");
   const mealsetPage = targetLibraryPage(mealsets, "mealsets");
   els.pages.recipes.innerHTML = `
-    <div class="grid-2">
+    <div class="stack">
+      <div class="card recipe-library-search">
+        <div class="search-bar">
+          <input id="recipeLibrarySearchInput" type="search" value="${safeText(query)}" placeholder="Filter recipes and mealsets" autocomplete="off" aria-label="Filter recipes and mealsets" />
+          ${query ? `<button class="secondary-btn" type="button" data-action="clear-recipe-library-search">Clear</button>` : ""}
+        </div>
+      </div>
+      <div class="grid-2">
       ${state.settings.modules.recipes ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.recipes ? "is-collapsed" : ""}" data-section="recipes">
         <div class="meal-head">
-          <div class="target-library-title"><h3>Recipes</h3><span class="kicker">${recipes.length}</span></div>
+          <div class="target-library-title"><h3>Recipes</h3><span class="kicker">${query ? `${recipes.length} of ${state.recipes.length}` : recipes.length}</span></div>
           <div class="section-actions">
             <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="recipes">${state.recipeSectionsCollapsed.recipes ? "Show" : "Hide"}</button>
             <button class="primary-btn" type="button" data-action="create-recipe">+ Recipe</button>
           </div>
         </div>
-        <div class="result-grid target-library-list">${recipePage.items.length ? recipePage.items.map(renderRecipeCard).join("") : `<div class="empty-state">No recipes yet.</div>`}</div>
+        <div class="result-grid target-library-list">${recipePage.items.length ? recipePage.items.map(renderRecipeCard).join("") : `<div class="empty-state">${query ? "No recipes match this filter." : "No recipes yet."}</div>`}</div>
         ${targetLibraryPaginationHTML("recipes", recipePage)}
       </div>` : `<div class="card"><div class="empty-state">Recipes are disabled in Settings.</div></div>`}
 
       ${state.settings.modules.mealsets ? `<div class="card stack target-section ${state.recipeSectionsCollapsed.mealsets ? "is-collapsed" : ""}" data-section="mealsets">
         <div class="meal-head">
-          <div class="target-library-title"><h3>Mealsets</h3><span class="kicker">${mealsets.length}</span></div>
+          <div class="target-library-title"><h3>Mealsets</h3><span class="kicker">${query ? `${mealsets.length} of ${state.mealsets.length}` : mealsets.length}</span></div>
           <div class="section-actions">
             <button class="tiny-btn section-fold-btn" type="button" data-action="toggle-target-section" data-section="mealsets">${state.recipeSectionsCollapsed.mealsets ? "Show" : "Hide"}</button>
             <button class="primary-btn" type="button" data-action="create-mealset">+ Mealset</button>
           </div>
         </div>
-        <div class="result-grid target-library-list">${mealsetPage.items.length ? mealsetPage.items.map(renderMealsetCard).join("") : `<div class="empty-state">No mealsets yet.</div>`}</div>
+        <div class="result-grid target-library-list">${mealsetPage.items.length ? mealsetPage.items.map(renderMealsetCard).join("") : `<div class="empty-state">${query ? "No mealsets match this filter." : "No mealsets yet."}</div>`}</div>
         ${targetLibraryPaginationHTML("mealsets", mealsetPage)}
       </div>` : `<div class="card"><div class="empty-state">Mealsets are disabled in Settings.</div></div>`}
+      </div>
     </div>
   `;
+
+  document.getElementById("recipeLibrarySearchInput")?.addEventListener("input", event => {
+    state.recipeLibraryQuery = event.currentTarget.value;
+    state.targetLibraryPages = { recipes: 1, mealsets: 1 };
+    const cursor = event.currentTarget.selectionStart ?? state.recipeLibraryQuery.length;
+    renderRecipes();
+    requestAnimationFrame(() => {
+      const input = document.getElementById("recipeLibrarySearchInput");
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(cursor, cursor);
+    });
+  });
 
   els.pages.recipes.querySelector('[data-action="create-recipe"]')?.addEventListener("click", event => {
     event.preventDefault();
@@ -4303,8 +4400,81 @@ function openLogRecipeModal(recipe, returnTarget = null) {
   });
 }
 
+function loggedMealsetItemEntry(item, mealsetAmount, meal, dateISO, createdAt) {
+  const factor = Math.max(0, number(mealsetAmount, 1));
+  const nutrientsSnapshot = scaleNutrients(item.nutrientsSnapshot, factor);
+  const itemAmount = Math.max(0, number(item.amount ?? item.grams, 1)) * factor;
+
+  if (targetItemIsRecipeReference(item)) {
+    const recipe = state.recipes.find(candidate => candidate.id === item.itemId)
+      || item.recipeSnapshot
+      || {
+        id: item.itemId || null,
+        name: item.nameSnapshot || "Recipe",
+        portions: Math.max(1, number(item.recipeSnapshot?.portions, 1)),
+        ingredients: item.recipeSnapshot?.ingredients || [],
+        totalNutrients: item.recipeSnapshot?.totalNutrients || item.nutrientsSnapshot,
+        nutrientsPerPortion: item.recipeSnapshot?.nutrientsPerPortion || item.nutrientsSnapshot,
+        updatedAt: item.sourceUpdatedAt || null
+      };
+    return compactLoggedEntry({
+      itemType: "recipe",
+      itemId: item.itemId || recipe.id || null,
+      source: "recipe",
+      nameSnapshot: item.nameSnapshot || recipe.name || "Recipe",
+      brandSnapshot: item.brandSnapshot || "Recipe",
+      amount: itemAmount,
+      unit: "portion",
+      meal,
+      date: dateISO,
+      nutrientsSnapshot,
+      itemSnapshot: loggedTargetSnapshot("recipe", recipe, itemAmount, nutrientsSnapshot, createdAt),
+      sourceUpdatedAt: item.sourceUpdatedAt || recipe.updatedAt || null,
+      createdAt,
+      updatedAt: createdAt
+    }, null, dateISO);
+  }
+
+  const grams = Math.max(0, number(item.grams)) * factor;
+  const sourceFood = targetItemSourceFood(item) || {
+    id: item.itemId || item.sourceId || null,
+    source: item.source || "snapshot",
+    sourceId: item.sourceId || item.itemId || null,
+    barcode: item.barcode || null,
+    name: item.nameSnapshot || "Food",
+    brand: item.brandSnapshot || null,
+    nutrientsPer100g: grams > 0 ? scaleNutrients(nutrientsSnapshot, 100 / grams) : nutrientsSnapshot
+  };
+  const unit = item.unit || "g";
+  return compactLoggedEntry({
+    itemType: "food",
+    itemId: item.itemId || item.sourceId || sourceFood.id || null,
+    source: item.source || sourceFood.source || "snapshot",
+    originalSource: sourceFood.originalSource || null,
+    sourceId: item.sourceId || sourceFood.sourceId || sourceFood.id || null,
+    barcode: item.barcode || sourceFood.barcode || null,
+    nameSnapshot: item.nameSnapshot || displayFoodName(sourceFood),
+    brandSnapshot: item.brandSnapshot || sourceFood.brand || null,
+    amount: itemAmount,
+    unit,
+    gramsEquivalent: grams,
+    meal,
+    date: dateISO,
+    nutrientsSnapshot,
+    itemSnapshot: loggedFoodSnapshot(sourceFood, grams, itemAmount, unit, nutrientsSnapshot, createdAt),
+    sourceUpdatedAt: item.sourceUpdatedAt || sourceFood.updatedAt || null,
+    createdAt,
+    updatedAt: createdAt
+  }, null, dateISO);
+}
+
 function openLogMealsetModal(mealset, returnTarget = null) {
   const total = normalizeNutrients(mealset.totalNutrients);
+  const mealsetItems = mealset.items || [];
+  if (!mealsetItems.length) {
+    showToast("Add at least one item before logging this mealset.");
+    return;
+  }
   const closeAction = returnTarget ? `data-action="return-target-detail" data-kind="${returnTarget.kind}" data-id="${returnTarget.id}"` : `data-action="close-modal"`;
   openModal(`
     <div class="modal">
@@ -4318,7 +4488,7 @@ function openLogMealsetModal(mealset, returnTarget = null) {
         <div id="logMealsetAmountPreview">
           ${targetDetailSummaryHTML(total, "selected amount")}
         </div>
-        <div class="form-actions"><button class="primary-btn" type="submit">Log mealset</button></div>
+        <div class="form-actions"><button class="primary-btn" type="submit">Log ${mealsetItems.length} ${mealsetItems.length === 1 ? "item" : "items"}</button></div>
       </form>
     </div>
   `);
@@ -4331,30 +4501,30 @@ function openLogMealsetModal(mealset, returnTarget = null) {
   form?.elements.amount?.addEventListener("input", updatePreview);
   form?.addEventListener("submit", async event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const amount = number(data.get("amount"), 1);
-    const createdAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(total, amount);
-    const entry = compactLoggedEntry({
-      itemType: "mealset",
-      itemId: mealset.id,
-      source: "mealset",
-      nameSnapshot: mealset.name,
-      amount,
-      unit: "mealset",
-      meal: data.get("meal"),
-      date: data.get("date"),
-      nutrientsSnapshot,
-      itemSnapshot: loggedTargetSnapshot("mealset", mealset, amount, nutrientsSnapshot, createdAt),
-      createdAt,
-      updatedAt: createdAt
-    }, null, data.get("date"));
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(mealset.items || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
-    closeModal();
-    if (returnTarget) renderRecipes();
-    showToast("Mealset logged.");
+    if (form.dataset.submitting === "true") return;
+    form.dataset.submitting = "true";
+    form.querySelectorAll("button, input, select").forEach(element => element.disabled = true);
+    try {
+      const data = new FormData(event.currentTarget);
+      const amount = number(data.get("amount"), 1);
+      const meal = String(data.get("meal") || "snack");
+      const dateISO = normalizeDateInput(data.get("date"));
+      if (!dateISO) throw new Error("Choose a valid date.");
+      const createdAt = Date.now();
+      const entries = mealsetItems.map((item, index) => loggedMealsetItemEntry(item, amount, meal, dateISO, createdAt + index));
+      const batch = writeBatch(db);
+      entries.forEach(entry => batch.set(doc(entryCollection(dateISO)), cleanForFirestore(entry)));
+      await batch.commit();
+      await incrementFoodUsageForTargetItems(mealsetItems);
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      closeModal();
+      if (returnTarget) renderRecipes();
+      showToast(`${entries.length} mealset ${entries.length === 1 ? "item" : "items"} logged separately.`);
+    } catch (error) {
+      form.dataset.submitting = "";
+      form.querySelectorAll("button, input, select").forEach(element => element.disabled = false);
+      showError(error);
+    }
   });
 }
 
@@ -6638,7 +6808,8 @@ function openCopyMealModal(sourceMeal) {
     form.querySelectorAll("button, input, select").forEach(element => element.disabled = true);
     try {
       const data = new FormData(form);
-      await copyMealEntries(sourceMeal, String(data.get("date") || ""), String(data.get("meal") || ""));
+      const targetDate = normalizeDateInput(form.elements.date?.value || data.get("date"));
+      await copyMealEntries(sourceMeal, targetDate, String(form.elements.meal?.value || data.get("meal") || ""));
     } catch (error) {
       form.dataset.submitting = "";
       form.querySelectorAll("button, input, select").forEach(element => element.disabled = false);
@@ -6648,7 +6819,8 @@ function openCopyMealModal(sourceMeal) {
 }
 
 async function copyMealEntries(sourceMeal, targetDate, targetMeal) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new Error("Choose a valid destination date.");
+  const normalizedTargetDate = normalizeDateInput(targetDate);
+  if (!normalizedTargetDate) throw new Error("Choose a valid destination date.");
   if (!MEALS.some(([id]) => id === targetMeal)) throw new Error("Choose a valid destination meal.");
   const entries = state.logs.filter(entry => entry.meal === sourceMeal);
   if (!entries.length) throw new Error("This meal has no entries to copy.");
@@ -6658,22 +6830,22 @@ async function copyMealEntries(sourceMeal, targetDate, targetMeal) {
     const copy = compactLoggedEntry({
       ...entry,
       meal: targetMeal,
-      date: targetDate,
+      date: normalizedTargetDate,
       createdAt: copiedAt + index,
       updatedAt: copiedAt + index
-    }, null, targetDate);
+    }, null, normalizedTargetDate);
     delete copy.id;
-    batch.set(doc(entryCollection(targetDate)), cleanForFirestore(copy));
+    batch.set(doc(entryCollection(normalizedTargetDate)), cleanForFirestore(copy));
   });
   await batch.commit();
-  await updateDailyCalorieSummary(targetDate).catch(console.warn);
+  await updateDailyCalorieSummary(normalizedTargetDate).catch(console.warn);
   closeModal();
-  state.currentDate = targetDate;
-  state.defaultLogDate = targetDate;
+  state.currentDate = normalizedTargetDate;
+  state.defaultLogDate = normalizedTargetDate;
   state.defaultLogMeal = targetMeal;
   state.collapsedMeals[targetMeal] = false;
   subscribeLogsForCurrentDate();
-  showToast(`${entries.length} ${entries.length === 1 ? "entry" : "entries"} copied to ${targetDate}.`);
+  showToast(`${entries.length} ${entries.length === 1 ? "entry" : "entries"} copied to ${normalizedTargetDate}.`);
 }
 
 async function repeatYesterday() {
@@ -6776,8 +6948,8 @@ async function editEntry(id) {
     const nutrientsSnapshot = editData.nutrientsSnapshot;
     const reportItems = scaledReportItems(entry.reportItems || [], editData.factor);
     const sourceDate = entry.date || state.currentDate;
-    const targetDate = String(data.get("date") || sourceDate);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new Error("Choose a valid date.");
+    const targetDate = normalizeDateInput(data.get("date") || sourceDate);
+    if (!targetDate) throw new Error("Choose a valid date.");
     const snapshotSummary = entry.snapshotSummary ? {
       ...entry.snapshotSummary,
       amount: editData.amount,
@@ -6860,6 +7032,16 @@ function closeModal() {
   state.activeBarcodeContext = null;
 }
 
+function resetFoodSearchState() {
+  state.searchQuery = "";
+  state.searchResultsQuery = "";
+  state.searchResults = [];
+  state.searchFeedback = "";
+  state.searchLoading = false;
+  state.searchPage = 1;
+  state.keyboardSelection.search = -1;
+}
+
 async function handleDynamicSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -6874,7 +7056,9 @@ async function handleDynamicSubmit(event) {
       if (!food) throw new Error("Could not find this food anymore. Close the modal and open it again.");
       const { amount, unit, grams } = servingSelectionFromData(food, data);
       await logFood(food, amount, unit, grams, data.get("meal"), data.get("date"));
+      resetFoodSearchState();
       closeModal();
+      if (state.route === "search") renderSearchV2();
       return;
     }
   } catch (error) {
@@ -7025,6 +7209,12 @@ async function handleClick(event) {
       const section = btn.dataset.section === "mealsets" ? "mealsets" : "recipes";
       state.targetLibraryPages[section] = Math.max(1, number(state.targetLibraryPages?.[section], 1) + number(btn.dataset.dir));
       renderRecipes();
+    }
+    if (action === "clear-recipe-library-search") {
+      state.recipeLibraryQuery = "";
+      state.targetLibraryPages = { recipes: 1, mealsets: 1 };
+      renderRecipes();
+      requestAnimationFrame(() => document.getElementById("recipeLibrarySearchInput")?.focus());
     }
     if (action === "detail-recipe") openTargetDetail("recipe", btn.dataset.id);
     if (action === "detail-mealset") openTargetDetail("mealset", btn.dataset.id);

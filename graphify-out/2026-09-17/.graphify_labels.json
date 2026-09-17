@@ -1,13 +1,17 @@
 {
-  "0": "number",
+  "0": "safeText",
   "1": "cleanForFirestore",
-  "2": "renderReportOutput",
+  "2": "normalizeReportData",
   "3": "normalizeSearchText",
   "4": "app.js",
   "5": "openCustomFoodEditor",
-  "6": "safeText",
+  "6": "renderReportOutput",
   "7": "NutriPilot",
   "8": "AI Coding Tooling",
   "9": "handleClick",
+  "10": "number",
+  "11": "loadReport",
+  "12": "rebuildReportCacheInBackground",
+  "13": "saveReportCacheInBackground",
   "14": "sw.js"
 }
