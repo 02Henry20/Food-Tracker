@@ -1173,7 +1173,7 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
 }
 .meal-summary {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   flex-wrap: nowrap;
   max-width: 100%;
@@ -1197,24 +1197,6 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
 .meal-summary .meal-kcal {
   background: rgba(249, 115, 22, .14);
   color: #c2410c;
-}
-.meal-summary .meal-fat-stack {
-  display: inline-flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  min-height: 0;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: inherit;
-}
-.meal-summary .meal-fat-stack .meal-copy-btn {
-  min-height: 26px;
-  padding: 4px 8px;
-  font-size: .76rem;
-  line-height: 1;
 }
 .meal-actions, .section-actions, .inline-actions {
   display: flex;
@@ -1588,9 +1570,20 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   align-items: start;
 }
 .meal-card .meal-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   position: relative;
   z-index: 3;
   flex-shrink: 0;
+}
+.meal-card .meal-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.meal-card .meal-copy-btn {
+  width: 100%;
 }
 .meal-card .meal-summary {
   position: relative;
@@ -1613,7 +1606,8 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   }
   .meal-card .meal-actions {
     justify-content: flex-start;
-    width: 100%;
+    width: max-content;
+    max-width: 100%;
   }
   .meal-card .meal-summary {
     flex-wrap: wrap;

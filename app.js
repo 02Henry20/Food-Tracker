@@ -1933,10 +1933,7 @@ function renderMealCard(mealId, label) {
             <span class="meal-kcal">${round(total.kcal, 0)} kcal</span>
             <span class="meal-protein">P ${round(total.protein)}g</span>
             <span class="meal-carbs">C ${round(total.carbs)}g</span>
-            <span class="meal-fat-stack">
-              ${!collapsed ? `<button class="tiny-btn meal-copy-btn" type="button" data-action="copy-meal" data-meal="${safeText(mealId)}">Copy</button>` : ""}
-              <span class="meal-fat">F ${round(total.fat)}g</span>
-            </span>
+            <span class="meal-fat">F ${round(total.fat)}g</span>
           </div>` : "";
   return `
     <article class="meal-card meal-card-${safeText(mealId)}">
@@ -1946,8 +1943,11 @@ function renderMealCard(mealId, label) {
           ${summaryHTML}
         </div>
         <div class="meal-actions">
-          ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
-          <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
+          <div class="meal-primary-actions">
+            ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
+            <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
+          </div>
+          ${entries.length && !collapsed ? `<button class="tiny-btn meal-copy-btn" type="button" data-action="copy-meal" data-meal="${safeText(mealId)}">Copy</button>` : ""}
         </div>
       </div>
       ${entries.length && !collapsed ? `<div class="food-list">${entries.map(renderLogEntry).join("")}</div>` : ""}
@@ -4481,35 +4481,31 @@ function openLogMealsetModal(mealset, returnTarget = null) {
       <div class="modal-head"><h3>Log ${safeText(mealset.name)}</h3><button class="close-btn" type="button" ${closeAction}>x</button></div>
       <form id="logMealsetForm" class="modal-body">
         <div class="form-grid two">
-          <label>Quantity<input name="amount" type="number" step="0.01" min="0" value="1" required /></label>
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
+          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" required /></label>
         </div>
-        <div id="logMealsetAmountPreview">
-          ${targetDetailSummaryHTML(total, "selected amount")}
+        <div>
+          ${targetDetailSummaryHTML(total, "mealset total")}
         </div>
-        <div class="form-actions"><button class="primary-btn" type="submit">Log ${mealsetItems.length} ${mealsetItems.length === 1 ? "item" : "items"}</button></div>
+        <div class="form-actions"><button class="primary-btn" type="submit">Add</button></div>
       </form>
     </div>
   `);
   const form = document.getElementById("logMealsetForm");
-  const preview = document.getElementById("logMealsetAmountPreview");
-  const updatePreview = () => {
-    const amount = number(form?.elements.amount?.value, 1);
-    if (preview) preview.innerHTML = targetDetailSummaryHTML(scaleNutrients(total, amount), "selected amount");
-  };
-  form?.elements.amount?.addEventListener("input", updatePreview);
   form?.addEventListener("submit", async event => {
     event.preventDefault();
     if (form.dataset.submitting === "true") return;
+    const data = new FormData(event.currentTarget);
+    const amount = 1;
+    const meal = String(form.elements.meal?.value || data.get("meal") || "snack");
+    const dateISO = normalizeDateInput(form.elements.date?.value || data.get("date"));
+    if (!dateISO) {
+      showError(new Error("Choose a valid date."));
+      return;
+    }
     form.dataset.submitting = "true";
     form.querySelectorAll("button, input, select").forEach(element => element.disabled = true);
     try {
-      const data = new FormData(event.currentTarget);
-      const amount = number(data.get("amount"), 1);
-      const meal = String(data.get("meal") || "snack");
-      const dateISO = normalizeDateInput(data.get("date"));
-      if (!dateISO) throw new Error("Choose a valid date.");
       const createdAt = Date.now();
       const entries = mealsetItems.map((item, index) => loggedMealsetItemEntry(item, amount, meal, dateISO, createdAt + index));
       const batch = writeBatch(db);

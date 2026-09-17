@@ -5,8 +5,8 @@
     "semantic_hash": "8cb82cbcc0db38235850429f70f74ada"
   },
   "app.js": {
-    "mtime": 1789644949.1808999,
-    "ast_hash": "e558c492aad20f361cd9d8a027ef640e",
+    "mtime": 1789645543.610013,
+    "ast_hash": "18250c596f444cee3b8f48cb80041a98",
     "semantic_hash": ""
   },
   "firebase.json": {
@@ -15,8 +15,8 @@
     "semantic_hash": "c9557dad8cb66ed8dea6220ba51e0d0f"
   },
   "sw.js": {
-    "mtime": 1789644965.6710742,
-    "ast_hash": "ed7d776103a073efc16ee93919d50194",
+    "mtime": 1789645520.7940543,
+    "ast_hash": "a25b8e0281b9e794abb39072fed20f34",
     "semantic_hash": ""
   },
   "test-data/basic_foods_custom_import.json": {
