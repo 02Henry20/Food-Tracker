@@ -1573,16 +1573,12 @@ button, .badge, .pill, .nav-btn, .kicker, .meal-summary span,
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 6px;
+  justify-items: stretch;
   position: relative;
   z-index: 3;
   flex-shrink: 0;
 }
-.meal-card .meal-primary-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.meal-card .meal-copy-btn {
+.meal-card .meal-actions > .tiny-btn {
   width: 100%;
 }
 .meal-card .meal-summary {

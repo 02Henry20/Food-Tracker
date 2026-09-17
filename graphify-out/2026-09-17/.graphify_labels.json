@@ -1,20 +1,13 @@
 {
   "0": "number",
-  "1": "handleClick",
-  "2": "renderReportOutput",
+  "1": "cleanForFirestore",
+  "2": "loadReport",
   "3": "renderSearchV2",
   "4": "app.js",
-  "5": "safeText",
-  "6": "renderMicroRows",
+  "5": "openCustomFoodEditor",
   "7": "NutriPilot",
   "8": "AI Coding Tooling",
-  "9": "periodRange",
+  "9": "handleClick",
   "10": "normalizeReportRow",
-  "11": "normalizeOpenFoodFactsProduct",
-  "12": "finishBarcodeLookup",
-  "13": "renderReportCacheUploadStatus",
-  "14": "sw.js",
-  "15": "activateKeyboardSelection",
-  "16": "setRoute",
-  "17": "searchLibraryItems"
+  "14": "sw.js"
 }

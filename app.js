@@ -1943,10 +1943,8 @@ function renderMealCard(mealId, label) {
           ${summaryHTML}
         </div>
         <div class="meal-actions">
-          <div class="meal-primary-actions">
-            ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
-            <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
-          </div>
+          ${entries.length ? `<button class="tiny-btn fold-btn" data-action="toggle-meal-foods" data-meal="${mealId}">${collapsed ? "Show" : "Hide"}</button>` : ""}
+          <button class="tiny-btn" data-action="go-search" data-meal="${mealId}">+ Add</button>
           ${entries.length && !collapsed ? `<button class="tiny-btn meal-copy-btn" type="button" data-action="copy-meal" data-meal="${safeText(mealId)}">Copy</button>` : ""}
         </div>
       </div>
@@ -2531,7 +2529,7 @@ function renderMealsetQuickCard(mealset) {
 function renderRecipeSearchCard(recipe) {
   const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
   return `
-    <div class="result-card used ${recipe.favorite ? "favorite" : ""}">
+    <div class="result-card ${recipe.favorite ? "favorite" : ""}">
       <div>
         <h4>${safeText(recipe.name)}</h4>
         <p>${round(n.kcal, 0)} kcal / portion</p>
@@ -2548,7 +2546,7 @@ function renderRecipeSearchCard(recipe) {
 function renderMealsetSearchCard(mealset) {
   const n = normalizeNutrients(mealset.totalNutrients);
   return `
-    <div class="result-card used ${mealset.favorite ? "favorite" : ""}">
+    <div class="result-card ${mealset.favorite ? "favorite" : ""}">
       <div>
         <h4>${safeText(mealset.name)}</h4>
         <p>${round(n.kcal, 0)} kcal / mealset</p>
