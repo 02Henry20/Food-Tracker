@@ -1,0 +1,5 @@
+# Generated repository graphs, caches, and backups (kept locally).
+/graphify-out/
+
+# Local agent memories; shared Serena configuration remains tracked.
+/.serena/memories/

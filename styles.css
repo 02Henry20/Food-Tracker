@@ -436,6 +436,12 @@ textarea { resize: vertical; min-height: 88px; }
   animation: toastIn .14s var(--ease) both;
 }
 
+.info-popover-close {
+  display: block;
+  margin-top: 8px;
+  margin-left: auto;
+}
+
 .sync-panel {
   background: linear-gradient(135deg, rgba(20,184,166,.10), rgba(37,99,235,.08)), var(--surface);
 }

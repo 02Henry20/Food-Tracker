@@ -1982,11 +1982,11 @@ function normalizeSearchText(value) {
 }
 
 function normalizeCompactSearchText(value) {
-  return normalizeSearchText(value).replace(/[^a-z0-9äöüß]/gi, "");
+  return normalizeSearchText(value).replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 function searchTokens(value) {
-  return normalizeSearchText(value).split(/\s+/).filter(Boolean);
+  return normalizeSearchText(value).match(/[\p{L}\p{N}]+/gu) || [];
 }
 
 function damerauLevenshteinDistance(leftValue, rightValue) {
@@ -2016,20 +2016,11 @@ function damerauLevenshteinDistance(leftValue, rightValue) {
 function fuzzyTokenScore(queryToken, candidateToken) {
   const query = normalizeCompactSearchText(queryToken);
   const candidate = normalizeCompactSearchText(candidateToken);
-  if (query.length < 4 || candidate.length < 3) return 0;
+  if (query.length < 3 || candidate.length < 3) return 0;
   const distance = damerauLevenshteinDistance(query, candidate);
   const longest = Math.max(query.length, candidate.length);
   const allowedDistance = longest <= 5 ? 1 : longest <= 9 ? 2 : 3;
   if (distance > allowedDistance || distance / longest > 0.34) return 0;
-  if (query.length === candidate.length && distance === 1) {
-    const isAdjacentTransposition = query.split("").some((character, index) => index < query.length - 1
-      && character === candidate[index + 1]
-      && query[index + 1] === candidate[index]
-      && `${query.slice(0, index)}${query.slice(index + 2)}` === `${candidate.slice(0, index)}${candidate.slice(index + 2)}`);
-    let commonPrefixLength = 0;
-    while (commonPrefixLength < query.length && query[commonPrefixLength] === candidate[commonPrefixLength]) commonPrefixLength += 1;
-    if (!isAdjacentTransposition && (query.length < 7 || commonPrefixLength < 3)) return 0;
-  }
   return Math.max(1, Math.round((1 - distance / longest) * 100));
 }
 
@@ -2763,7 +2754,7 @@ async function getOpenFoodFactsByBarcode(barcode) {
 }
 
 async function fetchOpenFoodFactsFromHost(queryText, host) {
-  const queryTextTrimmed = queryText.trim();
+  const queryTextTrimmed = searchTokens(queryText).join(" ");
   if (!queryTextTrimmed) return [];
   const url = new URL(`https://${host || openFoodFactsHost()}/cgi/search.pl`);
   url.searchParams.set("search_terms", queryTextTrimmed);
@@ -2786,25 +2777,68 @@ async function fetchOpenFoodFactsFromHost(queryText, host) {
     .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
-function closestSearchQueries(queryText) {
-  const query = normalizeSearchText(queryText);
-  const tokens = searchTokens(query);
-  const candidates = [];
-  const withoutLastCharacters = tokens.map(token => token.length >= 5 ? token.slice(0, -1) : token).join(" ");
-  if (withoutLastCharacters && withoutLastCharacters !== query) candidates.push(withoutLastCharacters);
-  const longest = [...tokens].sort((a, b) => b.length - a.length)[0] || "";
-  if (longest.length >= 4) candidates.push(longest.slice(0, 3));
-  return [...new Set(candidates)].filter(Boolean).slice(0, 2);
+function fuzzyOpenFoodFactsQuery(queryText) {
+  // Explicit language subfields are required by the live Search-a-licious API:
+  // bare fuzzy terms target "*", while product_name without a subfield fails.
+  const language = String(navigator.language || "en").split("-")[0].toLowerCase();
+  const languages = [...new Set(["main", "en", "de", language])].filter(value => /^[a-z]{2,4}$/.test(value));
+  const fields = [...languages.flatMap(lang => [`product_name.${lang}`, `generic_name.${lang}`]), "brands"];
+  const terms = searchTokens(queryText).map(token => {
+    const distance = token.length < 3 || /^\d+$/.test(token) ? 0 : token.length <= 5 ? 1 : 2;
+    return `(${fields.map(field => `${field}:${token}${distance ? `~${distance}` : ""}`).join(" OR ")})`;
+  });
+  if (!terms.length) return "";
+  const regions = selectedSearchRegionValues();
+  if (!regions.includes("world")) {
+    const countryNames = new Map(SEARCH_REGIONS.map(([value, label]) => [value, normalizeSearchText(label).replace(/ /g, "-")]));
+    terms.push(`(${regions.map(region => `countries_tags:"en:${countryNames.get(region)}"`).join(" OR ")})`);
+  }
+  return terms.join(" AND ");
+}
+
+async function fetchFuzzyOpenFoodFacts(queryText) {
+  const query = fuzzyOpenFoodFactsQuery(queryText);
+  if (!query) return [];
+  const url = new URL("https://search.openfoodfacts.org/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
+  url.searchParams.set("fields", "code,product_name,generic_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+  const response = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+  if (!response.ok) throw new Error(`Open Food Facts fuzzy search failed (HTTP ${response.status})`);
+  const data = await response.json();
+  if (data.errors?.length) throw new Error("Open Food Facts fuzzy search is temporarily unavailable");
+  const indexedFoods = (data.hits || []).map(normalizeOpenFoodFactsProduct).filter(Boolean).filter(foodHasUsableNutrients);
+  const codes = [...new Set((data.hits || []).map(hit => String(hit.code || "")).filter(code => /^\d+$/.test(code)))];
+  if (!codes.length) return [];
+
+  // Fetch the full product records so fuzzy results retain micronutrients and
+  // serving sizes that are not all present in the search index.
+  const productsUrl = new URL("https://world.openfoodfacts.org/api/v2/search");
+  productsUrl.searchParams.set("code", codes.join(","));
+  productsUrl.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
+  productsUrl.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+  try {
+    const productsResponse = await fetch(productsUrl.toString(), { headers: { "Accept": "application/json" } });
+    if (!productsResponse.ok) return indexedFoods;
+    const productsData = await productsResponse.json();
+    const foods = new Map(indexedFoods.map(food => [foodIdentity(food), food]));
+    for (const product of productsData.products || []) {
+      const food = normalizeOpenFoodFactsProduct(product);
+      if (food && foodHasUsableNutrients(food)) foods.set(foodIdentity(food), food);
+    }
+    return [...foods.values()];
+  } catch {
+    return indexedFoods;
+  }
 }
 
 async function fetchOpenFoodFacts(queryText) {
   const hosts = selectedOpenFoodFactsHosts();
   const primaryResults = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
   const foods = primaryResults.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  const primaryMatchCount = foods.filter(food => searchMatchScore(foodSearchParts(food), queryText) > 0).length;
-  const fallbackQueries = primaryMatchCount < SEARCH_PAGE_SIZE ? closestSearchQueries(queryText) : [];
-  const fallbackResults = fallbackQueries.length
-    ? await Promise.allSettled(fallbackQueries.flatMap(query => hosts.map(host => fetchOpenFoodFactsFromHost(query, host))))
+  const primaryMatchCount = foods.filter(food => searchMatchTier(foodSearchParts(food), queryText) >= 2).length;
+  const fallbackResults = primaryMatchCount < SEARCH_PAGE_SIZE
+    ? await Promise.allSettled([fetchFuzzyOpenFoodFacts(queryText)])
     : [];
   foods.push(...fallbackResults.flatMap(result => result.status === "fulfilled" ? result.value : []));
   const allResults = [...primaryResults, ...fallbackResults];
@@ -6591,6 +6625,12 @@ function showInfoPopover(button) {
   const popover = document.createElement("div");
   popover.className = "info-popover";
   popover.textContent = button.dataset.info || "";
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "tiny-btn info-popover-close";
+  closeButton.dataset.action = "close-info";
+  closeButton.textContent = "Close";
+  popover.appendChild(closeButton);
   document.body.appendChild(popover);
   const rect = button.getBoundingClientRect();
   popover.style.left = `${Math.min(window.innerWidth - popover.offsetWidth - 12, rect.left)}px`;
@@ -7089,8 +7129,11 @@ function activateKeyboardSelection(scope) {
 }
 
 function handleKeyboardNavigation(event) {
+  if (event.defaultPrevented) return;
   if (window.matchMedia("(max-width: 980px)").matches) return;
-  const inIngredient = !!document.getElementById("ingredientResults") && !els.modalRoot.classList.contains("hidden");
+  const modalOpen = !els.modalRoot.classList.contains("hidden");
+  const inIngredient = !!document.getElementById("ingredientResults") && modalOpen;
+  if (modalOpen && (!inIngredient || event.target?.id !== "ingredientSearchInput")) return;
   const inSearch = state.route === "search" && !!document.getElementById("searchResults");
   const scope = inIngredient ? "ingredient" : inSearch ? "search" : null;
   if (!scope) return;
@@ -7111,6 +7154,7 @@ document.addEventListener("submit", handleDynamicSubmit);
 async function handleClick(event) {
   const btn = event.target.closest("button");
   if (!btn) return;
+  if (!els.modalRoot.classList.contains("hidden") && !els.modalRoot.contains(btn) && !btn.closest(".info-popover")) return;
   const route = btn.dataset.route;
   if (route) return setRoute(route);
   const action = btn.dataset.action;
@@ -7122,6 +7166,10 @@ async function handleClick(event) {
 
   try {
     if (action === "close-modal") closeModal();
+    if (action === "close-info") {
+      btn.closest(".info-popover")?.remove();
+      return;
+    }
     if (action === "show-info") {
       showInfoPopover(btn);
       return;
@@ -7390,11 +7438,6 @@ document.addEventListener("submit", async event => {
 });
 
 document.addEventListener("click", handleClick);
-document.addEventListener("click", event => {
-  if (!event.target.closest(".info-btn") && !event.target.closest(".info-popover")) {
-    document.querySelectorAll(".info-popover").forEach(node => node.remove());
-  }
-});
 
 els.authForm.addEventListener("submit", async event => {
   event.preventDefault();
