@@ -1,14 +1,28 @@
 {
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22"
+  },
   "hosting": {
     "public": ".",
     "ignore": [
       "firebase.json",
       "firestore.rules",
       "README.md",
+      "AGENTS.md",
+      "CODE_REVIEW.md",
+      "graphify-out/**",
+      "functions/**",
+      "tests/**",
+      "test-data/**",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/api/food-search",
+        "function": { "functionId": "foodSearch", "region": "europe-west1" }
+      },
       {
         "source": "**",
         "destination": "/index.html"

@@ -48,9 +48,11 @@ const MAX_CACHED_SEARCHES = 40;
 const SEARCH_PAGE_SIZE = 10;
 const TARGET_LIBRARY_PAGE_SIZE = 10;
 const API_SEARCH_RESULT_LIMIT = 100;
+// Generic food names and aliases from the bundled import data; personal/cache names extend this vocabulary.
+const FOOD_SEARCH_TERMS = "african almond almonds ananas and apfel apple arugula asian asparagus aubergine avocado bacon balloon bambara banana banane baobab basic basil basilikum batate bean beans beef beetroot bell bete birne bitter black blaubeeren blueberries blueberry blumenkohl bohnen boiled boneless bonnet bread breast broccoli brokkoli brot bulgur burdock butter button cabbage canola carrot cashew cassava cauliflower celery cereal champignons cheese chestnuts chia chiasamen chicken chickpea chickpeas chives chocolate chopped cilantro cinnamon citrus cocoyam coffee cooked corn courgette couscous cowpeas cream crown cucumber cumin curry currypulver daisy deep deodeok doenjang drained dried dropwort dry duck egg eggplant eggs egusi ei eier enoki erbsen erdbeeren erdnüsse fat fermented fernbrake fillet firm fish flaxseed fleisch flour flower fluted fresh fried frisch fruit garden garlic garri gekocht getrocknet ginger gochujang granola grape grapes greek green griechisch grilled ground groundnuts grüne grünkohl guava gurke haehnchen haehnchenbrust hafer haferflocken hahn hahnchen hahnchenbrust ham hazelnut himbeeren huhn ingwer japanese jeju joghurt jujube jute kaese kaffee kale karotte kartoffel kase kelp kernels kichererbsen kidney kidneybohnen kimchi king kiwi kiwifruit knoblauch kola kopfsalat korean koriander kreuzkümmel kurkuma kürbis lachs lamb lauch laver lean leaves leek leinsamen lemon lentil lentils lettuce lime limette linsen locust lotus low magerquark mais mallow mandeln mango meat melon milch milk mince moehre mugwort mung mushrooms möhre napa natur nudeln nuts oats ogbono oil okra olive olivenöl onion orange oregano organic oyster palm papaya paprika paprikapulver parsley pasta peach peanut peanuts pear peas pepper percent perilla persimmon petersilie pfeffer pfirsich pineapple plain plantain plum pork potato powder prawns protein pulp pumpkin quark quinoa radish rapeseed rapsöl raspberries raspberry raw red reis rice rind ripe roasted rocket rolled root rot rote rucola salmon salt salz sauce sausage schokolade schwarz schweinefleisch scotch seaweed seed seeds sellerie sesame shiitake shrimp skinless skyr sliced smoked sojasauce soursop soy soybean spargel spinach spinat sprouts star steak strawberries strawberry sugar sweet süßkartoffel table tea tee tempeh thigh thunfisch tiger tofu tomate tomato trauben trocken tuna turkey turmeric unripe vegetable wakame walnut walnuts walnüsse water waterleaf whey white whole yam yoghurt yogurt yuzu zimt zitrone zucchini zwiebel".split(" ");
 const DATA_MODEL_VERSION = 2;
 const DAILY_SUMMARY_VERSION = 2;
-const REPORT_CACHE_VERSION = 20;
+const REPORT_CACHE_VERSION = 21;
 const REPORT_FOOD_LIMIT = 30;
 const REPORT_RECALC_DEBOUNCE_MS = 650;
 const MICRO_DEFAULTS = {
@@ -222,6 +224,7 @@ const els = {
 
 const state = {
   user: null,
+  userSession: 0,
   route: "today",
   currentDate: todayISO(),
   settings: structuredClone(DEFAULT_SETTINGS),
@@ -236,6 +239,7 @@ const state = {
   recipeLibraryQuery: "",
   searchTab: "foods",
   searchLoading: false,
+  searchRequestId: 0,
   searchFeedback: "",
   recentSearches: [],
   searchFilters: {
@@ -310,8 +314,8 @@ function todayISO() {
 }
 
 function addDaysISO(iso, days) {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -343,19 +347,19 @@ function normalizeDateInput(value) {
 }
 
 function currentWeekRange(baseISO = todayISO()) {
-  const d = new Date(`${baseISO}T12:00:00`);
-  const day = d.getDay() || 7;
+  const d = new Date(`${baseISO}T12:00:00Z`);
+  const day = d.getUTCDay() || 7;
   const monday = new Date(d);
-  monday.setDate(d.getDate() - day + 1);
+  monday.setUTCDate(d.getUTCDate() - day + 1);
   const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
   return [monday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)];
 }
 
 function currentMonthRange(baseISO = todayISO()) {
-  const d = new Date(`${baseISO}T12:00:00`);
-  const start = new Date(d.getFullYear(), d.getMonth(), 1, 12);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 12);
+  const d = new Date(`${baseISO}T12:00:00Z`);
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 12));
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 12));
   return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
 }
 
@@ -371,10 +375,14 @@ function periodRange(mode = state.reportMode, baseISO = state.reportBaseDate || 
 }
 
 function shiftReportPeriod(direction) {
-  const base = new Date(`${state.reportBaseDate || state.currentDate}T12:00:00`);
-  if (state.reportMode === "month") base.setMonth(base.getMonth() + direction);
-  else if (state.reportMode === "year") base.setFullYear(base.getFullYear() + direction);
-  else base.setDate(base.getDate() + direction * 7);
+  const base = new Date(`${state.reportBaseDate || state.currentDate}T12:00:00Z`);
+  if (state.reportMode === "month") {
+    base.setUTCDate(1);
+    base.setUTCMonth(base.getUTCMonth() + direction);
+  } else if (state.reportMode === "year") {
+    base.setUTCMonth(0, 1);
+    base.setUTCFullYear(base.getUTCFullYear() + direction);
+  } else base.setUTCDate(base.getUTCDate() + direction * 7);
   state.reportBaseDate = base.toISOString().slice(0, 10);
   state.reportRange = periodRange();
 }
@@ -477,16 +485,20 @@ function effectiveGoalsForDate(dateISO = state.currentDate) {
 
 async function loadDailyGoalForDate(dateISO = state.currentDate) {
   if (!state.user || !dateISO) return null;
+  const uid = state.user.uid;
+  const session = state.userSession;
   const cached = readLocal(`dailyGoal:${dateISO}`, null);
   if (cached) state.dailyGoals[dateISO] = cached;
   try {
     const snap = await getDoc(dailyGoalDoc(dateISO));
+    if (!isUserSessionActive(uid, session)) return null;
     if (snap.exists()) {
       state.dailyGoals[dateISO] = snap.data();
       writeLocal(`dailyGoal:${dateISO}`, state.dailyGoals[dateISO]);
       return state.dailyGoals[dateISO];
     }
   } catch (error) {
+    if (!isUserSessionActive(uid, session)) return null;
     console.warn("Daily goal load failed; using current settings.", error);
   }
   state.dailyGoals[dateISO] = cached || goalSnapshotFromSettings(state.settings);
@@ -495,8 +507,11 @@ async function loadDailyGoalForDate(dateISO = state.currentDate) {
 
 async function ensureDailyGoalSnapshot(dateISO = state.currentDate) {
   if (!state.user || !dateISO) return null;
+  const uid = state.user.uid;
+  const session = state.userSession;
   try {
     const snap = await getDoc(dailyGoalDoc(dateISO));
+    if (!isUserSessionActive(uid, session) || state.deletingAccountData) return null;
     if (snap.exists()) {
       const existing = snap.data();
       state.dailyGoals[dateISO] = existing;
@@ -517,6 +532,40 @@ async function ensureDailyGoalSnapshot(dateISO = state.currentDate) {
 
 function storageKey(name, uid = state.user?.uid || "guest") {
   return `${APP_STORAGE_PREFIX}:${uid}:${name}`;
+}
+
+function isUserSessionActive(uid, session) {
+  return !!uid && state.user?.uid === uid && state.userSession === session;
+}
+
+function resetUserSession() {
+  state.userSession += 1;
+  state.unsubs.forEach(unsub => unsub());
+  state.unsubs = [];
+  state.unsubLogs?.();
+  state.unsubDailyGoal?.();
+  state.unsubLogs = null;
+  state.unsubDailyGoal = null;
+  clearTimeout(state.settingsSaveTimer);
+  clearTimeout(state.dayGoalSaveTimer);
+  for (const job of state.dailySummaryJobs.values()) clearTimeout(job.timeout);
+  state.dailySummaryJobs.clear();
+  for (const key of state.reportCacheJobs.keys()) cancelReportCacheJob(key);
+  cancelActiveReportCalculation();
+  Object.values(state.charts).forEach(chart => chart?.destroy?.());
+  state.charts = {};
+  closeModal();
+  document.querySelectorAll(".info-popover").forEach(node => node.remove());
+  state.tempFoods.clear();
+  state.activeLogFood = null;
+  resetFoodSearchState();
+  state.ingredientSearch = { kind: null, id: null, query: "", mode: "food", page: 1, results: [], feedback: "" };
+  state.reportData = null;
+  state.reportEntries = [];
+  state.dailyGoals = {};
+  state.latestSettingsWriteAt = 0;
+  state.latestDailyGoalWriteAt = {};
+  clearReportCacheUploadStatus();
 }
 
 function readLocal(name, fallback, uid = state.user?.uid) {
@@ -1000,6 +1049,7 @@ function compactReportCacheData(data = {}, meta = null) {
     activeDates,
     activeDayCount,
     metricDayCount,
+    metricExcludedDate: data.metricExcludedDate || todayISO(),
     metricNutrientVector: nutrientsToVector(metricTotal),
     averageKcalPerDay: round(metricDayCount ? metricTotal.kcal / metricDayCount : 0, 1),
     avgGoals,
@@ -1036,6 +1086,8 @@ function pendingReportCacheLocalKey(key) {
 
 function saveReportCacheInBackground(meta, data, options = {}) {
   if (!state.user || !meta?.key) return Promise.resolve(null);
+  const uid = state.user.uid;
+  const session = state.userSession;
   const cacheData = firestoreSafeCompactReportCache(meta, compactReportCacheData(data, meta));
   setReportCacheUploadStatus({
     key: meta.key,
@@ -1063,6 +1115,8 @@ function saveReportCacheInBackground(meta, data, options = {}) {
         status: "uploading"
       });
       const saved = await storeCompactReportCache(meta, cacheData);
+      removeLocal(pendingReportCacheLocalKey(meta.key), uid);
+      if (!isUserSessionActive(uid, session)) return saved;
       setReportCacheUploadStatus({
         label: "Confirming Firebase save",
         detail: "Firebase accepted the write. Finalizing local retry state.",
@@ -1079,6 +1133,7 @@ function saveReportCacheInBackground(meta, data, options = {}) {
       if (options.toast) showToast("Report cache saved to Firebase successfully.", 6500);
       return saved;
     } catch (error) {
+      if (!isUserSessionActive(uid, session)) return null;
       console.warn("Report cache background save failed.", error);
       const detail = error?.message
         ? `Firebase save did not finish: ${error.message}. A local retry copy is stored and will retry next app open.`
@@ -1098,6 +1153,8 @@ function saveReportCacheInBackground(meta, data, options = {}) {
 
 async function flushPendingReportCacheSaves(options = {}) {
   if (!state.user) return;
+  const uid = state.user.uid;
+  const session = state.userSession;
   const prefix = storageKey("pendingReportCache:", state.user.uid);
   const keys = [];
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -1118,6 +1175,7 @@ async function flushPendingReportCacheSaves(options = {}) {
   }
   let savedCount = 0;
   for (const key of keys) {
+    if (!isUserSessionActive(uid, session)) return;
     try {
       const cacheData = JSON.parse(localStorage.getItem(key) || "null");
       if (!cacheData?.key || !cacheData?.start || !cacheData?.end) {
@@ -1137,8 +1195,10 @@ async function flushPendingReportCacheSaves(options = {}) {
       });
       await storeCompactReportCache({ key: cacheData.key, mode: cacheData.mode, start: cacheData.start, end: cacheData.end }, cacheData);
       localStorage.removeItem(key);
+      if (!isUserSessionActive(uid, session)) return;
       savedCount += 1;
     } catch (error) {
+      if (!isUserSessionActive(uid, session)) return;
       console.warn("Pending report cache retry failed.", error);
       const detail = error?.message
         ? `A pending cache save still could not be uploaded: ${error.message}. It will retry next app open.`
@@ -1275,13 +1335,17 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 async function updateDailyCalorieSummary(dateISO, entries = null, options = {}) {
-  if (!state.user || !dateISO) return;
+  if (!state.user || !dateISO || state.deletingAccountData) return;
+  const uid = state.user.uid;
+  const session = state.userSession;
   let summaryEntries = entries;
   if (!summaryEntries) {
     const snap = await getDocs(entryCollection(dateISO));
     summaryEntries = snap.docs.map(d => ({ id: d.id, ...d.data(), date: dateISO }));
   }
+  if (!isUserSessionActive(uid, session)) return;
   const ensuredGoal = await ensureDailyGoalSnapshot(dateISO);
+  if (!isUserSessionActive(uid, session) || state.deletingAccountData) return;
   const normalizedEntries = (summaryEntries || []).map(entry => ({ ...entry, date: entry.date || dateISO }));
   const total = addNutrients(normalizedEntries);
   const goalsSnapshot = goalSnapshotFromSettings(ensuredGoal || effectiveGoalsForDate(dateISO));
@@ -1623,11 +1687,15 @@ function renderModuleDisabled(label) {
 }
 
 function subscribeUserData() {
+  const uid = state.user.uid;
+  const session = state.userSession;
+  const isActive = () => isUserSessionActive(uid, session);
   state.unsubs.forEach(unsub => unsub());
   state.unsubs = [];
 
   const settingsRef = userDoc("private", "settings");
   getDoc(settingsRef).then(snap => {
+    if (!isActive()) return;
     if (!snap.exists()) setDoc(settingsRef, cleanForFirestore(DEFAULT_SETTINGS), { merge: true });
   }).catch(error => {
     console.warn("Settings preflight failed; using local settings.", error);
@@ -1637,6 +1705,7 @@ function subscribeUserData() {
   flushPendingReportCacheSaves().catch(console.warn);
 
   state.unsubs.push(onSnapshot(settingsRef, { includeMetadataChanges: true }, snap => {
+    if (!isActive()) return;
     noteSnapshotMetadata(snap.metadata);
     const incoming = mergeSettings(snap.data() || state.settings);
     const incomingUpdatedAt = number(incoming.updatedAt);
@@ -1652,6 +1721,7 @@ function subscribeUserData() {
   }));
 
   state.unsubs.push(onSnapshot(userCollection("customFoods"), { includeMetadataChanges: true }, snap => {
+    if (!isActive()) return;
     noteSnapshotMetadata(snap.metadata);
     state.customFoods = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => displayFoodName(a).localeCompare(displayFoodName(b)));
     writeLocal("customFoods", state.customFoods);
@@ -1662,6 +1732,7 @@ function subscribeUserData() {
   }));
 
   state.unsubs.push(onSnapshot(userCollection("recipes"), { includeMetadataChanges: true }, snap => {
+    if (!isActive()) return;
     noteSnapshotMetadata(snap.metadata);
     state.recipes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     writeLocal("recipes", state.recipes);
@@ -1672,6 +1743,7 @@ function subscribeUserData() {
   }));
 
   state.unsubs.push(onSnapshot(userCollection("mealsets"), { includeMetadataChanges: true }, snap => {
+    if (!isActive()) return;
     noteSnapshotMetadata(snap.metadata);
     state.mealsets = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     writeLocal("mealsets", state.mealsets);
@@ -1685,6 +1757,8 @@ function subscribeUserData() {
 }
 
 function subscribeLogsForCurrentDate() {
+  const uid = state.user.uid;
+  const session = state.userSession;
   if (state.unsubLogs) state.unsubLogs();
   if (state.unsubDailyGoal) state.unsubDailyGoal();
   const dateISO = state.currentDate;
@@ -1692,6 +1766,7 @@ function subscribeLogsForCurrentDate() {
   state.dailyGoals[dateISO] = readLocal(`dailyGoal:${dateISO}`, null) || state.dailyGoals[dateISO] || goalSnapshotFromSettings(state.settings);
   if (state.route === "today") renderToday();
   state.unsubDailyGoal = onSnapshot(dailyGoalDoc(dateISO), { includeMetadataChanges: true }, snap => {
+    if (!isUserSessionActive(uid, session)) return;
     if (snap.exists()) {
       const incoming = snap.data();
       const incomingUpdatedAt = number(incoming?.updatedAt);
@@ -1703,11 +1778,12 @@ function subscribeLogsForCurrentDate() {
     }
   }, error => console.warn("Daily goal snapshot failed; using local settings.", error));
   state.unsubLogs = onSnapshot(entryCollection(dateISO), { includeMetadataChanges: true }, snap => {
+    if (!isUserSessionActive(uid, session)) return;
     noteSnapshotMetadata(snap.metadata);
     if (state.currentDate !== dateISO) return;
     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => number(a.createdAt) - number(b.createdAt));
     writeLocal(`logs:${dateISO}`, state.logs);
-    if (!snap.metadata.hasPendingWrites) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: false }).catch(console.warn);
+    if (!snap.metadata.hasPendingWrites && !snap.metadata.fromCache) updateDailyCalorieSummary(dateISO, state.logs, { invalidateReports: false }).catch(console.warn);
     if (state.route === "today") renderToday();
   }, error => {
     console.warn("Log snapshot failed; local cache remains active.", error);
@@ -2028,6 +2104,7 @@ function searchMatchScore(parts, queryText) {
   const query = normalizeSearchText(queryText);
   const compactQuery = normalizeCompactSearchText(queryText);
   if (!query && !compactQuery) return 1;
+  if (!compactQuery) return 0;
   const haystack = normalizeSearchText((parts || []).filter(Boolean).join(" "));
   const compactHaystack = normalizeCompactSearchText(haystack);
   const tokens = searchTokens(query);
@@ -2059,6 +2136,7 @@ function searchMatchTier(parts, queryText) {
   const query = normalizeSearchText(queryText);
   const compactQuery = normalizeCompactSearchText(queryText);
   if (!query && !compactQuery) return 1;
+  if (!compactQuery) return 0;
   const normalizedParts = (parts || []).filter(Boolean).map(normalizeSearchText);
   const compactParts = normalizedParts.map(normalizeCompactSearchText);
   const haystack = normalizedParts.join(" ");
@@ -2084,7 +2162,8 @@ function foodSearchMatch(food, queryText) {
 
 
 function looksLikeBarcode(value) {
-  return /^\d{8,14}$/.test(String(value || "").replace(/\D/g, ""));
+  const text = String(value || "").trim();
+  return /^[\d\s-]+$/.test(text) && /^\d{8,14}$/.test(text.replace(/\D/g, ""));
 }
 
 function foodIdentity(food) {
@@ -2492,7 +2571,7 @@ function openCustomFoodCreateModal() {
 }
 
 function renderRecipeQuickCard(recipe) {
-  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1))));
   return `
     <div class="result-card used">
       <div>
@@ -2518,7 +2597,7 @@ function renderMealsetQuickCard(mealset) {
 }
 
 function renderRecipeSearchCard(recipe) {
-  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  const n = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1))));
   return `
     <div class="result-card ${recipe.favorite ? "favorite" : ""}">
       <div>
@@ -2761,15 +2840,10 @@ async function fetchOpenFoodFactsFromHost(queryText, host) {
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
-  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
+  url.searchParams.set("page_size", "40");
+  url.searchParams.set("sort_by", "unique_scans_n");
   url.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
-  const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-  if (!res.ok) {
-    if (res.status === 429) throw new Error("Open Food Facts is temporarily rate-limiting searches (HTTP 429). Please wait a moment and try again");
-    if (res.status >= 500) throw new Error(`Open Food Facts is temporarily unavailable (HTTP ${res.status})`);
-    throw new Error(`Open Food Facts rejected the search request (HTTP ${res.status})`);
-  }
-  const data = await res.json();
+  const data = await fetchOpenFoodFactsJson(url);
   return (data.products || [])
     .map(normalizeOpenFoodFactsProduct)
     .filter(Boolean)
@@ -2777,72 +2851,94 @@ async function fetchOpenFoodFactsFromHost(queryText, host) {
     .slice(0, API_SEARCH_RESULT_LIMIT);
 }
 
-function fuzzyOpenFoodFactsQuery(queryText) {
-  // Explicit language subfields are required by the live Search-a-licious API:
-  // bare fuzzy terms target "*", while product_name without a subfield fails.
-  const language = String(navigator.language || "en").split("-")[0].toLowerCase();
-  const languages = [...new Set(["main", "en", "de", language])].filter(value => /^[a-z]{2,4}$/.test(value));
-  const fields = [...languages.flatMap(lang => [`product_name.${lang}`, `generic_name.${lang}`]), "brands"];
-  const terms = searchTokens(queryText).map(token => {
-    const distance = token.length < 3 || /^\d+$/.test(token) ? 0 : token.length <= 5 ? 1 : 2;
-    return `(${fields.map(field => `${field}:${token}${distance ? `~${distance}` : ""}`).join(" OR ")})`;
+function closestSearchQueries(queryText, apiFoods = []) {
+  const tokens = searchTokens(queryText);
+  if (!tokens.length) return [];
+  const cachedFoods = Object.values(readSearchCache().searches || {}).flatMap(entry => entry.results || []);
+  const vocabulary = new Set([
+    ...FOOD_SEARCH_TERMS.flatMap(searchTokens),
+    ...[...state.customFoods, ...cachedFoods, ...apiFoods].flatMap(food => foodSearchParts(food).flatMap(searchTokens))
+  ]);
+  const alternatives = tokens.map(token => {
+    if (vocabulary.has(token) || token.length < 3 || /^\d+$/.test(token)) return [token];
+    const candidates = [...vocabulary]
+      .map(word => ({ word, score: fuzzyTokenScore(token, word) }))
+      .filter(candidate => candidate.score > 0)
+      .sort((a, b) => b.score - a.score || a.word.localeCompare(b.word));
+    return candidates.length ? candidates.slice(0, 2).map(candidate => candidate.word) : [token];
   });
-  if (!terms.length) return "";
-  const regions = selectedSearchRegionValues();
-  if (!regions.includes("world")) {
-    const countryNames = new Map(SEARCH_REGIONS.map(([value, label]) => [value, normalizeSearchText(label).replace(/ /g, "-")]));
-    terms.push(`(${regions.map(region => `countries_tags:"en:${countryNames.get(region)}"`).join(" OR ")})`);
-  }
-  return terms.join(" AND ");
+  const best = alternatives.map(words => words[0]);
+  const queries = [best.join(" ")];
+  alternatives.forEach((words, index) => {
+    if (words.length > 1) queries.push(best.map((word, other) => other === index ? words[1] : word).join(" "));
+  });
+  const original = tokens.join(" ");
+  return [...new Set(queries)].filter(query => query !== original).slice(0, 2);
 }
 
-async function fetchFuzzyOpenFoodFacts(queryText) {
-  const query = fuzzyOpenFoodFactsQuery(queryText);
-  if (!query) return [];
-  const url = new URL("https://search.openfoodfacts.org/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
-  url.searchParams.set("fields", "code,product_name,generic_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
-  const response = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
-  if (!response.ok) throw new Error(`Open Food Facts fuzzy search failed (HTTP ${response.status})`);
-  const data = await response.json();
-  if (data.errors?.length) throw new Error("Open Food Facts fuzzy search is temporarily unavailable");
-  const indexedFoods = (data.hits || []).map(normalizeOpenFoodFactsProduct).filter(Boolean).filter(foodHasUsableNutrients);
-  const codes = [...new Set((data.hits || []).map(hit => String(hit.code || "")).filter(code => /^\d+$/.test(code)))];
-  if (!codes.length) return [];
+async function fetchFuzzyOpenFoodFacts(queryText, apiFoods = []) {
+  const foods = [];
+  const hosts = selectedOpenFoodFactsHosts();
+  for (const query of closestSearchQueries(queryText, apiFoods)) {
+    const results = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(query, host)));
+    foods.push(...results.flatMap(result => result.status === "fulfilled" ? result.value : []));
+    if (foods.length >= SEARCH_PAGE_SIZE) break;
+    if (results.every(result => result.status === "rejected")) throw results[0].reason;
+  }
+  return foods;
+}
 
-  // Fetch the full product records so fuzzy results retain micronutrients and
-  // serving sizes that are not all present in the search index.
-  const productsUrl = new URL("https://world.openfoodfacts.org/api/v2/search");
-  productsUrl.searchParams.set("code", codes.join(","));
-  productsUrl.searchParams.set("page_size", String(API_SEARCH_RESULT_LIMIT));
-  productsUrl.searchParams.set("fields", "code,product_name,generic_name,abbreviated_product_name,brands,nutriments,serving_size,serving_quantity,quantity,product_quantity");
+async function fetchOpenFoodFactsJson(url, timeoutMs = 12000, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const productsResponse = await fetch(productsUrl.toString(), { headers: { "Accept": "application/json" } });
-    if (!productsResponse.ok) return indexedFoods;
-    const productsData = await productsResponse.json();
-    const foods = new Map(indexedFoods.map(food => [foodIdentity(food), food]));
-    for (const product of productsData.products || []) {
-      const food = normalizeOpenFoodFactsProduct(product);
-      if (food && foodHasUsableNutrients(food)) foods.set(foodIdentity(food), food);
+    const response = await fetch(String(url), { ...options, headers: { "Accept": "application/json", ...options.headers }, signal: controller.signal });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const error = new Error(body?.error || (response.status === 429
+        ? "Open Food Facts is temporarily rate-limiting requests (HTTP 429). Wait a moment and try again"
+        : `Open Food Facts request failed (HTTP ${response.status})`));
+      error.status = response.status;
+      throw error;
     }
-    return [...foods.values()];
-  } catch {
-    return indexedFoods;
+    return await response.json();
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Open Food Facts took too long to respond. Please try again");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function fetchOpenFoodFacts(queryText) {
+  if (state.user?.getIdToken) {
+    try {
+      const token = await state.user.getIdToken();
+      const data = await fetchOpenFoodFactsJson("/api/food-search", 25000, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ query: queryText, regions: selectedSearchRegionValues(), language: navigator.language || "en" })
+      });
+      return (data.products || []).map(normalizeOpenFoodFactsProduct).filter(Boolean).filter(foodHasUsableNutrients)
+        .map(food => ({ food, ...foodSearchMatch(food, queryText) }))
+        .filter(match => match.tier > 0)
+        .sort(compareFoodSearchMatches)
+        .slice(0, API_SEARCH_RESULT_LIMIT).map(match => match.food);
+    } catch (error) {
+      if ([401, 403, 429].includes(error.status)) throw error;
+      console.warn("Food-search proxy unavailable; trying the browser-compatible legacy API.", error);
+    }
+  }
   const hosts = selectedOpenFoodFactsHosts();
   const primaryResults = await Promise.allSettled(hosts.map(host => fetchOpenFoodFactsFromHost(queryText, host)));
   const foods = primaryResults.flatMap(result => result.status === "fulfilled" ? result.value : []);
   const primaryMatchCount = foods.filter(food => searchMatchTier(foodSearchParts(food), queryText) >= 2).length;
   const fallbackResults = primaryMatchCount < SEARCH_PAGE_SIZE
-    ? await Promise.allSettled([fetchFuzzyOpenFoodFacts(queryText)])
+    ? await Promise.allSettled([fetchFuzzyOpenFoodFacts(queryText, foods)])
     : [];
   foods.push(...fallbackResults.flatMap(result => result.status === "fulfilled" ? result.value : []));
   const allResults = [...primaryResults, ...fallbackResults];
-  if (!allResults.some(result => result.status === "fulfilled") && allResults.some(result => result.status === "rejected")) {
+  if (!foods.length && !primaryResults.some(result => result.status === "fulfilled") && allResults.some(result => result.status === "rejected")) {
     throw allResults.find(result => result.status === "rejected").reason;
   }
   const seen = new Map();
@@ -2879,6 +2975,10 @@ function barcodeLookupFailureMessage(error, barcode = "") {
 }
 
 async function runFoodSearch(queryText, options = {}) {
+  const requestId = (state.searchRequestId || 0) + 1;
+  state.searchRequestId = requestId;
+  const session = state.userSession;
+  const isActive = () => state.searchRequestId === requestId && state.userSession === session;
   const query = String(queryText || "").trim();
   let barcodeFailure = "";
   if (!query) {
@@ -2886,6 +2986,7 @@ async function runFoodSearch(queryText, options = {}) {
     state.searchResultsQuery = "";
     state.searchPage = 1;
     state.searchResults = [];
+    state.searchLoading = false;
     state.searchFeedback = "Enter a food name to search.";
     if (options.updateState !== false) renderSearchV2();
     return state.searchResults;
@@ -2898,14 +2999,18 @@ async function runFoodSearch(queryText, options = {}) {
     state.searchFeedback = "Looking up barcode.";
     if (options.updateState !== false) renderSearchV2();
     try {
-      await lookupBarcodeCached(query, { updateState: false });
+      await lookupBarcodeCached(query, { updateState: false, isActive });
+      if (!isActive()) return [];
       return state.searchResults;
     } catch (error) {
+      if (!isActive()) return [];
       barcodeFailure = barcodeLookupFailureMessage(error, query);
       state.searchFeedback = `${barcodeFailure} Trying a food-name search as a fallback.`;
     } finally {
-      state.searchLoading = false;
-      if (options.updateState !== false) renderSearchV2();
+      if (isActive()) {
+        state.searchLoading = false;
+        if (options.updateState !== false) renderSearchV2();
+      }
     }
   }
   state.searchQuery = query;
@@ -2930,6 +3035,7 @@ async function runFoodSearch(queryText, options = {}) {
 
   try {
     const apiResults = await fetchOpenFoodFacts(query);
+    if (!isActive()) return [];
     setCachedSearch(query, apiResults);
     state.searchResults = mergeFoodResults(localResults, apiResults, query);
     state.searchFeedback = state.searchResults.length
@@ -2939,19 +3045,24 @@ async function runFoodSearch(queryText, options = {}) {
         : `No matching food was found for "${query}" in your personal library or the selected Open Food Facts regions.`;
     return state.searchResults;
   } catch (error) {
+    if (!isActive()) return [];
     const reason = foodSearchFailureMessage(error, query);
     state.searchFeedback = state.searchResults.length
       ? `${reason} Showing ${state.searchResults.length} saved/offline result${state.searchResults.length === 1 ? "" : "s"}.`
       : reason;
     return state.searchResults;
   } finally {
-    state.searchLoading = false;
-    if (options.updateState !== false) renderSearchV2();
+    if (isActive()) {
+      state.searchLoading = false;
+      if (options.updateState !== false) renderSearchV2();
+    }
   }
 }
 
 async function runActiveSearch(queryText) {
   if (state.searchTab === "foods") return runFoodSearch(queryText);
+  state.searchRequestId = (state.searchRequestId || 0) + 1;
+  state.searchLoading = false;
   const query = String(queryText || "").trim();
   state.searchQuery = query;
   state.searchPage = 1;
@@ -2962,10 +3073,13 @@ async function runActiveSearch(queryText) {
 }
 
 async function lookupBarcodeCached(barcode, options = {}) {
+  const session = state.userSession;
+  const isActive = options.isActive || (() => state.userSession === session);
   const cleanBarcode = String(barcode || "").replace(/\D/g, "");
   if (!cleanBarcode) throw new Error("Enter a barcode first.");
   const cached = getCachedBarcode(cleanBarcode);
   if (cached) {
+    if (!isActive()) return cached;
     state.searchTab = "foods";
     state.searchQuery = cleanBarcode;
     state.searchResultsQuery = cleanBarcode;
@@ -2974,7 +3088,7 @@ async function lookupBarcodeCached(barcode, options = {}) {
     if (options.updateState !== false) renderSearchV2();
     return cached;
   }
-  if (!navigator.onLine) throw new Error("No offline barcode result is available.");
+  if (!navigator.onLine || state.settings.databasePreference === "offline-only") throw new Error("No offline barcode result is available.");
   let food = null;
   let lastError = null;
   let productFound = false;
@@ -3003,6 +3117,7 @@ async function lookupBarcodeCached(barcode, options = {}) {
   if (!food && lastError && !lookupResponded) throw lastError;
   if (!food && productFound) throw new Error("Product found, but its name or nutrition information is incomplete.");
   if (!food) throw new Error("No product found for this barcode.");
+  if (!isActive()) return food;
   setCachedBarcode(cleanBarcode, food);
   state.searchTab = "foods";
   state.searchQuery = cleanBarcode;
@@ -3167,8 +3282,6 @@ function entrySourceFood(entry = {}) {
     if (barcode && food.barcode === barcode) return true;
     return name && normalizeSearchText(displayFoodName(food)) === name && (!brand || normalizeSearchText(food.brand) === brand);
   });
-  if (existing) return existing;
-
   const snapshot = entry.itemSnapshot || {};
   const snapshotNutrients = foodNutrientsPer100g(snapshot);
   if (snapshot?.nutrientsPer100g || snapshot?.nutrientVector || snapshot?.nutrients) {
@@ -3201,7 +3314,7 @@ function entrySourceFood(entry = {}) {
       servingOptions: serving ? [serving] : []
     };
   }
-  return null;
+  return existing || null;
 }
 
 function entryServingOptions(entry = {}) {
@@ -3314,7 +3427,7 @@ function openLogFoodModal(food) {
           <label>Meal
             <select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === defaultMeal ? "selected" : ""}>${label}</option>`).join("")}</select>
           </label>
-          <label>Date<input name="date" type="date" value="${defaultDate}" /></label>
+          <label>Date<input name="date" type="date" value="${defaultDate}" required /></label>
         </div>
         <div id="logFoodAmountPreview" class="amount-preview">
           ${macroAmountPreviewHTML(scaleNutrients(foodNutrientsPer100g(food), defaultGrams / 100))}
@@ -3375,7 +3488,7 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
   const items = cloneSnapshot(isRecipe ? target.ingredients || [] : target.items || []);
   const totalNutrients = normalizeNutrients(target.totalNutrients);
   const perPortion = isRecipe
-    ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(totalNutrients, 1 / Math.max(1, number(target.portions, 1))))
+    ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(totalNutrients, 1 / Math.max(0.1, number(target.portions, 1))))
     : totalNutrients;
   return cloneSnapshot({
     itemType: kind,
@@ -3398,6 +3511,10 @@ function loggedTargetSnapshot(kind, target, amount, nutrientsSnapshot, createdAt
 }
 
 async function logFood(food, amount, unit, grams, meal, dateISO) {
+  const uid = state.user?.uid;
+  const session = state.userSession;
+  dateISO = normalizeDateInput(dateISO);
+  if (!dateISO) throw new Error("Choose a valid date.");
   const createdAt = Date.now();
   const nutrientsSnapshot = scaleNutrients(foodNutrientsPer100g(food), grams / 100);
   const entry = compactLoggedEntry({
@@ -3420,6 +3537,7 @@ async function logFood(food, amount, unit, grams, meal, dateISO) {
     updatedAt: createdAt
   }, null, dateISO);
   await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
+  if (!isUserSessionActive(uid, session)) return;
   showToast("Food logged.");
   ensureFoodInPersonalLibrary(food, {
     incrementUsage: true,
@@ -3520,7 +3638,7 @@ function itemAmountText(item) {
 }
 
 function renderRecipeCard(recipe) {
-  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1))));
   const ingredientCount = (recipe.ingredients || []).length;
   return `
     <div class="result-card recipe-card target-library-row ${recipe.favorite ? "favorite" : ""}">
@@ -3641,13 +3759,13 @@ function recipeSnapshotForReference(recipe) {
     portions: number(recipe.portions, 1),
     ingredients: recipe.ingredients || [],
     totalNutrients: normalizeNutrients(recipe.totalNutrients),
-    nutrientsPerPortion: normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)))),
+    nutrientsPerPortion: normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1)))),
     updatedAt: recipe.updatedAt || null
   });
 }
 
 function recipePortionAsFood(recipe) {
-  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, recipe.portions || 1)));
+  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1))));
   return {
     id: recipe.id,
     source: "recipe",
@@ -3662,7 +3780,7 @@ function recipePortionAsFood(recipe) {
 }
 
 function recipeReferenceItem(recipe, amount = 1, existing = {}) {
-  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(1, number(recipe.portions, 1))));
+  const perPortion = normalizeNutrients(recipe.nutrientsPerPortion || scaleNutrients(recipe.totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1))));
   return {
     ...existing,
     itemType: "recipe",
@@ -3710,7 +3828,7 @@ function targetItemsForKind(kind, id) {
 }
 
 function targetPortionDivisor(kind, target) {
-  return kind === "recipe" ? Math.max(1, number(target?.portions, 1)) : 1;
+  return kind === "recipe" ? Math.max(0.1, number(target?.portions, 1)) : 1;
 }
 
 function targetItemDisplayNutrients(kind, target, item) {
@@ -4004,7 +4122,7 @@ async function addIngredientToTarget(food, amount, unit, grams, kind, id) {
     if (!recipe) throw new Error("Recipe not found anymore.");
     const ingredients = [...(recipe.ingredients || []), ingredient];
     const totalNutrients = addNutrients(ingredients);
-    const nutrientsPerPortion = scaleNutrients(totalNutrients, 1 / Math.max(1, number(recipe.portions, 1)));
+    const nutrientsPerPortion = scaleNutrients(totalNutrients, 1 / Math.max(0.1, number(recipe.portions, 1)));
     const updatedRecipe = { ...recipe, ingredients, totalNutrients, nutrientsPerPortion, updatedAt: Date.now() };
     updateLocalTarget("recipe", id, updatedRecipe);
     showToast("Ingredient added.");
@@ -4033,7 +4151,7 @@ function recalculateTarget(kind, target, items) {
     return {
       ingredients: items,
       totalNutrients,
-      nutrientsPerPortion: scaleNutrients(totalNutrients, 1 / Math.max(1, number(target.portions, 1))),
+      nutrientsPerPortion: scaleNutrients(totalNutrients, 1 / Math.max(0.1, number(target.portions, 1))),
       updatedAt: Date.now()
     };
   }
@@ -4065,7 +4183,7 @@ function openTargetDetail(kind, id) {
   const target = targetForKind(kind, id);
   if (!target) return;
   const items = isRecipe ? target.ingredients || [] : target.items || [];
-  const total = isRecipe ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(target.totalNutrients, 1 / Math.max(1, target.portions || 1))) : normalizeNutrients(target.totalNutrients);
+  const total = isRecipe ? normalizeNutrients(target.nutrientsPerPortion || scaleNutrients(target.totalNutrients, 1 / Math.max(0.1, number(target.portions, 1)))) : normalizeNutrients(target.totalNutrients);
   openModal(`
     <div class="modal target-detail-modal">
       <div class="modal-head">
@@ -4130,7 +4248,7 @@ function openTargetEditor(kind, id) {
     };
     if (isRecipe) {
       patch.portions = number(data.get("portions"), target.portions || 1);
-      patch.nutrientsPerPortion = scaleNutrients(target.totalNutrients, 1 / Math.max(1, patch.portions));
+      patch.nutrientsPerPortion = scaleNutrients(target.totalNutrients, 1 / Math.max(0.1, patch.portions));
     }
     updateLocalTarget(kind, id, patch);
     await updateDoc(userDoc(isRecipe ? "recipes" : "mealsets", id), cleanForFirestore(patch));
@@ -4362,11 +4480,14 @@ async function removeTargetItem(kind, id, index) {
 }
 
 async function incrementFoodUsageForTargetItems(items = []) {
+  const uid = state.user?.uid;
+  const session = state.userSession;
   const now = Date.now();
   const foodIds = [...new Set((items || [])
     .filter(item => item?.itemType === "food" && item.itemId)
     .map(item => item.itemId))];
   for (const id of foodIds) {
+    if (!isUserSessionActive(uid, session)) return;
     const local = state.customFoods.find(food => food.id === id);
     if (!local) continue;
     await updateDoc(userDoc("customFoods", id), cleanForFirestore({
@@ -4387,7 +4508,7 @@ function openLogRecipeModal(recipe, returnTarget = null) {
         <div class="form-grid two">
           <label>Portions<input name="amount" type="number" step="0.01" min="0" value="1" required /></label>
           <label>Meal<select name="meal">${MEALS.map(([id, label]) => `<option value="${id}" ${id === (state.defaultLogMeal || "breakfast") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" /></label>
+          <label>Date<input name="date" type="date" value="${state.defaultLogDate || state.currentDate}" required /></label>
         </div>
         <div id="logRecipeAmountPreview">
           ${targetDetailSummaryHTML(perPortion, "selected amount")}
@@ -4405,30 +4526,44 @@ function openLogRecipeModal(recipe, returnTarget = null) {
   form?.elements.amount?.addEventListener("input", updatePreview);
   form?.addEventListener("submit", async event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const amount = number(data.get("amount"), 1);
-    const createdAt = Date.now();
-    const nutrientsSnapshot = scaleNutrients(perPortion, amount);
-    const entry = compactLoggedEntry({
-      itemType: "recipe",
-      itemId: recipe.id,
-      source: "recipe",
-      nameSnapshot: recipe.name,
-      amount,
-      unit: "portion",
-      meal: data.get("meal"),
-      date: data.get("date"),
-      nutrientsSnapshot,
-      itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
-      createdAt,
-      updatedAt: createdAt
-    }, null, data.get("date"));
-    await addDoc(entryCollection(data.get("date")), cleanForFirestore(entry));
-    await incrementFoodUsageForTargetItems(recipe.ingredients || []);
-    await updateDailyCalorieSummary(data.get("date")).catch(console.warn);
-    closeModal();
-    if (returnTarget) renderRecipes();
-    showToast("Recipe logged.");
+    if (form.dataset.submitting === "true") return;
+    form.dataset.submitting = "true";
+    try {
+      const uid = state.user?.uid;
+      const session = state.userSession;
+      const data = new FormData(event.currentTarget);
+      const amount = number(data.get("amount"), 1);
+      const dateISO = normalizeDateInput(data.get("date"));
+      if (!dateISO) throw new Error("Choose a valid date.");
+      const createdAt = Date.now();
+      const nutrientsSnapshot = scaleNutrients(perPortion, amount);
+      const entry = compactLoggedEntry({
+        itemType: "recipe",
+        itemId: recipe.id,
+        source: "recipe",
+        nameSnapshot: recipe.name,
+        amount,
+        unit: "portion",
+        meal: data.get("meal"),
+        date: dateISO,
+        nutrientsSnapshot,
+        itemSnapshot: loggedTargetSnapshot("recipe", recipe, amount, nutrientsSnapshot, createdAt),
+        createdAt,
+        updatedAt: createdAt
+      }, null, dateISO);
+      await addDoc(entryCollection(dateISO), cleanForFirestore(entry));
+      if (!isUserSessionActive(uid, session)) return;
+      await incrementFoodUsageForTargetItems(recipe.ingredients || []);
+      if (!isUserSessionActive(uid, session)) return;
+      await updateDailyCalorieSummary(dateISO).catch(console.warn);
+      closeModal();
+      if (returnTarget) renderRecipes();
+      showToast("Recipe logged.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      form.dataset.submitting = "";
+    }
   });
 }
 
@@ -4443,7 +4578,7 @@ function loggedMealsetItemEntry(item, mealsetAmount, meal, dateISO, createdAt) {
       || {
         id: item.itemId || null,
         name: item.nameSnapshot || "Recipe",
-        portions: Math.max(1, number(item.recipeSnapshot?.portions, 1)),
+        portions: Math.max(0.1, number(item.recipeSnapshot?.portions, 1)),
         ingredients: item.recipeSnapshot?.ingredients || [],
         totalNutrients: item.recipeSnapshot?.totalNutrients || item.nutrientsSnapshot,
         nutrientsPerPortion: item.recipeSnapshot?.nutrientsPerPortion || item.nutrientsSnapshot,
@@ -4738,6 +4873,7 @@ async function readReportCache(meta) {
     if (data?.dirty || data?.version !== REPORT_CACHE_VERSION) return null;
     if (data.mode !== meta.mode || data.start !== meta.start || data.end !== meta.end) return null;
     const canonicalDates = dateRange(meta.start, meta.end);
+    if (data.metricExcludedDate !== todayISO() && canonicalDates.includes(data.metricExcludedDate)) return null;
     const cachedDates = Array.isArray(data.dates) ? data.dates : [];
     if (cachedDates.length && cachedDates.join("|") !== canonicalDates.join("|")) return null;
     return normalizeReportData(data, meta);
@@ -4858,6 +4994,8 @@ function hasReportFoodData(day = {}) {
 }
 
 async function reportGoalForDate(dateISO, fallbackGoal = null, options = {}) {
+  const uid = state.user?.uid;
+  const session = state.userSession;
   if (!dateISO) return fallbackGoal || goalSnapshotFromSettings(state.settings);
   const localGoal = state.dailyGoals?.[dateISO] || readLocal(`dailyGoal:${dateISO}`, null);
   if (!options.forceFirestore && localGoal) {
@@ -4867,6 +5005,7 @@ async function reportGoalForDate(dateISO, fallbackGoal = null, options = {}) {
   if (state.user && (options.forceFirestore || !localGoal)) {
     try {
       const snap = await getDoc(dailyGoalDoc(dateISO));
+      if (!isUserSessionActive(uid, session)) throw reportAbortError();
       if (snap.exists()) {
         const storedGoal = snap.data();
         state.dailyGoals[dateISO] = storedGoal;
@@ -4874,6 +5013,7 @@ async function reportGoalForDate(dateISO, fallbackGoal = null, options = {}) {
         return storedGoal;
       }
     } catch (error) {
+      if (error?.name === "AbortError") throw error;
       console.warn(`Daily goal read failed for ${dateISO}; using summary/settings fallback.`, error);
     }
   }
@@ -5000,6 +5140,8 @@ async function calculateAndStoreReportCache(meta, options = {}) {
 
 function scheduleReportRecalculationForDate(dateISO) {
   if (!state.user || !dateISO) return;
+  const uid = state.user.uid;
+  const session = state.userSession;
   const invalidatedAt = Date.now();
   for (const meta of affectedReportPeriods(dateISO)) {
     setDoc(reportCacheDoc(meta.key), {
@@ -5011,7 +5153,7 @@ function scheduleReportRecalculationForDate(dateISO) {
       dirty: true,
       invalidatedAt
     }, { merge: true })
-      .then(() => queueReportCacheRebuild(meta, invalidatedAt))
+      .then(() => { if (isUserSessionActive(uid, session)) queueReportCacheRebuild(meta, invalidatedAt); })
       .catch(console.warn);
   }
 }
@@ -5162,9 +5304,8 @@ function renderReportPagination(table, pageData) {
 }
 
 function reportMetricDates(activeDates = [], allDates = []) {
-  const baseDates = activeDates.length ? activeDates : allDates;
   const today = todayISO();
-  return baseDates.filter(dateISO => dateISO !== today);
+  return activeDates.filter(dateISO => dateISO !== today);
 }
 
 function renderReportOutput(start, end, entries, reportData = null) {
@@ -5295,7 +5436,7 @@ function flattenReportItem(item, factor = 1) {
     const snapshot = recipeSnapshotFromItem(item);
     const ingredients = snapshot?.ingredients || [];
     if (ingredients.length) {
-      const portionFactor = factor * number(item.amount, 1) / Math.max(1, number(snapshot.portions, 1));
+      const portionFactor = factor * number(item.amount, 1) / Math.max(0.1, number(snapshot.portions, 1));
       return ingredients.flatMap(ingredient => flattenReportItem(ingredient, portionFactor));
     }
   }
@@ -5332,7 +5473,7 @@ function flattenReportEntry(entry) {
     const snapshot = entry.itemSnapshot || recipeSnapshotFromItem(entry);
     const ingredients = snapshot?.ingredients || [];
     if (ingredients.length) {
-      const factor = number(entry.amount, 1) / Math.max(1, number(snapshot.portions, 1));
+      const factor = number(entry.amount, 1) / Math.max(0.1, number(snapshot.portions, 1));
       return ingredients.flatMap(item => flattenReportItem(item, factor));
     }
   }
@@ -5548,7 +5689,8 @@ async function calorieRowsForExport(start, end, reportData = null) {
 
   const rows = await mapWithConcurrency(dates, 8, async dateISO => {
     const summary = await readDailySummaryForReport(dateISO);
-    return { date: dateISO, totalKcal: round(summary?.nutrients?.kcal || 0, 0) };
+    const nutrients = summary?.nutrients || addNutrients(await fetchEntriesForDate(dateISO));
+    return { date: dateISO, totalKcal: round(nutrients.kcal, 0) };
   });
   return rows;
 }
@@ -6005,6 +6147,10 @@ function normalizeMacroGoalsToCalories(settings) {
 }
 
 async function persistSettingsAndDayGoal(settings, options = {}) {
+  const uid = state.user?.uid;
+  const session = state.userSession;
+  const dateISO = state.currentDate;
+  const logs = state.logs;
   const now = Date.now();
   const next = mergeSettings({ ...settings, updatedAt: now });
   state.latestSettingsWriteAt = now;
@@ -6012,21 +6158,21 @@ async function persistSettingsAndDayGoal(settings, options = {}) {
   setTheme();
 
   const dayGoal = goalSnapshotFromSettings(next);
-  dayGoal.savedForDate = state.currentDate;
+  dayGoal.savedForDate = dateISO;
   dayGoal.updatedAt = now;
-  state.latestDailyGoalWriteAt[state.currentDate] = now;
-  state.dailyGoals[state.currentDate] = dayGoal;
+  state.latestDailyGoalWriteAt[dateISO] = now;
+  state.dailyGoals[dateISO] = dayGoal;
 
   writeLocal("settings", next);
-  writeLocal(`dailyGoal:${state.currentDate}`, dayGoal);
+  writeLocal(`dailyGoal:${dateISO}`, dayGoal);
 
   await Promise.all([
     setDoc(userDoc("private", "settings"), cleanForFirestore(next), { merge: true }),
-    setDoc(dailyGoalDoc(state.currentDate), cleanForFirestore(dayGoal), { merge: true })
+    setDoc(dailyGoalDoc(dateISO), cleanForFirestore(dayGoal), { merge: true })
   ]);
 
-  if (options.updateDailySummary !== false) {
-    queueDailySummaryUpdate(state.currentDate, state.logs, 50, { invalidateReports: true });
+  if (isUserSessionActive(uid, session) && options.updateDailySummary !== false) {
+    queueDailySummaryUpdate(dateISO, logs, 50, { invalidateReports: true });
   }
   return { settings: next, dayGoal };
 }
@@ -6045,11 +6191,15 @@ async function saveNormalizedSettingsFromForm(form) {
 
 function queueSettingsAutosave(event) {
   const form = event.currentTarget;
+  const uid = state.user?.uid;
+  const session = state.userSession;
   clearTimeout(state.settingsSaveTimer);
   state.settingsSaveTimer = setTimeout(async () => {
+    if (!isUserSessionActive(uid, session)) return;
     try {
       const next = collectSettingsFromForm(form);
       await persistSettingsAndDayGoal(next, { updateDailySummary: false });
+      if (!isUserSessionActive(uid, session)) return;
       const message = document.getElementById("settingsSaveMessage");
       if (message) message.textContent = "Saved automatically.";
     } catch (error) {
@@ -6372,11 +6522,18 @@ async function importBackupFile(event) {
 
 
 async function clearCurrentLogs() {
-  if (!confirm(`Delete all logs for ${state.currentDate}?`)) return;
-  const snap = await getDocs(entryCollection(state.currentDate));
-  for (const docSnap of snap.docs) await deleteDoc(entryDoc(docSnap.id, state.currentDate));
-  writeLocal(`logs:${state.currentDate}`, []);
-  await updateDailyCalorieSummary(state.currentDate, []);
+  const uid = state.user?.uid;
+  const session = state.userSession;
+  const dateISO = state.currentDate;
+  if (!confirm(`Delete all logs for ${dateISO}?`)) return;
+  const snap = await getDocs(entryCollection(dateISO));
+  for (const docSnap of snap.docs) {
+    if (!isUserSessionActive(uid, session)) throw new Error("Account changed; deletion stopped.");
+    await deleteDoc(entryDoc(docSnap.id, dateISO));
+  }
+  if (!isUserSessionActive(uid, session)) return;
+  writeLocal(`logs:${dateISO}`, []);
+  await updateDailyCalorieSummary(dateISO, []);
   showToast("Current day logs cleared.");
 }
 
@@ -6455,11 +6612,15 @@ function updateDeleteProgress({ current = 0, total = 1, label = "Deleting data..
 }
 
 async function deleteCollectionDocs(collectionName, progress = () => {}, counter = { current: 0, total: 1 }) {
+  const uid = state.user?.uid;
+  const session = state.userSession;
   progress({ current: counter.current, total: counter.total, label: `Scanning ${collectionName}...`, detail: "Finding saved documents." });
   await nextPaint();
   const snap = await getDocs(userCollection(collectionName));
+  if (!isUserSessionActive(uid, session)) throw new Error("Account changed; deletion stopped.");
   const deletedIds = [];
   for (const docSnap of snap.docs) {
+    if (!isUserSessionActive(uid, session)) throw new Error("Account changed; deletion stopped.");
     await deleteDoc(userDoc(collectionName, docSnap.id));
     deletedIds.push(docSnap.id);
     counter.current += 1;
@@ -6545,79 +6706,102 @@ async function estimateDeleteWork(datesToDelete) {
 
 async function deleteAllAccountData(progress = () => {}) {
   if (!state.user) throw new Error("You need to be signed in to delete account data.");
+  const uid = state.user.uid;
+  const session = state.userSession;
+  const assertSession = () => {
+    if (!isUserSessionActive(uid, session)) throw new Error("Account changed. Deletion stopped; sign in to the original account to continue.");
+  };
+  state.deletingAccountData = true;
+  clearTimeout(state.settingsSaveTimer);
+  for (const job of state.dailySummaryJobs.values()) clearTimeout(job.timeout);
+  state.dailySummaryJobs.clear();
+  for (const key of state.reportCacheJobs.keys()) cancelReportCacheJob(key);
+  cancelActiveReportCalculation();
+  try {
 
-  const datesToDelete = await discoverLoggedDatesForDelete(progress);
-  progress({ current: 0, total: 1, label: "Counting data...", detail: `${datesToDelete.length} diary day${datesToDelete.length === 1 ? "" : "s"} found.` });
-  await nextPaint();
-
-  const work = await estimateDeleteWork(datesToDelete);
-  const counter = { current: 0, total: work.total };
-
-  for (const dateISO of datesToDelete) {
-    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Removing diary entries and daily summaries." });
+    const datesToDelete = await discoverLoggedDatesForDelete(progress);
+    progress({ current: 0, total: 1, label: "Counting data...", detail: `${datesToDelete.length} diary day${datesToDelete.length === 1 ? "" : "s"} found.` });
     await nextPaint();
 
-    try {
-      const entriesSnap = await getDocs(entryCollection(dateISO));
-      let deletedEntries = 0;
-      for (const docSnap of entriesSnap.docs) {
-        await deleteDoc(entryDoc(docSnap.id, dateISO));
-        deletedEntries += 1;
-        counter.current += 1;
-        progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: `${deletedEntries} entr${deletedEntries === 1 ? "y" : "ies"} deleted for this day.` });
-        if (counter.current % 10 === 0) await nextPaint();
+    const work = await estimateDeleteWork(datesToDelete);
+    assertSession();
+    const counter = { current: 0, total: work.total };
+
+    for (const dateISO of datesToDelete) {
+      assertSession();
+      progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Removing diary entries and daily summaries." });
+      await nextPaint();
+
+      try {
+        const entriesSnap = await getDocs(entryCollection(dateISO));
+        assertSession();
+        let deletedEntries = 0;
+        for (const docSnap of entriesSnap.docs) {
+          assertSession();
+          await deleteDoc(entryDoc(docSnap.id, dateISO));
+          deletedEntries += 1;
+          counter.current += 1;
+          progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: `${deletedEntries} entr${deletedEntries === 1 ? "y" : "ies"} deleted for this day.` });
+          if (counter.current % 10 === 0) await nextPaint();
+        }
+      } catch (error) {
+        throw new Error(`Could not delete entries for ${dateISO}: ${error.message}`);
       }
-    } catch (error) {
-      console.warn(`Could not delete entries for ${dateISO}.`, error);
+
+      try {
+        assertSession();
+        await deleteDoc(dailyCaloriesDoc(dateISO));
+      } catch (error) {
+        throw new Error(`Could not delete calorie summary for ${dateISO}: ${error.message}`);
+      }
+      counter.current += 1;
+      progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily calorie summary cleared." });
+
+      try {
+        assertSession();
+        await deleteDoc(dailyGoalDoc(dateISO));
+      } catch (error) {
+        throw new Error(`Could not delete daily goal for ${dateISO}: ${error.message}`);
+      }
+      counter.current += 1;
+      progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily goal snapshot cleared." });
     }
 
-    try {
-      await deleteDoc(dailyCaloriesDoc(dateISO));
-    } catch (error) {
-      console.warn(`Could not delete calorie summary for ${dateISO}.`, error);
+    for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals", "reportCaches"]) {
+      assertSession();
+      await deleteCollectionDocs(collectionName, progress, counter);
     }
+
+    progress({ current: counter.current, total: counter.total, label: "Resetting settings...", detail: "Restoring default settings." });
+    await setDoc(userDoc("private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: false });
+    assertSession();
     counter.current += 1;
-    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily calorie summary cleared." });
+    progress({ current: counter.current, total: counter.total, label: "Clearing local cache...", detail: "Removing offline data from this browser." });
 
-    try {
-      await deleteDoc(dailyGoalDoc(dateISO));
-    } catch (error) {
-      console.warn(`Could not delete daily goal for ${dateISO}.`, error);
-    }
-    counter.current += 1;
-    progress({ current: counter.current, total: counter.total, label: `Deleting diary ${dateISO}...`, detail: "Daily goal snapshot cleared." });
+    removeAllLocalUserData();
+    writeLocal("settings", DEFAULT_SETTINGS);
+    writeLocal("customFoods", []);
+    writeLocal("recipes", []);
+    writeLocal("mealsets", []);
+    writeLocal(`logs:${state.currentDate}`, []);
+
+    state.settings = structuredClone(DEFAULT_SETTINGS);
+    state.logs = [];
+    state.customFoods = [];
+    state.recipes = [];
+    state.mealsets = [];
+    state.dailyGoals = {};
+    state.searchResults = [];
+    state.reportEntries = [];
+    state.reportData = null;
+    state.reportPages = { topSources: 1, frequency: 1 };
+    state.reportRange = periodRange();
+    setTheme();
+    if (state.route === "today") subscribeLogsForCurrentDate();
+    renderCurrentRoute();
+  } finally {
+    state.deletingAccountData = false;
   }
-
-  for (const collectionName of ["customFoods", "recipes", "mealsets", "dailyCalories", "dailyGoals", "reportCaches"]) {
-    await deleteCollectionDocs(collectionName, progress, counter).catch(error => console.warn(`Could not fully clear ${collectionName}.`, error));
-  }
-
-  progress({ current: counter.current, total: counter.total, label: "Resetting settings...", detail: "Restoring default settings." });
-  await setDoc(userDoc("private", "settings"), cleanForFirestore(DEFAULT_SETTINGS), { merge: false });
-  counter.current += 1;
-  progress({ current: counter.current, total: counter.total, label: "Clearing local cache...", detail: "Removing offline data from this browser." });
-
-  removeAllLocalUserData();
-  writeLocal("settings", DEFAULT_SETTINGS);
-  writeLocal("customFoods", []);
-  writeLocal("recipes", []);
-  writeLocal("mealsets", []);
-  writeLocal(`logs:${state.currentDate}`, []);
-
-  state.settings = structuredClone(DEFAULT_SETTINGS);
-  state.logs = [];
-  state.customFoods = [];
-  state.recipes = [];
-  state.mealsets = [];
-  state.dailyGoals = {};
-  state.searchResults = [];
-  state.reportEntries = [];
-  state.reportData = null;
-  state.reportPages = { topSources: 1, frequency: 1 };
-  state.reportRange = periodRange();
-  setTheme();
-  if (state.route === "today") subscribeLogsForCurrentDate();
-  renderCurrentRoute();
 }
 
 function showInfoPopover(button) {
@@ -6745,11 +6929,16 @@ function showBarcodeScanFailure(error) {
 }
 
 async function finishBarcodeLookup(rawValue) {
+  state.searchRequestId = (state.searchRequestId || 0) + 1;
+  const video = document.getElementById("barcodeVideo");
+  const session = state.userSession;
+  const isActive = () => video?.isConnected && document.getElementById("barcodeVideo") === video && state.userSession === session;
   const cleanBarcode = String(rawValue || "").replace(/\D/g, "");
   const context = state.activeBarcodeContext;
   setBarcodeStatus(`Barcode ${cleanBarcode || rawValue} detected. Looking up the product...`);
   try {
-    const food = await lookupBarcodeCached(cleanBarcode, { updateState: false });
+    const food = await lookupBarcodeCached(cleanBarcode, { updateState: false, isActive });
+    if (!isActive()) return false;
     closeModal();
     state.activeBarcodeContext = null;
     if (context?.kind && context?.id) {
@@ -6759,6 +6948,7 @@ async function finishBarcodeLookup(rawValue) {
     setRoute("search");
     return true;
   } catch (error) {
+    if (!isActive()) return false;
     const message = barcodeLookupFailureMessage(error, cleanBarcode);
     state.searchTab = "foods";
     state.searchQuery = cleanBarcode;
@@ -6770,45 +6960,69 @@ async function finishBarcodeLookup(rawValue) {
   }
 }
 
+function stopBarcodeScan() {
+  const cleanup = state.barcodeScanCleanup;
+  state.barcodeScanCleanup = null;
+  cleanup?.();
+}
+
 async function startBarcodeScan() {
+  stopBarcodeScan();
   const video = document.getElementById("barcodeVideo");
   if (!video) return;
-  if (!("BarcodeDetector" in window) && window.ZXing?.BrowserMultiFormatReader) {
-    const reader = new ZXing.BrowserMultiFormatReader();
-    const result = await reader.decodeOnceFromVideoDevice(undefined, video);
-    reader.reset();
-    await finishBarcodeLookup(result.getText());
-    return;
-  }
-  if (!("BarcodeDetector" in window)) throw new Error("Barcode scanning is not supported in this browser.");
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-  video.srcObject = stream;
-  await video.play();
-  setBarcodeStatus("Scanning. Hold the barcode steady inside the camera view.");
-  const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
-  let stopped = false;
-  const stop = () => {
-    stopped = true;
-    stream.getTracks().forEach(track => track.stop());
+  const session = state.userSession;
+  let active = true;
+  let stream;
+  let reader;
+  const isActive = () => active && video.isConnected && state.userSession === session;
+  const cleanup = () => {
+    active = false;
+    stream?.getTracks().forEach(track => track.stop());
+    reader?.reset();
+    if (state.barcodeScanCleanup === cleanup) state.barcodeScanCleanup = null;
   };
-  const scan = async () => {
-    if (stopped || !video.isConnected) return stop();
-    try {
-      const codes = await detector.detect(video);
-      if (codes.length) {
-        const rawValue = codes[0].rawValue;
-        stop();
-        await finishBarcodeLookup(rawValue);
-        return;
-      }
-    } catch (error) {
-      stop();
-      showBarcodeScanFailure(error);
+  state.barcodeScanCleanup = cleanup;
+  try {
+    if (!("BarcodeDetector" in window) && window.ZXing?.BrowserMultiFormatReader) {
+      reader = new window.ZXing.BrowserMultiFormatReader();
+      const result = await reader.decodeOnceFromVideoDevice(undefined, video);
+      if (!isActive()) return cleanup();
+      cleanup();
+      await finishBarcodeLookup(result.getText());
       return;
     }
-    requestAnimationFrame(scan);
-  };
-  scan();
+    if (!("BarcodeDetector" in window)) throw new Error("Barcode scanning is not supported in this browser.");
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    if (!isActive()) return cleanup();
+    video.srcObject = stream;
+    await video.play();
+    if (!isActive()) return cleanup();
+    setBarcodeStatus("Scanning. Hold the barcode steady inside the camera view.");
+    const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+    const scan = async () => {
+      if (!isActive()) return cleanup();
+      try {
+        const codes = await detector.detect(video);
+        if (!isActive()) return cleanup();
+        if (codes.length) {
+          cleanup();
+          await finishBarcodeLookup(codes[0].rawValue);
+          return;
+        }
+      } catch (error) {
+        const report = isActive();
+        cleanup();
+        if (report) showBarcodeScanFailure(error);
+        return;
+      }
+      requestAnimationFrame(scan);
+    };
+    scan();
+  } catch (error) {
+    const report = isActive();
+    cleanup();
+    if (report) throw error;
+  }
 }
 
 function openCopyMealModal(sourceMeal) {
@@ -7052,12 +7266,14 @@ async function duplicateEntry(id) {
 }
 
 function openModal(html) {
+  stopBarcodeScan();
   els.modalRoot.innerHTML = html;
   els.modalRoot.classList.remove("hidden");
   document.body.classList.add("modal-open");
 }
 
 function closeModal() {
+  stopBarcodeScan();
   const video = document.getElementById("barcodeVideo");
   if (video?.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
   els.modalRoot.classList.add("hidden");
@@ -7067,6 +7283,7 @@ function closeModal() {
 }
 
 function resetFoodSearchState() {
+  state.searchRequestId = (state.searchRequestId || 0) + 1;
   state.searchQuery = "";
   state.searchResultsQuery = "";
   state.searchResults = [];
@@ -7468,6 +7685,7 @@ window.addEventListener("offline", () => {
 });
 
 onAuthStateChanged(auth, user => {
+  if (state.user?.uid !== user?.uid) resetUserSession();
   state.user = user;
   document.body.classList.toggle("auth-active", !user);
   els.authView.classList.toggle("hidden", !!user);

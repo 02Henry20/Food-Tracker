@@ -16,7 +16,9 @@ function functionSource(name) {
 
 function createContext(overrides = {}) {
   const context = vm.createContext({
-    URL, console,
+    URL, console, AbortController, setTimeout, clearTimeout,
+    FOOD_SEARCH_TERMS: JSON.parse(source.match(/const FOOD_SEARCH_TERMS = (".*")\.split/)[1]).split(" "),
+    readSearchCache: () => ({ searches: {} }),
     navigator: { language: "de-DE", onLine: true },
     state: { settings: { searchRegions: ["world"] }, customFoods: [] },
     API_SEARCH_RESULT_LIMIT: 100,
@@ -25,7 +27,7 @@ function createContext(overrides = {}) {
     NUTRIENT_KEYS: ["kcal", "protein", "carbs", "fat", "sugar", "fiber", "salt", "sodium", "calcium"],
     ...overrides
   });
-  const names = ["number", "round", "normalizeSearchText", "normalizeCompactSearchText", "searchTokens", "damerauLevenshteinDistance", "fuzzyTokenScore", "searchMatchScore", "foodSearchParts", "searchMatchTier", "foodSearchMatch", "foodIdentity", "findPersonalFoodMatch", "searchRankForFood", "isPersonalCustomFood", "foodSearchSort", "compareFoodSearchMatches", "searchPersonalLibrary", "resultKindForFood", "markResultFood", "selectedSearchRegionValues", "selectedOpenFoodFactsHosts", "openFoodFactsHost", "fetchOpenFoodFactsFromHost", "fuzzyOpenFoodFactsQuery", "fetchFuzzyOpenFoodFacts", "fetchOpenFoodFacts", "displayFoodName", "gramsFromServingString", "emptyNutrients", "normalizeNutrients", "nutrientsFromSnapshot", "foodNutrientsPer100g", "foodHasUsableNutrients", "normalizeOpenFoodFactsProduct"];
+  const names = ["number", "round", "normalizeSearchText", "normalizeCompactSearchText", "searchTokens", "damerauLevenshteinDistance", "fuzzyTokenScore", "searchMatchScore", "foodSearchParts", "searchMatchTier", "foodSearchMatch", "foodIdentity", "findPersonalFoodMatch", "searchRankForFood", "isPersonalCustomFood", "foodSearchSort", "compareFoodSearchMatches", "searchPersonalLibrary", "resultKindForFood", "markResultFood", "selectedSearchRegionValues", "selectedOpenFoodFactsHosts", "openFoodFactsHost", "fetchOpenFoodFactsFromHost", "closestSearchQueries", "fetchOpenFoodFactsJson", "fetchFuzzyOpenFoodFacts", "fetchOpenFoodFacts", "displayFoodName", "gramsFromServingString", "emptyNutrients", "normalizeNutrients", "nutrientsFromSnapshot", "foodNutrientsPer100g", "foodHasUsableNutrients", "normalizeOpenFoodFactsProduct"];
   vm.runInContext(names.map(functionSource).join("\n"), context);
   return context;
 }
@@ -50,65 +52,46 @@ test("exact matches rank ahead of fuzzy matches in the personal library", () => 
   assert.equal(app.searchPersonalLibrary("MILK")[0].name, "Milk");
 });
 
-test("fuzzy queries sanitize input, retain all words, and apply selected regions", () => {
+test("browser-compatible typo correction retains words and sanitizes input", () => {
   const app = createContext();
-  app.state.settings.searchRegions = ["germany", "uk"];
-  const query = app.fuzzyOpenFoodFactsQuery('Chikcen--BREAST ("*)');
-  assert.match(query, /product_name\.main:chikcen~2/);
-  assert.match(query, /product_name\.en:breast~2/);
-  assert.match(query, /countries_tags:"en:germany" OR countries_tags:"en:united-kingdom"/);
-  assert.equal(query.includes("*"), false);
-  assert.equal(app.fuzzyOpenFoodFactsQuery("---"), "");
+  assert.equal(app.closestSearchQueries('Chikcen--BREAST ("*)')[0], "chicken breast");
+  assert.equal(app.closestSearchQueries("milk").length, 0);
+  assert.equal(app.closestSearchQueries("---").length, 0);
 });
 
-test("API fallback finds a typo absent from the library and preserves full nutrition", async () => {
+test("API fallback corrects a typo through browser-supported endpoints with full nutrition", async () => {
   const requests = [];
   const app = createContext({ fetch: async value => {
     const url = new URL(value);
     requests.push(url);
-    if (url.pathname === "/cgi/search.pl") return response({ products: [] });
-    if (url.hostname === "search.openfoodfacts.org") return response({ hits: [{ code: "12345678" }, { code: "12345678" }] });
-    assert.equal(url.pathname, "/api/v2/search");
-    assert.equal(url.searchParams.get("code"), "12345678");
-    return response({ products: [product("12345678", "Chicken breast", { serving_quantity: 150, serving_size: "150 g" })] });
+    assert.equal(url.pathname, "/cgi/search.pl");
+    const corrected = url.searchParams.get("search_terms") === "chicken";
+    return response({ products: corrected ? [product("12345678", "Chicken breast", { serving_quantity: 150, serving_size: "150 g" })] : [] });
   } });
   const foods = await app.fetchOpenFoodFacts("CHIKCEN");
-  assert.equal(foods.length, 1);
   assert.equal(foods[0].name, "Chicken breast");
   assert.equal(foods[0].nutrientsPer100g.calcium, 120);
   assert.equal(foods[0].defaultServing.grams, 150);
   assert.equal(requests[0].searchParams.get("search_terms"), "chikcen");
-  assert.equal(requests.length, 3);
+  assert.ok(requests.length <= 3);
 });
 
 test("API search deduplicates products and keeps closer matches first", async () => {
-  const app = createContext({ fetch: async value => {
-    const url = new URL(value);
-    if (url.pathname === "/cgi/search.pl") return response({ products: [product("12345678", "Milk")] });
-    if (url.hostname === "search.openfoodfacts.org") return response({ hits: [{ code: "12345678" }, { code: "87654321" }] });
-    return response({ products: [product("87654321", "Milky"), product("12345678", "Milk")] });
-  } });
+  const app = createContext({ fetch: async () => response({ products: [product("87654321", "Milky"), product("12345678", "Milk"), product("12345678", "Milk")] }) });
   assert.deepEqual(Array.from(await app.fetchOpenFoodFacts("milk"), food => food.name), ["Milk", "Milky"]);
 });
 
-test("an unavailable fuzzy API retains successful normal results", async () => {
+test("an unavailable correction request retains successful normal results", async () => {
   const app = createContext({ fetch: async value => {
-    if (new URL(value).pathname === "/cgi/search.pl") return response({ products: [product("12345678", "Milk")] });
-    throw new Error("Fuzzy service unavailable");
+    if (new URL(value).searchParams.get("search_terms") === "milkk") return response({ products: [product("12345678", "Milk")] });
+    throw new Error("Service unavailable");
   } });
-  assert.equal((await app.fetchOpenFoodFacts("milk"))[0].name, "Milk");
+  assert.equal((await app.fetchOpenFoodFacts("milkk"))[0].name, "Milk");
 });
 
-test("fuzzy results remain available if full product lookup is unavailable", async () => {
-  const app = createContext({ fetch: async value => {
-    const url = new URL(value);
-    if (url.pathname === "/cgi/search.pl") return response({ products: [] });
-    if (url.hostname === "search.openfoodfacts.org") return response({ hits: [product("12345678", "Chicken breast")] });
-    return { ok: false, status: 503 };
-  } });
-  const foods = await app.fetchOpenFoodFacts("chikcen");
-  assert.equal(foods[0].name, "Chicken breast");
-  assert.equal(foods[0].nutrientsPer100g.kcal, 100);
+test("request timeout aborts an upstream call that never responds", async () => {
+  const app = createContext({ fetch: async (url, options) => new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("aborted")))) });
+  await assert.rejects(app.fetchOpenFoodFactsJson("https://world.openfoodfacts.org/", 5), /too long/);
 });
 
 test("a fully failed API search reports failure instead of a false empty success", async () => {
@@ -126,16 +109,15 @@ test("normal searches with enough matches skip the extra fuzzy API requests", as
   assert.equal(calls, 1);
 });
 
-test("partial matches for one word do not suppress the multiword typo fallback", async () => {
-  let fuzzyCalls = 0;
+test("partial matches do not suppress a multiword typo correction", async () => {
+  let corrections = 0;
   const app = createContext({ fetch: async value => {
-    const url = new URL(value);
-    if (url.pathname === "/cgi/search.pl") return response({ products: Array.from({ length: 10 }, (_, i) => product(String(12345678 + i), `Turkey breast ${i}`)) });
-    fuzzyCalls += 1;
-    return response({ hits: [] });
+    const query = new URL(value).searchParams.get("search_terms");
+    if (query !== "chikcen breast") { corrections++; return response({ products: [] }); }
+    return response({ products: Array.from({ length: 10 }, (_, i) => product(String(12345678 + i), `Turkey breast ${i}`)) });
   } });
   await app.fetchOpenFoodFacts("chikcen breast");
-  assert.equal(fuzzyCalls, 1);
+  assert.ok(corrections > 0);
 });
 
 test("dialogs block background clicks and background keyboard shortcuts", async () => {
@@ -192,4 +174,29 @@ test("information popups provide an explicit working Close button", async () => 
   assert.equal(removed, 0);
   await app.handleClick({ target: { closest: () => popover.button } });
   assert.equal(removed, 1);
+});
+
+test("signed-in food search uses the authenticated same-origin proxy", async () => {
+  let calls = 0;
+  const app = createContext({ fetch: async (url, options) => {
+    calls++;
+    assert.equal(url, "/api/food-search");
+    assert.equal(options.headers.Authorization, "Bearer firebase-id-token");
+    assert.equal(JSON.parse(options.body).query, "milk");
+    return response({ products: [product("12345678", "Milk")] });
+  } });
+  app.state.user = { getIdToken: async () => "firebase-id-token" };
+  assert.equal((await app.fetchOpenFoodFacts("milk"))[0].name, "Milk");
+  assert.equal(calls, 1);
+});
+
+test("an expired proxy login is surfaced without retrying unrelated endpoints", async () => {
+  let calls = 0;
+  const app = createContext({ fetch: async () => {
+    calls++;
+    return { ok: false, status: 401, json: async () => ({ error: "Sign in again to search foods." }) };
+  } });
+  app.state.user = { getIdToken: async () => "expired" };
+  await assert.rejects(app.fetchOpenFoodFacts("milk"), /Sign in again/);
+  assert.equal(calls, 1);
 });

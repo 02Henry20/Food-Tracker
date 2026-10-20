@@ -3,3 +3,6 @@
 
 # Local agent memories; shared Serena configuration remains tracked.
 /.serena/memories/
+
+node_modules/
+firebase-debug.log*

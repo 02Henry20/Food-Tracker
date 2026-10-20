@@ -97,6 +97,25 @@ The app expects Firebase Auth and Firestore to be configured for the project in 
 
 Deploy with the Firebase CLI from this folder after logging in and selecting the project.
 
+Food search uses the authenticated `foodSearch` Cloud Function in `europe-west1` through the Hosting route `/api/food-search`. The proxy is required because Open Food Facts' dedicated search service rejects browser origins. It supports fuzzy matching, region filters, bounded upstream requests, and a short result cache. Barcode lookups use the public product API directly.
+
+Install the function dependencies and deploy both the function and Hosting together:
+
+```powershell
+npm --prefix functions install
+firebase deploy --only functions:foodSearch,hosting
+```
+
+Cloud Functions requires a Firebase project on a billing-enabled plan. A Git push alone does not deploy this function. The app tries the legacy browser API if the proxy is unavailable, but that upstream endpoint can return HTTP 503.
+
+Run the regression checks with Node:
+
+```powershell
+node --test tests/*.test.cjs
+```
+
+The optional `node tests/browser-review.cjs` check requires Playwright and installed Google Chrome. It exercises the real app UI with an in-memory Firebase fixture and does not change production account data.
+
 ## Data Ownership
 
 NutriPilot is designed around personal data ownership:
